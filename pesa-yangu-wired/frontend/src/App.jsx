@@ -359,6 +359,7 @@ export default function App() {
   const [tab,    _setTab]   = useState("dashboard");
   const setTab = (newTab) => {
     _setTab(newTab);
+    if (newTab !== "transactions") setTxSearch("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const [modals, setModals] = useState({});
@@ -503,6 +504,26 @@ export default function App() {
   const watched    = expCats.filter(c=>c.watch);
   const score      = Math.max(10, Math.min(99, Math.round(68+savingsRate*0.35-overBudget.length*7)));
 
+  // ── Filtered transactions for Records tab (real-time search)
+  const filteredTxs = useMemo(() => {
+    const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
+    if (!txSearch.trim()) return pool;
+    const q = txSearch.trim().toLowerCase();
+    return pool.filter(t => {
+      const catId  = t.category || t.category_id;
+      const cat    = t.type === "expense" ? expCats.find(c => c.id === catId)
+                   : t.type === "income"  ? incCats.find(c => c.id === catId)
+                   : null;
+      const wallet = wallets.find(w => w.id === (t.wallet || t.wallet_id));
+      return (
+        (t.merchant || "").toLowerCase().includes(q) ||
+        (t.note     || "").toLowerCase().includes(q) ||
+        (cat?.name  || "").toLowerCase().includes(q) ||
+        (wallet?.name || "").toLowerCase().includes(q)
+      );
+    });
+  }, [txs, txSearch, expCats, incCats, wallets, limits.txHistory]);
+
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
   const loanOpts = loans.map(l=>({ value:l.id, label:l.name }));
@@ -555,6 +576,9 @@ export default function App() {
   const [recoRows,    setRecoRows]    = useState([]);
   const [recoFile,    setRecoFile]    = useState(null);
   const [recoBusy,    setRecoBusy]    = useState(false);
+
+  // Search
+  const [txSearch, setTxSearch] = useState("");
 
   // Import
   const [importRows,  setImportRows]  = useState([]);
@@ -1553,20 +1577,65 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
               <div>
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>All Records</div>
-                <div style={{color:C.textMuted,fontSize:12}}>{txs.length} transactions</div>
+                <div style={{color:C.textMuted,fontSize:12}}>
+                  {txSearch.trim() ? `${filteredTxs.length} of ${txs.length} transactions` : `${txs.length} transactions`}
+                </div>
               </div>
               <div style={{display:"flex",gap:8}}>
                 <Btn onClick={exportTransactions} outline color={C.textMuted} small>⬇ Export</Btn>
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
               </div>
             </div>
+
+            {/* ── Search bar ── */}
+            <div style={{position:"relative"}}>
+              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,color:C.textFaint,pointerEvents:"none"}}>🔍</span>
+              <input
+                type="text"
+                value={txSearch}
+                onChange={e => setTxSearch(e.target.value)}
+                placeholder="Search by vendor, note, category or account…"
+                style={{
+                  width:"100%", boxSizing:"border-box",
+                  background:C.navyMid, border:`1px solid ${txSearch ? C.teal : C.navyLight}`,
+                  borderRadius:12, padding:"11px 42px 11px 40px",
+                  color:C.textPrimary, fontSize:13, outline:"none",
+                  transition:"border-color 0.2s",
+                }}
+                onFocus={e => e.target.style.borderColor = C.teal}
+                onBlur={e  => e.target.style.borderColor = txSearch ? C.teal : C.navyLight}
+              />
+              {txSearch && (
+                <button
+                  onClick={() => setTxSearch("")}
+                  title="Clear search"
+                  style={{
+                    position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
+                    background:C.navyLight, border:"none", borderRadius:6,
+                    color:C.textMuted, cursor:"pointer", fontSize:12,
+                    padding:"2px 7px", lineHeight:1.4,
+                  }}
+                >✕</button>
+              )}
+            </div>
+
             <div className="grid-3">
-              <Chip label="In" value={disp(totalIncome)} color={C.teal}/>
+              <Chip label="In"  value={disp(totalIncome)}  color={C.teal}/>
               <Chip label="Out" value={disp(totalExpense)} color={C.coral}/>
               <Chip label="Net" value={disp(totalIncome-totalExpense)} color={totalIncome>totalExpense?C.teal:C.coral}/>
             </div>
+
             <Card style={{padding:0}}>
-              {(limits.txHistory<Infinity?txs.slice(0,limits.txHistory):txs).map((t,i,arr)=>{
+              {filteredTxs.length === 0 ? (
+                <div style={{padding:"40px 20px",textAlign:"center"}}>
+                  <div style={{fontSize:32,marginBottom:10}}>🔍</div>
+                  <div style={{fontWeight:600,fontSize:14,color:C.textPrimary,marginBottom:6}}>No results found</div>
+                  <div style={{color:C.textMuted,fontSize:12,marginBottom:14}}>
+                    No transactions match <strong>"{txSearch}"</strong>
+                  </div>
+                  <Btn onClick={() => setTxSearch("")} outline color={C.textMuted} small>Clear search</Btn>
+                </div>
+              ) : filteredTxs.map((t,i,arr)=>{
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";
                 const isRefund=t.type==="refund";
                 const catId=t.category||t.category_id;
@@ -1575,12 +1644,30 @@ export default function App() {
                 const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
                 const amt=t.amount||parseFloat(t.amount_kes||0);
                 const origTx=isRefund?txs.find(x=>x.id===t.refund_of):null;
+
+                // Highlight matching text in vendor/note
+                const label = t.merchant || t.note || "Transaction";
+                const q = txSearch.trim().toLowerCase();
+                const highlight = (text) => {
+                  if (!q || !text.toLowerCase().includes(q)) return text;
+                  const idx = text.toLowerCase().indexOf(q);
+                  return (
+                    <span>
+                      {text.slice(0, idx)}
+                      <mark style={{background:C.teal+"44",color:C.textPrimary,borderRadius:3,padding:"0 2px"}}>{text.slice(idx, idx+q.length)}</mark>
+                      {text.slice(idx+q.length)}
+                    </span>
+                  );
+                };
+
                 return<div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<arr.length-1?`1px solid ${C.navyLight}`:"none",background:isRefund?"#9B59B611":"transparent"}}>
                   <div style={{width:36,height:36,borderRadius:10,background:(cat?.color||C.teal)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{cat?.icon||"💸"}</div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.merchant||t.note||"Transaction"}</div>
+                    <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{highlight(label)}</div>
                     <div style={{color:C.textMuted,fontSize:10,marginTop:2,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                      <span>{cat?.name||"—"}</span><span>·</span><span>{w?.name||"—"}</span><span>·</span><span>{t.date||t.tx_date}</span>
+                      <span>{highlight(cat?.name||"—")}</span><span>·</span>
+                      <span>{highlight(w?.name||"—")}</span><span>·</span>
+                      <span>{t.date||t.tx_date}</span>
                       {t.loanId&&<Badge color={C.coral}>Loan</Badge>}
                       {t.recurring&&<Badge color={C.purple}>🔁</Badge>}
                       {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>↩ {origTx.merchant||origTx.note||"expense"}</span>}
@@ -1597,7 +1684,7 @@ export default function App() {
                   </div>
                 </div>;
               })}
-              {limits.txHistory<txs.length&&<div style={{padding:16,textAlign:"center"}}>
+              {!txSearch && limits.txHistory<txs.length&&<div style={{padding:16,textAlign:"center"}}>
                 <div style={{color:C.textMuted,fontSize:12,marginBottom:10}}>Showing {limits.txHistory} of {txs.length}</div>
                 <Btn onClick={()=>openM("billing")} color={C.gold} small>Upgrade for full history</Btn>
               </div>}

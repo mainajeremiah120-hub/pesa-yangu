@@ -17,6 +17,78 @@ const inp = {
   marginBottom:12,
 };
 
+// Eye icons as inline SVG — no external dependency needed
+const EyeOpen = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+
+const EyeClosed = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+    <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+);
+
+// Reusable password field with show/hide toggle
+function PasswordField({ value, onChange, placeholder, style = {} }) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <div style={{ position: "relative", marginBottom: style.marginBottom ?? 12 }}>
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        required
+        style={{
+          ...inp,
+          marginBottom: 0,
+          paddingRight: 44,   // room for the toggle button
+          ...style,
+          marginBottom: 0,    // always reset — parent div owns the margin
+        }}
+        onFocus={e => e.target.style.borderColor = C.teal}
+        onBlur={e  => e.target.style.borderColor = C.navyLight}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(s => !s)}
+        aria-label={show ? "Hide password" : "Show password"}
+        aria-pressed={show}
+        style={{
+          position: "absolute",
+          right: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: C.textMuted,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 4,
+          borderRadius: 6,
+          transition: "color 0.15s",
+          // Visible focus ring for keyboard users
+          outline: "none",
+        }}
+        onMouseEnter={e => e.currentTarget.style.color = C.teal}
+        onMouseLeave={e => e.currentTarget.style.color = C.textMuted}
+        onFocus={e    => { e.currentTarget.style.color = C.teal; e.currentTarget.style.boxShadow = `0 0 0 2px ${C.teal}44`; }}
+        onBlur={e     => { e.currentTarget.style.color = C.textMuted; e.currentTarget.style.boxShadow = "none"; }}
+      >
+        {show ? <EyeClosed /> : <EyeOpen />}
+      </button>
+    </div>
+  );
+}
+
 export default function AuthPage({ onLogin, onRegister }) {
   const [mode,     setMode]     = useState("login"); // "login" | "register"
   const [name,     setName]     = useState("");
@@ -62,7 +134,7 @@ export default function AuthPage({ onLogin, onRegister }) {
           {/* Tab toggle */}
           <div style={{ display:"flex", background:C.navyLight, borderRadius:12, padding:4, marginBottom:24 }}>
             {["login","register"].map(m => (
-              <button key={m} onClick={() => { setMode(m); setError(""); }}
+              <button key={m} onClick={() => { setMode(m); setError(""); setPassword(""); }}
                 style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none", cursor:"pointer", fontWeight:700, fontSize:13,
                   background: mode===m ? C.teal : "transparent",
                   color:      mode===m ? C.navy  : C.textMuted,
@@ -83,11 +155,13 @@ export default function AuthPage({ onLogin, onRegister }) {
               placeholder="Email address" style={inp} required
               onFocus={e=>e.target.style.borderColor=C.teal}
               onBlur={e=>e.target.style.borderColor=C.navyLight}/>
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
-              placeholder={mode==="register" ? "Password (min 8 characters)" : "Password"}
-              style={{...inp, marginBottom: error ? 8 : 20}} required
-              onFocus={e=>e.target.style.borderColor=C.teal}
-              onBlur={e=>e.target.style.borderColor=C.navyLight}/>
+
+            <PasswordField
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder={mode === "register" ? "Password (min 8 characters)" : "Password"}
+              style={{ marginBottom: error ? 8 : 20 }}
+            />
 
             {error && (
               <div style={{ color:C.coral, fontSize:12, marginBottom:14, padding:"8px 12px", background:C.coral+"14", borderRadius:8 }}>
@@ -104,7 +178,7 @@ export default function AuthPage({ onLogin, onRegister }) {
           {mode === "login" && (
             <div style={{ textAlign:"center", marginTop:16, color:C.textFaint, fontSize:12 }}>
               No account?{" "}
-              <span onClick={() => { setMode("register"); setError(""); }}
+              <span onClick={() => { setMode("register"); setError(""); setPassword(""); }}
                 style={{ color:C.teal, cursor:"pointer", fontWeight:600 }}>
                 Create one free
               </span>

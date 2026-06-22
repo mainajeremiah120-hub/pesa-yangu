@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Pesa Yangu – Personal finance management for Kenya. Track budgets, wallets, investments and loans." />
+    <meta name="theme-color" content="#0B1120" />
+    <meta property="og:title" content="Pesa Yangu" />
+    <meta property="og:description" content="Smart personal finance for Kenya" />
+    <meta property="og:type" content="website" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Pesa Yangu</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: #0B1120; color: #F0F4FF; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; }
+      #splash {
+        position: fixed; inset: 0; background: #0B1120;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        z-index: 9999; transition: opacity 0.4s ease;
+      }
+      #splash.hidden { opacity: 0; pointer-events: none; }
+      .splash-logo {
+        width: 60px; height: 60px;
+        background: linear-gradient(135deg, #00D4AA, #4A90E2);
+        border-radius: 18px; display: flex; align-items: center;
+        justify-content: center; font-size: 30px; margin-bottom: 16px;
+      }
+      .splash-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+      .splash-sub  { font-size: 13px; color: #8B9ABB; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <div class="splash-logo">◈</div>
+      <div class="splash-name">Pesa Yangu</div>
+      <div class="splash-sub">Smart personal finance for Kenya</div>
+    </div>
+
+    <div id="root"></div>
+
+    <script>
+      window.__hideSplash = () => {
+        const s = document.getElementById('splash');
+        if (s) { s.classList.add('hidden'); setTimeout(() => s.remove(), 400); }
+      };
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

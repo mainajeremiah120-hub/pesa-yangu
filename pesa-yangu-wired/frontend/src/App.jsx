@@ -1597,13 +1597,13 @@ export default function App() {
                 placeholder="Search by vendor, note, category or account…"
                 style={{
                   width:"100%", boxSizing:"border-box",
-                  background:C.navyMid, border:`1px solid ${txSearch ? C.teal : C.navyLight}`,
-                  borderRadius:12, padding:"11px 42px 11px 40px",
+                  background:C.navyMid, border:`1.5px solid ${txSearch ? C.teal : C.textFaint}`,
+                  borderRadius:12, padding:"12px 42px 12px 40px",
                   color:C.textPrimary, fontSize:13, outline:"none",
                   transition:"border-color 0.2s",
                 }}
                 onFocus={e => e.target.style.borderColor = C.teal}
-                onBlur={e  => e.target.style.borderColor = txSearch ? C.teal : C.navyLight}
+                onBlur={e  => e.target.style.borderColor = txSearch ? C.teal : C.textFaint}
               />
               {txSearch && (
                 <button

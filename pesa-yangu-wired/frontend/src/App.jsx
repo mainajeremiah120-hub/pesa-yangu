@@ -163,7 +163,7 @@ const HealthRing = ({ score }) => {
 const Modal = ({ open, onClose, title, children, wide=false }) => {
   if (!open) return null;
   return <div style={{ position:"fixed", inset:0, background:"#000D", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={onClose}>
-    <div style={{ background:C.navyMid, borderRadius:20, padding:28, width:"100%", maxWidth:wide?740:480, border:`1px solid ${C.navyLight}`, maxHeight:"94vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+    <div className="modal-container" style={{ background:C.navyMid, borderRadius:20, padding:28, width:"100%", maxWidth:wide?740:480, border:`1px solid ${C.navyLight}`, maxHeight:"94vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
         <div style={{ color:C.textPrimary, fontSize:17, fontWeight:700 }}>{title}</div>
         <button onClick={onClose} style={{ background:C.navyLight, border:"none", color:C.textMuted, borderRadius:8, width:32, height:32, cursor:"pointer", fontSize:15 }}>✕</button>
@@ -185,8 +185,9 @@ const Field = ({ label, type="text", value, onChange, placeholder, options, note
   </div>;
 };
 
-const Btn = ({ children, onClick, color=C.teal, outline=false, style={}, disabled=false, small=false }) => (
+const Btn = ({ children, onClick, color=C.teal, outline=false, style={}, disabled=false, small=false, className="" }) => (
   <button onClick={onClick} disabled={disabled}
+    className={`app-btn ${small ? "app-btn-small" : ""} ${className}`}
     style={{ background:outline?"transparent":color, color:outline?color:C.navy, border:`1.5px solid ${color}`, borderRadius:10, padding:small?"6px 12px":"9px 16px", cursor:disabled?"not-allowed":"pointer", fontWeight:700, fontSize:small?11:13, transition:"opacity 0.15s", opacity:disabled?0.45:1, ...style }}
     onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.opacity="0.82"; }}
     onMouseLeave={e=>{ e.currentTarget.style.opacity=disabled?"0.45":"1"; }}>
@@ -869,7 +870,7 @@ export default function App() {
   // FULL RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{minHeight:"100vh",background:C.navy,color:C.textPrimary,fontFamily:"'Inter',-apple-system,sans-serif",display:"flex",flexDirection:"column"}}>
+    <div style={{minHeight:"100vh",background:C.navy,color:C.textPrimary,fontFamily:"'Inter',-apple-system,sans-serif",display:"flex",flexDirection:"column",overflowX:"hidden"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -878,6 +879,11 @@ export default function App() {
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes slideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+        body, html {
+          overflow-x: hidden;
+          max-width: 100vw;
+        }
 
         .interactive-card {
           position: relative;
@@ -893,6 +899,84 @@ export default function App() {
           box-shadow: 0 4px 10px rgba(0, 212, 170, 0.06), 0 2px 4px rgba(0, 0, 0, 0.2);
           border-color: ${C.teal}bb !important;
           background: #162232 !important;
+        }
+
+        /* Grid and Layout Responsiveness */
+        .grid-2, .grid-3, .grid-4, .grid-5, .grid-2-1 {
+          display: grid;
+        }
+        .grid-2 { grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .grid-5 { grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        .grid-2-1 { grid-template-columns: 2fr 1fr; gap: 14px; }
+
+        .reco-grid-row {
+          display: grid;
+          grid-template-columns: 100px 1fr 120px 110px;
+          gap: 10px;
+          padding: 10px 18px;
+        }
+
+        @media (max-width: 640px) {
+          .grid-2, .grid-3, .grid-4, .grid-5, .grid-2-1 {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+          .desktop-nav {
+            display: none !important;
+          }
+          .mobile-bottom-nav {
+            display: flex !important;
+          }
+          .desktop-only-btn {
+            display: none !important;
+          }
+          .page-container {
+            padding: 12px 12px 80px 12px !important;
+          }
+          .modal-container {
+            padding: 20px !important;
+            border-radius: 16px !important;
+            max-height: 95vh !important;
+          }
+          .app-btn {
+            padding: 12px 18px !important;
+            font-size: 14px !important;
+          }
+          .app-btn-small {
+            padding: 9px 14px !important;
+            font-size: 12px !important;
+          }
+
+          .reco-grid-row {
+            display: grid !important;
+            grid-template-columns: 1fr auto !important;
+            gap: 4px 8px !important;
+            padding: 12px 14px !important;
+          }
+          .reco-header-row {
+            display: none !important;
+          }
+          .reco-date {
+            grid-column: 1;
+            font-size: 10px !important;
+          }
+          .reco-desc {
+            grid-column: 1;
+            font-size: 13px !important;
+          }
+          .reco-amt {
+            grid-column: 2;
+            grid-row: 1;
+            text-align: right !important;
+            font-size: 13px !important;
+          }
+          .reco-status {
+            grid-column: 2;
+            grid-row: 2;
+            justify-content: flex-end;
+          }
         }
       `}</style>
 
@@ -912,17 +996,17 @@ export default function App() {
           </select>
         )}
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
-          <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small>⇄ Transfer</Btn>
-          <Btn onClick={()=>openM("share")} outline color={C.purple} small>📤 Share</Btn>
-          <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small>⬆⬇ Data</Btn>
-          <Btn onClick={getAI} outline color={C.gold} small>✦ AI</Btn>
+          <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small className="desktop-only-btn">⇄ Transfer</Btn>
+          <Btn onClick={()=>openM("share")} outline color={C.purple} small className="desktop-only-btn">📤 Share</Btn>
+          <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">⬆⬇ Data</Btn>
+          <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
           <Btn onClick={()=>{setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
-          <button onClick={logout} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:11}}>Sign out</button>
+          <button onClick={logout} className="desktop-only-btn" style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:11}}>Sign out</button>
         </div>
       </div>
 
       {/* Nav tabs */}
-      <div style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,display:"flex",overflowX:"auto",padding:"0 10px"}}>
+      <div className="desktop-nav" style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,display:"flex",overflowX:"auto",padding:"0 10px"}}>
         {NAV.map(n=>(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{background:"none",border:"none",color:tab===n.id?C.teal:C.textMuted,padding:"10px 13px",cursor:"pointer",fontWeight:tab===n.id?700:500,borderBottom:tab===n.id?`2px solid ${C.teal}`:"2px solid transparent",fontSize:12,whiteSpace:"nowrap",transition:"all 0.2s"}}>
             {n.icon} {n.label}
@@ -931,12 +1015,12 @@ export default function App() {
       </div>
 
       {/* Page */}
-      <div style={{flex:1,padding:"18px",maxWidth:1000,margin:"0 auto",width:"100%",animation:"fadeUp 0.25s ease"}}>
+      <div className="page-container" style={{flex:1,padding:"18px",maxWidth:1000,margin:"0 auto",width:"100%",animation:"fadeUp 0.25s ease"}}>
 
         {/* ══ DASHBOARD ══════════════════════════════════════════════════════ */}
         {tab==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14}}>
+            <div className="grid-2-1">
               <Card>
                 <div style={{display:"flex",alignItems:"center",gap:18}}>
                   <HealthRing score={score}/>
@@ -958,7 +1042,7 @@ export default function App() {
               </Card>
             </div>
 
-            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
+            <div className="grid-5">
               <Card onClick={() => setTab("accounts")}><Chip label="Total Balance" value={disp(totalBalance)} color={C.textPrimary} sub={`${wallets.length} accounts`}/></Card>
               <Card onClick={() => setTab("transactions")}><Chip label="Income" value={disp(totalIncome)} color={C.teal} sub="This month"/></Card>
               <Card onClick={() => setTab("transactions")}><Chip label="Expenses" value={disp(totalExpense)} color={totalExpense>totalIncome*0.8?C.coral:C.textPrimary} sub={`${totalIncome>0?((totalExpense/totalIncome)*100).toFixed(0):0}% of income`}/></Card>
@@ -985,7 +1069,7 @@ export default function App() {
               </Card>
             )}
 
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div className="grid-2" style={{ gap: 14 }}>
               <Card onClick={() => setTab("budgets")}>
                 <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>Spending by Category</div>
                 {expCats.filter(c=>spendByCat[c.id]>0).sort((a,b)=>(spendByCat[b.id]||0)-(spendByCat[a.id]||0)).slice(0,6).map(c=>(
@@ -1014,7 +1098,7 @@ export default function App() {
                   <div style={{fontWeight:700,fontSize:13}}>Savings Goals</div>
                   <button onClick={(e)=>{e.stopPropagation();setTab("goals");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View all →</button>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                <div className="grid-4">
                   {goals.map(g=>{const pct=Math.min((g.saved/g.target)*100,100);return(
                     <div key={g.id} style={{background:C.navyLight,borderRadius:12,padding:12}}>
                       <div style={{fontSize:20,marginBottom:5}}>{g.icon}</div>
@@ -1066,7 +1150,7 @@ export default function App() {
                 <Btn onClick={()=>{setFWal(blankWal);openM("wallet");}} small>+ Add Account</Btn>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div className="grid-2">
               {wallets.map(w=>{
                 const bal=parseFloat(w.balance||0);
                 const wIn=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="income"||t.type==="transfer_in")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
@@ -1122,7 +1206,7 @@ export default function App() {
                 <Btn onClick={()=>{setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            <div className="grid-3">
               <Chip label="In" value={disp(totalIncome)} color={C.teal}/>
               <Chip label="Out" value={disp(totalExpense)} color={C.coral}/>
               <Chip label="Net" value={disp(totalIncome-totalExpense)} color={totalIncome>totalExpense?C.teal:C.coral}/>
@@ -1203,7 +1287,7 @@ export default function App() {
               </Card>;
             })}
             <Divider label="Income Categories"/>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div className="grid-2">
               {incCats.map(c=>{
                 const earned=earnByCat[c.id]||0;
                 return<Card key={c.id}>
@@ -1235,7 +1319,7 @@ export default function App() {
               </div>
               <Btn onClick={()=>{setFGoal({...blankGoal,wallet:wallets[0]?.id||""});openM("goal");}}>+ New Goal</Btn>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div className="grid-2" style={{ gap: 14 }}>
               {goals.map(g=><GoalCard key={g.id} g={g} wallets={wallets} disp={disp} onFund={fundGoal} C={C} Bar={Bar}/>)}
               {goals.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",color:C.textFaint,padding:"40px 0",fontSize:13}}>No goals yet. Create one to start saving with purpose.</div>}
             </div>
@@ -1249,7 +1333,7 @@ export default function App() {
               <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Recurring Transactions</div><div style={{color:C.textMuted,fontSize:12}}>Bills, subscriptions & regular income</div></div>
               <Btn onClick={()=>{setFRecur({...blankRecur,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("recur");}}>+ Add Recurring</Btn>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            <div className="grid-3">
               <Chip label="Monthly Out" value={disp(recurring.filter(r=>r.active&&r.type==="expense").reduce((s,r)=>s+r.amount,0))} color={C.coral}/>
               <Chip label="Monthly In"  value={disp(recurring.filter(r=>r.active&&r.type==="income").reduce((s,r)=>s+r.amount,0))} color={C.teal}/>
               <Chip label="Net Monthly" value={disp(recurring.filter(r=>r.active).reduce((s,r)=>s+r.amount*(r.type==="income"?1:-1),0))} color={C.gold}/>
@@ -1291,7 +1375,7 @@ export default function App() {
               const totalNow=investments.reduce((s,i)=>s+i.units*i.currentPrice,0);
               const totalRet=investments.reduce((s,i)=>s+i.returns.reduce((ss,r)=>ss+r.amount,0),0);
               const gain=totalNow-totalIn;
-              return<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+              return<div className="grid-4">
                 <Chip label="Invested" value={disp(totalIn)} color={C.textMuted}/>
                 <Chip label="Market Value" value={disp(totalNow)} color={C.gold}/>
                 <Chip label="Capital Gain" value={fmtPct(totalIn>0?(gain/totalIn)*100:0)} color={gain>=0?C.teal:C.coral} sub={disp(gain)}/>
@@ -1345,7 +1429,7 @@ export default function App() {
                 <Btn onClick={()=>{setFLoan(blankLoan);openM("loan");}}>+ Add Loan</Btn>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            <div className="grid-3">
               <Chip label="Total Debt" value={disp(totalDebt)} color={C.coral}/>
               <Chip label="Monthly Payments" value={disp(loans.reduce((s,l)=>s+l.monthlyPayment,0))} color={C.gold}/>
               <Chip label="Interest Paid" value={disp(loans.reduce((s,l)=>s+l.repayments.reduce((ss,r)=>ss+(r.interest||0),0),0))} color={C.textMuted}/>
@@ -1409,14 +1493,14 @@ export default function App() {
                 {recoRows.length>0&&<>
                   <div style={{display:"flex",justifyContent:"flex-end"}}><Btn onClick={importAllReco} outline color={C.teal} small>Import All Unmatched</Btn></div>
                   <Card style={{padding:0}}>
-                    <div style={{padding:"10px 18px",borderBottom:`1px solid ${C.navyLight}`,display:"grid",gridTemplateColumns:"100px 1fr 120px 110px",gap:10}}>
+                    <div className="reco-header-row" style={{padding:"10px 18px",borderBottom:`1px solid ${C.navyLight}`,display:"grid",gridTemplateColumns:"100px 1fr 120px 110px",gap:10}}>
                       {["Date","Description","Amount","Status"].map(h=><div key={h} style={{color:C.textFaint,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>)}
                     </div>
-                    {recoRows.map((row,idx)=><div key={idx} style={{display:"grid",gridTemplateColumns:"100px 1fr 120px 110px",gap:10,padding:"10px 18px",borderBottom:`1px solid ${C.navyLight}`,alignItems:"center",background:row.status==="matched"?C.teal+"08":"transparent"}}>
-                      <div style={{fontSize:11,color:C.textMuted}}>{row.date}</div>
-                      <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.desc||row.description}</div>
-                      <div style={{fontSize:12,fontWeight:700,color:row.amount>0?C.teal:C.textPrimary}}>{row.amount>0?"+":""}{disp(Math.abs(row.amount))}</div>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    {recoRows.map((row,idx)=><div key={idx} className="reco-grid-row" style={{borderBottom:`1px solid ${C.navyLight}`,alignItems:"center",background:row.status==="matched"?C.teal+"08":"transparent"}}>
+                      <div className="reco-date" style={{fontSize:11,color:C.textMuted}}>{row.date}</div>
+                      <div className="reco-desc" style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.desc||row.description}</div>
+                      <div className="reco-amt" style={{fontSize:12,fontWeight:700,color:row.amount>0?C.teal:C.textPrimary}}>{row.amount>0?"+":""}{disp(Math.abs(row.amount))}</div>
+                      <div className="reco-status" style={{display:"flex",alignItems:"center",gap:6}}>
                         <Badge color={row.status==="matched"?C.teal:C.coral}>{row.status}</Badge>
                         {row.status==="unmatched"&&<button onClick={()=>importRecoRow(idx)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontWeight:600}}>Import</button>}
                       </div>
@@ -1426,6 +1510,44 @@ export default function App() {
                 {!recoFile&&<Card style={{textAlign:"center",padding:40}}><div style={{fontSize:36,marginBottom:12}}>📂</div><div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No statement uploaded</div><div style={{color:C.textMuted,fontSize:12,lineHeight:1.7}}>Upload a CSV from KCB, Equity, Co-op, NCBA, or M-Pesa.</div></Card>}
               </>
             )}
+          </div>
+        )}
+
+        {/* ══ MORE MENU (MOBILE ONLY) ══════════════════════════════════════ */}
+        {tab==="more"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div>
+              <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>More Modules</div>
+              <div style={{color:C.textMuted,fontSize:12}}>Access other financial tools</div>
+            </div>
+            <div className="grid-2">
+              {[
+                { id: "goals", label: "Savings Goals", icon: "🏆", desc: "Track savings targets" },
+                { id: "recurring", label: "Recurring", icon: "🔁", desc: "Bills & subscriptions" },
+                { id: "investments", label: "Investments", icon: "📈", desc: "Asset portfolio" },
+                { id: "loans", label: "Loans & Debt", icon: "🏦", desc: "Track borrowing" },
+                { id: "reconcile", label: "Reconcile", icon: "✅", desc: "Import bank statement" },
+              ].map(item => (
+                <Card key={item.id} onClick={() => setTab(item.id)} style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  <div style={{ fontSize: 28 }}>{item.icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.textPrimary }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted }}>{item.desc}</div>
+                </Card>
+              ))}
+            </div>
+
+            <Divider label="Actions & Tools"/>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <Btn onClick={getAI} color={C.gold} style={{width:"100%",padding:12}}>✦ AI Financial Advisor</Btn>
+              <div className="grid-2">
+                <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} style={{padding:12}}>⇄ Transfer</Btn>
+                <Btn onClick={()=>openM("share")} outline color={C.purple} style={{padding:12}}>📤 Share App</Btn>
+              </div>
+              <div className="grid-2">
+                <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} style={{padding:12}}>⬆⬇ Import/Export</Btn>
+                <button onClick={logout} style={{background:"none",border:`1px solid ${C.coral}`,borderRadius:10,color:C.coral,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>Sign out</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1463,7 +1585,7 @@ export default function App() {
         <Field label="Account Type" value={fWal.accountType} onChange={v=>setFWal({...fWal,accountType:v})} options={[{value:"current",label:"🏦 Current / Checking"},{value:"savings",label:"💰 Savings Account"},{value:"investment",label:"📈 Investment Account"},{value:"cash",label:"👛 Cash Wallet"},{value:"digital",label:"📱 Mobile Money"}]}/>
         <Field label="Currency" value={fWal.currency} onChange={v=>setFWal({...fWal,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name} (${c.symbol})`}))}/>
         <Field label={`Opening Balance (${fWal.currency})`} type="number" value={fWal.openingBalance} onChange={v=>setFWal({...fWal,openingBalance:v})} placeholder="0.00"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Icon"   value={fWal.icon}  onChange={v=>setFWal({...fWal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
           <Field label="Colour" value={fWal.color} onChange={v=>setFWal({...fWal,color:v})} options={CAT_COLORS.map(col=>({value:col,label:col}))}/>
         </div>
@@ -1473,7 +1595,7 @@ export default function App() {
       {/* Add Expense Category */}
       <Modal open={isOpen("expCat")} onClose={()=>closeM("expCat")} title="🏷️ New Expense Category">
         <Field label="Category Name" value={fExpCat.name} onChange={v=>setFExpCat({...fExpCat,name:v})} placeholder="e.g. Pet Care"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Icon"   value={fExpCat.icon}  onChange={v=>setFExpCat({...fExpCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
           <Field label="Colour" value={fExpCat.color} onChange={v=>setFExpCat({...fExpCat,color:v})} options={CAT_COLORS.map(c=>({value:c,label:c}))}/>
         </div>
@@ -1488,7 +1610,7 @@ export default function App() {
       {/* Add Income Category */}
       <Modal open={isOpen("incCat")} onClose={()=>closeM("incCat")} title="💵 New Income Category">
         <Field label="Category Name" value={fIncCat.name} onChange={v=>setFIncCat({...fIncCat,name:v})} placeholder="e.g. Consulting"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Icon"   value={fIncCat.icon}  onChange={v=>setFIncCat({...fIncCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
           <Field label="Colour" value={fIncCat.color} onChange={v=>setFIncCat({...fIncCat,color:v})} options={CAT_COLORS.map(c=>({value:c,label:c}))}/>
         </div>
@@ -1508,11 +1630,11 @@ export default function App() {
         <Field label="Loan Name" value={fLoan.name}   onChange={v=>setFLoan({...fLoan,name:v})}   placeholder="e.g. KCB Personal Loan"/>
         <Field label="Lender"    value={fLoan.lender} onChange={v=>setFLoan({...fLoan,lender:v})} placeholder="e.g. KCB Bank"/>
         <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v})} placeholder="e.g. 500000"/>
           <Field label="Rate (% p.a.)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 13.5"/>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label={`Monthly Payment (${fLoan.currency})`} type="number" value={fLoan.monthlyPayment} onChange={v=>setFLoan({...fLoan,monthlyPayment:v})} placeholder="0"/>
           <Field label="Next Due Date" type="date" value={fLoan.nextDue} onChange={v=>setFLoan({...fLoan,nextDue:v})}/>
         </div>
@@ -1528,7 +1650,7 @@ export default function App() {
         <Field label="Pay From Wallet" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
         <Divider label="Payment Breakdown"/>
         <Field label="Total Payment" type="number" value={fRepay.total} onChange={v=>{const tot=parseFloat(v)||0,int=parseFloat(fRepay.interest)||0;setFRepay({...fRepay,total:v,principal:String((tot-int).toFixed(2))});}} placeholder="e.g. 15000"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Principal Portion" type="number" value={fRepay.principal} onChange={v=>setFRepay({...fRepay,principal:v})} placeholder="0.00"/>
           <Field label="Interest Portion"  type="number" value={fRepay.interest}  onChange={v=>{const int=parseFloat(v)||0,tot=parseFloat(fRepay.total)||0;setFRepay({...fRepay,interest:v,principal:String((tot-int).toFixed(2))});}} placeholder="0.00"/>
         </div>
@@ -1541,12 +1663,12 @@ export default function App() {
       {/* Add Investment */}
       <Modal open={isOpen("inv")} onClose={()=>closeM("inv")} title="📈 Add Investment">
         <Field label="Name" value={fInv.name} onChange={v=>setFInv({...fInv,name:v})} placeholder="e.g. Safaricom PLC"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Ticker" value={fInv.ticker} onChange={v=>setFInv({...fInv,ticker:v})} placeholder="e.g. SCOM"/>
           <Field label="Type" value={fInv.type} onChange={v=>setFInv({...fInv,type:v})} options={[{value:"Stock",label:"📊 Stock"},{value:"ETF",label:"📦 ETF"},{value:"Bond",label:"📜 Bond"},{value:"Money Mkt",label:"🏦 Money Market"},{value:"REIT",label:"🏠 REIT"},{value:"Crypto",label:"₿ Crypto"},{value:"Other",label:"💼 Other"}]}/>
         </div>
         <Field label="Currency" value={fInv.currency} onChange={v=>setFInv({...fInv,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Units / Shares" type="number" value={fInv.units} onChange={v=>setFInv({...fInv,units:v})} placeholder="e.g. 1000"/>
           <Field label={`Buy Price (${fInv.currency})`} type="number" value={fInv.buyPrice} onChange={v=>setFInv({...fInv,buyPrice:v})} placeholder="e.g. 22.50"/>
         </div>
@@ -1558,7 +1680,7 @@ export default function App() {
       <Modal open={isOpen("ret")} onClose={()=>closeM("ret")} title="💹 Record Investment Return">
         <Field label="Investment" value={fRet.investmentId} onChange={v=>setFRet({...fRet,investmentId:v})} options={invOpts}/>
         <Field label="Return Type" value={fRet.type} onChange={v=>setFRet({...fRet,type:v})} options={[{value:"interest",label:"🏦 Interest"},{value:"dividend",label:"💹 Dividend"},{value:"capital_gain",label:"📈 Capital Gain"},{value:"coupon",label:"📜 Coupon"},{value:"other",label:"💵 Other"}]}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Amount" type="number" value={fRet.amount} onChange={v=>setFRet({...fRet,amount:v})} placeholder="0.00"/>
           <Field label="Date" type="date" value={fRet.date} onChange={v=>setFRet({...fRet,date:v})}/>
         </div>
@@ -1570,7 +1692,7 @@ export default function App() {
       {/* New Goal */}
       <Modal open={isOpen("goal")} onClose={()=>closeM("goal")} title="🏆 New Savings Goal">
         <Field label="Goal Name" value={fGoal.name} onChange={v=>setFGoal({...fGoal,name:v})} placeholder="e.g. Emergency Fund"/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Icon"   value={fGoal.icon}  onChange={v=>setFGoal({...fGoal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
           <Field label="Colour" value={fGoal.color} onChange={v=>setFGoal({...fGoal,color:v})} options={CAT_COLORS.map(c=>({value:c,label:c}))}/>
         </div>
@@ -1584,7 +1706,7 @@ export default function App() {
       <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="🔁 Add Recurring Transaction">
         <Field label="Type" value={fRecur.type} onChange={v=>setFRecur({...fRecur,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="grid-2">
           <Field label="Amount" type="number" value={fRecur.amount} onChange={v=>setFRecur({...fRecur,amount:v})} placeholder="0.00"/>
           <Field label="Frequency" value={fRecur.freq} onChange={v=>setFRecur({...fRecur,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>
         </div>
@@ -1596,7 +1718,7 @@ export default function App() {
 
       {/* Import / Export */}
       <Modal open={isOpen("importExport")} onClose={()=>{closeM("importExport");setImportRows([]);}} title="⬆⬇ Import & Export" wide>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+        <div className="grid-2" style={{gap:20}}>
           <div>
             <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:C.teal}}>⬇ Export</div>
             <Btn onClick={exportTransactions} style={{width:"100%",marginBottom:8}}>Export Transactions CSV</Btn>
@@ -1630,7 +1752,7 @@ export default function App() {
 
       {/* Billing */}
       <Modal open={isOpen("billing")} onClose={()=>closeM("billing")} title="✦ Pesa Yangu Plans" wide>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div className="grid-2" style={{gap:16}}>
           <div style={{background:C.navyLight,borderRadius:16,padding:20}}>
             <div style={{fontWeight:800,fontSize:18,marginBottom:4}}>Free</div>
             <div style={{fontFamily:"'DM Serif Display',serif",fontSize:28,color:C.textMuted,marginBottom:14}}>KSh 0<span style={{fontSize:14,fontWeight:400}}>/mo</span></div>
@@ -1669,6 +1791,56 @@ export default function App() {
           : <div style={{color:C.textMuted,fontSize:14,lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiText}</div>
         }
       </Modal>
+
+      {/* Bottom Navigation for Mobile */}
+      <div className="mobile-bottom-nav" style={{
+        display: "none",
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: C.navyMid,
+        borderTop: `1px solid ${C.navyLight}`,
+        height: 60,
+        zIndex: 100,
+        justifyContent: "space-around",
+        alignItems: "center",
+        boxShadow: "0 -4px 16px rgba(0,0,0,0.3)"
+      }}>
+        {[
+          { id: "dashboard", label: "Home", icon: "◈" },
+          { id: "accounts", label: "Wallets", icon: "🏦" },
+          { id: "transactions", label: "Records", icon: "📋" },
+          { id: "budgets", label: "Budgets", icon: "🎯" },
+          { id: "more", label: "More", icon: "☰" }
+        ].map(item => {
+          const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "reconcile"].includes(tab));
+          return (
+            <button
+              key={item.id}
+              onClick={() => setTab(item.id)}
+              style={{
+                background: "none",
+                border: "none",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                color: isActive ? C.teal : C.textMuted,
+                fontSize: 11,
+                fontWeight: isActive ? 700 : 500,
+                cursor: "pointer",
+                padding: "4px 8px",
+                flex: 1,
+                minWidth: 50,
+                transition: "color 0.2s"
+              }}
+            >
+              <span style={{ fontSize: 20, marginBottom: 2 }}>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

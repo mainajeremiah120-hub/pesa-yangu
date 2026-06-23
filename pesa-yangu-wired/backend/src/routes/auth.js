@@ -194,7 +194,10 @@ router.post("/forgot-password", async (req, res, next) => {
     res.json({ ok: true });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
-    next(err);
+    // Table not found — migration hasn't run yet
+    if (err.code === "42P01") return res.status(503).json({ error: "Database not ready. Please try again in a moment." });
+    logger.error({ msg: "forgot-password error", detail: err.message, code: err.code });
+    return res.status(500).json({ error: err.message });
   }
 });
 

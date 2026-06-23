@@ -749,7 +749,7 @@ export default function App() {
   const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
-  const blankLoan  = { name:"", lender:"", principal:"", rate:"", monthlyPayment:"", nextDue:"", currency:"KES" };
+  const blankLoan  = { name:"", lender:"", principal:"", rate:"", interestType:"compound", monthlyPayment:"", nextDue:"", currency:"KES" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
@@ -921,6 +921,7 @@ export default function App() {
         name:fLoan.name, lender:fLoan.lender||undefined, currency:fLoan.currency,
         principal_kes: toKES(p, fLoan.currency, currencies),
         interest_rate: parseFloat(fLoan.rate)||0,
+        interest_type: fLoan.interestType||"compound",
         monthly_payment_kes: toKES(parseFloat(fLoan.monthlyPayment)||0, fLoan.currency, currencies),
         next_due_date: fLoan.nextDue||undefined,
       });
@@ -943,10 +944,11 @@ export default function App() {
         note:         fRepay.note||undefined,
         files:        fRepay.files,
       });
-      setLoans(p=>p.map(l=>l.id===loan.id?{...l,
-        remaining:Math.max(0,l.remaining-parseFloat(repayment.principal_kes||0)),
-        repayments:[...l.repayments, { total:parseFloat(repayment.total_kes), principal:parseFloat(repayment.principal_kes), interest:parseFloat(repayment.interest_kes), date:repayment.payment_date, note:repayment.note, attachments:[] }]
-      }:l));
+      setLoans(p=>p.map(l=>{
+        if(l.id!==loan.id) return l;
+        const reduction = l.interest_type==="simple" ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
+        return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:repayment.payment_date,note:repayment.note,attachments:[]}]};
+      }));
       setFRepay(blankRepay); closeM("repay");
       showToast("Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -2508,28 +2510,55 @@ export default function App() {
         <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
           <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v})} placeholder="e.g. 500000"/>
-          <Field label="Rate (% p.a.)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 13.5"/>
+          <Field label="Rate (%)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 10"/>
         </div>
+        {!editLoan&&<Field label="Interest Type" value={fLoan.interestType} onChange={v=>setFLoan({...fLoan,interestType:v})} options={[{value:"compound",label:"📈 Compound — interest accrues over time"},{value:"simple",label:"📋 Simple — fixed total from the start"}]}/>}
+        {(()=>{
+          const p=parseFloat(fLoan.principal), r=parseFloat(fLoan.rate);
+          if(!p||!r) return null;
+          if(fLoan.interestType==="simple") {
+            const total=p*(1+r/100);
+            return <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
+              📋 Simple interest: you will repay a fixed total of <strong style={{color:C.teal}}>{fLoan.currency} {total.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> ({fLoan.currency} {p.toLocaleString()} principal + {fLoan.currency} {(total-p).toLocaleString()} interest) — regardless of when you pay.
+            </div>;
+          }
+          return null;
+        })()}
         <div className="grid-2">
           <Field label={`Monthly Payment (${fLoan.currency})`} type="number" value={fLoan.monthlyPayment} onChange={v=>setFLoan({...fLoan,monthlyPayment:v})} placeholder="0"/>
           <Field label="Next Due Date" type="date" value={fLoan.nextDue} onChange={v=>setFLoan({...fLoan,nextDue:v})}/>
         </div>
-        {fLoan.principal&&fLoan.rate&&fLoan.monthlyPayment&&<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:C.textMuted}}>💡 Estimated payoff: <strong style={{color:C.teal}}>{Math.ceil(parseFloat(fLoan.principal)/parseFloat(fLoan.monthlyPayment))} months</strong></div>}
+        {fLoan.interestType!=="simple"&&fLoan.principal&&fLoan.monthlyPayment&&<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:C.textMuted}}>💡 Estimated payoff: <strong style={{color:C.teal}}>{Math.ceil(parseFloat(fLoan.principal)/parseFloat(fLoan.monthlyPayment))} months</strong></div>}
         <Btn onClick={saveLoan} style={{width:"100%",padding:13,fontSize:14}}>{editLoan?"Save Changes":"Add Loan"}</Btn>
       </Modal>
 
       {/* Record / Edit Repayment */}
       <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);}} title={editRepay?"✏️ Edit Repayment":"💳 Record Loan Repayment"}>
         {!editRepay&&<Field label="Loan" value={fRepay.loanId} onChange={v=>setFRepay({...fRepay,loanId:v})} options={loanOpts}/>}
-        {(()=>{const l=loans.find(ln=>ln.id===fRepay.loanId);return l?<div style={{background:C.navyLight,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.textMuted}}>Outstanding: <strong style={{color:C.coral}}>{disp(l.remaining)}</strong> · Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></div>:null;})()}
-        <Field label="Payment Date" type="date" value={fRepay.date} onChange={v=>setFRepay({...fRepay,date:v})}/>
-        <Field label="Pay From Wallet" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
-        <Divider label="Payment Breakdown"/>
-        <Field label="Total Payment" type="number" value={fRepay.total} onChange={v=>{const tot=parseFloat(v)||0,int=parseFloat(fRepay.interest)||0;setFRepay({...fRepay,total:v,principal:String((tot-int).toFixed(2))});}} placeholder="e.g. 15000"/>
-        <div className="grid-2">
-          <Field label="Principal Portion" type="number" value={fRepay.principal} onChange={v=>setFRepay({...fRepay,principal:v})} placeholder="0.00"/>
-          <Field label="Interest Portion"  type="number" value={fRepay.interest}  onChange={v=>{const int=parseFloat(v)||0,tot=parseFloat(fRepay.total)||0;setFRepay({...fRepay,interest:v,principal:String((tot-int).toFixed(2))});}} placeholder="0.00"/>
-        </div>
+        {(()=>{
+          const l=loans.find(ln=>ln.id===fRepay.loanId);
+          if(!l) return null;
+          const isSimple = l.interest_type==="simple";
+          return <>
+            <div style={{background:C.navyLight,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.textMuted}}>
+              Outstanding: <strong style={{color:C.coral}}>{disp(l.remaining)}</strong>
+              {isSimple
+                ? <span style={{marginLeft:8,color:"#00D4AA",fontWeight:600}}>📋 Simple interest — total is fixed</span>
+                : <span> · Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>}
+            </div>
+            <Field label="Payment Date" type="date" value={fRepay.date} onChange={v=>setFRepay({...fRepay,date:v})}/>
+            <Field label="Pay From Wallet" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
+            <Divider label="Payment Amount"/>
+            <Field label="Amount Paid" type="number" value={fRepay.total} onChange={v=>setFRepay({...fRepay,total:v,principal:isSimple?"0":String((parseFloat(v)||0)-(parseFloat(fRepay.interest)||0)),interest:isSimple?"0":fRepay.interest})} placeholder={isSimple?`e.g. ${disp(l.remaining)} (full balance)`:"e.g. 15000"}/>
+            {!isSimple&&<div className="grid-2">
+              <Field label="Principal Portion" type="number" value={fRepay.principal} onChange={v=>setFRepay({...fRepay,principal:v})} placeholder="0.00"/>
+              <Field label="Interest Portion"  type="number" value={fRepay.interest}  onChange={v=>{const int=parseFloat(v)||0,tot=parseFloat(fRepay.total)||0;setFRepay({...fRepay,interest:v,principal:String((tot-int).toFixed(2))});}} placeholder="0.00"/>
+            </div>}
+            {isSimple&&<div style={{background:"#00D4AA11",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.textMuted}}>
+              The amount you enter reduces your outstanding balance directly. No principal/interest split needed.
+            </div>}
+          </>;
+        })()}
         <Field label="Note (optional)" value={fRepay.note} onChange={v=>setFRepay({...fRepay,note:v})} placeholder="e.g. June repayment"/>
         {!editRepay&&<><Divider label="Attachments"/><FileUpload label="Repayment Plan / Statement" accept=".pdf,.csv,.jpg,.png" onFile={f=>setFRepay({...fRepay,files:[...fRepay.files,f]})} files={fRepay.files}/></>}
         <Btn onClick={saveRepayment} style={{width:"100%",padding:13,fontSize:14}}>{editRepay?"Save Changes":"Record Repayment"}</Btn>

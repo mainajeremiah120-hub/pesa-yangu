@@ -309,9 +309,19 @@ loanRouter.get("/", async (req,res,next)=>{
 loanRouter.post("/", async (req,res,next)=>{
   try {
     if(req.user.plan==="free"){const {rows}=await query("SELECT COUNT(*) FROM loans WHERE user_id=$1",[req.user.id]);if(parseInt(rows[0].count)>=2) return res.status(403).json({error:"Free plan allows 2 loans.",code:"PLAN_LIMIT"});}
-    const d=z.object({name:z.string().min(1),lender:z.string().optional(),currency:z.string().length(3).default("KES"),principal_kes:z.number().positive(),interest_rate:z.number().min(0).default(0),monthly_payment_kes:z.number().min(0).default(0),next_due_date:z.string().optional(),note:z.string().optional()}).parse(req.body);
-    const {rows}=await query("INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,monthly_payment_kes,next_due_date,note) VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9) RETURNING *",
-      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,d.interest_rate,d.monthly_payment_kes,d.next_due_date||null,d.note||null]);
+    const d=z.object({
+      name:z.string().min(1), lender:z.string().optional(), currency:z.string().length(3).default("KES"),
+      principal_kes:z.number().positive(), interest_rate:z.number().min(0).default(0),
+      interest_type:z.enum(["simple","compound"]).default("compound"),
+      monthly_payment_kes:z.number().min(0).default(0), next_due_date:z.string().optional(), note:z.string().optional(),
+    }).parse(req.body);
+    // Simple interest: fix total = principal × (1 + rate/100) at creation time
+    const remaining_kes = d.interest_type === "simple"
+      ? d.principal_kes * (1 + d.interest_rate / 100)
+      : d.principal_kes;
+    const {rows}=await query(
+      "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,monthly_payment_kes,next_due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.monthly_payment_kes,d.next_due_date||null,d.note||null]);
     res.status(201).json({loan:{...rows[0],repayments:[]}});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
@@ -326,7 +336,10 @@ loanRouter.post("/:id/repayments", upload.array("files",5), async (req,res,next)
     });
     const rep=await withTransaction(async(client)=>{
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.total_kes,d.wallet_id,req.user.id]);
-      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",[d.principal_kes,loan.id]);
+      // Simple interest: reduce remaining by total paid (interest baked in at creation)
+      // Compound: reduce remaining by principal portion only
+      const reduction = loan.interest_type === "simple" ? d.total_kes : d.principal_kes;
+      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",[reduction,loan.id]);
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
       const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Loan Repayment' AND type='expense' LIMIT 1",[req.user.id]);
@@ -347,11 +360,12 @@ loanRouter.patch("/:id", async (req,res,next)=>{
       principal_kes:       z.number().positive().optional(),
       remaining_kes:       z.number().min(0).optional(),
       interest_rate:       z.number().min(0).optional(),
+      interest_type:       z.enum(["simple","compound"]).optional(),
       monthly_payment_kes: z.number().min(0).optional(),
       next_due_date:       z.string().nullable().optional(),
       note:                z.string().nullable().optional(),
     }).parse(req.body);
-    const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","monthly_payment_kes","next_due_date","note"];
+    const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","interest_type","monthly_payment_kes","next_due_date","note"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
@@ -363,7 +377,7 @@ loanRouter.patch("/:id", async (req,res,next)=>{
 
 loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
   try {
-    const {rows:rr}=await query("SELECT r.*,l.user_id FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",[req.params.rid,req.params.id,req.user.id]);
+    const {rows:rr}=await query("SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",[req.params.rid,req.params.id,req.user.id]);
     if(!rr.length) return res.status(404).json({error:"Repayment not found"});
     const old=rr[0];
     const d=z.object({
@@ -381,15 +395,18 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
     const newWallet   = d.wallet_id     ?? old.wallet_id;
     const newDate     = d.payment_date  ?? old.payment_date;
     const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
+    const isSimple    = old.interest_type === "simple";
 
     const repayment = await withTransaction(async(client)=>{
-      // Reverse old wallet debit and loan principal effect
+      // Reverse old wallet debit and loan remaining effect
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(old.total_kes),old.wallet_id]);
-      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[parseFloat(old.principal_kes),req.params.id]);
+      const oldReduction = isSimple ? parseFloat(old.total_kes) : parseFloat(old.principal_kes);
+      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[oldReduction,req.params.id]);
 
       // Apply new
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[newTotal,newWallet]);
-      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1) WHERE id=$2",[newPrincipal,req.params.id]);
+      const newReduction = isSimple ? newTotal : newPrincipal;
+      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1) WHERE id=$2",[newReduction,req.params.id]);
 
       const {rows}=await client.query(
         `UPDATE loan_repayments SET wallet_id=$1,total_kes=$2,principal_kes=$3,interest_kes=$4,payment_date=$5,note=$6 WHERE id=$7 RETURNING *`,
@@ -404,7 +421,7 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
 loanRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
   try {
     const {rows}=await query(
-      "SELECT r.*,l.user_id FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",
+      "SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",
       [req.params.rid,req.params.id,req.user.id]
     );
     if(!rows.length) return res.status(404).json({error:"Repayment not found"});
@@ -412,8 +429,9 @@ loanRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
     await withTransaction(async(client)=>{
       // Reverse wallet deduction
       if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(r.total_kes),r.wallet_id]);
-      // Restore loan remaining
-      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[parseFloat(r.principal_kes),req.params.id]);
+      // Restore loan remaining — simple loans track total, compound loans track principal
+      const restore = r.interest_type === "simple" ? parseFloat(r.total_kes) : parseFloat(r.principal_kes);
+      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[restore,req.params.id]);
       await client.query("DELETE FROM loan_repayments WHERE id=$1",[r.id]);
     });
     res.json({ok:true});

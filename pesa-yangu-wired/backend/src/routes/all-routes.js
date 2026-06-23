@@ -502,7 +502,7 @@ fxRouter.get("/", async (req,res,next)=>{
 const aiRouter  = express.Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-aiRouter.post("/advice", requirePro, async (req,res,next)=>{
+aiRouter.post("/advice", async (req,res,next)=>{
   try {
     const {context}=req.body;
     if(!context) return res.status(400).json({error:"context required"});
@@ -552,7 +552,7 @@ billingRouter.post("/cancel", async (req,res,next)=>{
 // ══════════════════════════════════════════════════════════════════════════════
 const reconcileRouter = express.Router();
 
-reconcileRouter.post("/parse", requirePro, upload.single("file"), async (req,res,next)=>{
+reconcileRouter.post("/parse", upload.single("file"), async (req,res,next)=>{
   try {
     if(!req.file) return res.status(400).json({error:"No file uploaded"});
     const {walletId}=z.object({walletId:z.string().uuid()}).parse(req.body);
@@ -578,7 +578,7 @@ reconcileRouter.post("/parse", requirePro, upload.single("file"), async (req,res
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
-reconcileRouter.post("/confirm", requirePro, async (req,res,next)=>{
+reconcileRouter.post("/confirm", async (req,res,next)=>{
   try {
     const {rows:inputRows,walletId}=z.object({rows:z.array(z.any()),walletId:z.string().uuid()}).parse(req.body);
     const toImport=inputRows.filter(r=>r.amount!==0);

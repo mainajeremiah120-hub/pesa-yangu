@@ -2021,7 +2021,13 @@ export default function App() {
                       {isRefund&&<button onClick={()=>openEditRefundModal(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit refund">✏️</button>}
                       {!isT&&!isRefund&&<button onClick={()=>openEditTx(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit">✏️</button>}
                       {t.type==="expense"&&<button onClick={()=>openRefundModal(t)} style={{background:"none",border:"none",color:"#9B59B6",cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Record refund">↩</button>}
-                      {!isT&&<button onClick={()=>askConfirm("Delete Transaction","This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",()=>deleteTx(t.id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete">🗑</button>}
+                      <button onClick={()=>askConfirm(
+                          isT ? "Delete Transfer" : "Delete Transaction",
+                          isT
+                            ? "Both sides of this transfer will be deleted and wallet balances reversed. This cannot be undone."
+                            : "This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",
+                          ()=>deleteTx(t.id)
+                        )} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete">🗑</button>
                     </div>
                   </div>
                 </div>;

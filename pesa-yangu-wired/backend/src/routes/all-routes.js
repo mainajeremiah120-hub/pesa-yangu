@@ -222,6 +222,15 @@ investmentRouter.patch("/:id", async (req,res,next)=>{
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
+investmentRouter.delete("/:id", async (req,res,next)=>{
+  try {
+    const {rows}=await query("SELECT id FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    if(!rows.length) return res.status(404).json({error:"Not found"});
+    await query("DELETE FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
 investmentRouter.post("/:id/returns", async (req,res,next)=>{
   try {
     const {rows:ir}=await query("SELECT * FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);

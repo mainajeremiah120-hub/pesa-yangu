@@ -146,9 +146,19 @@ router.delete("/:id", async (req, res, next) => {
     if(!rows.length) return res.status(404).json({error:"Not found"});
     const tx=rows[0];
     await withTransaction(async(client)=>{
-      await client.query("DELETE FROM transactions WHERE id=$1",[tx.id]);
-      const delta=(tx.type==="income"||tx.type==="transfer_in")?-parseFloat(tx.amount_kes):parseFloat(tx.amount_kes);
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,tx.wallet_id]);
+      if(tx.transfer_pair_id) {
+        // Delete both legs of the transfer and reverse both wallet balances
+        const {rows:pair}=await client.query("SELECT * FROM transactions WHERE transfer_pair_id=$1",[tx.transfer_pair_id]);
+        for(const leg of pair) {
+          const delta=(leg.type==="income"||leg.type==="transfer_in")?-parseFloat(leg.amount_kes):parseFloat(leg.amount_kes);
+          await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,leg.wallet_id]);
+        }
+        await client.query("DELETE FROM transactions WHERE transfer_pair_id=$1",[tx.transfer_pair_id]);
+      } else {
+        await client.query("DELETE FROM transactions WHERE id=$1",[tx.id]);
+        const delta=(tx.type==="income"||tx.type==="transfer_in"||tx.type==="refund")?-parseFloat(tx.amount_kes):parseFloat(tx.amount_kes);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,tx.wallet_id]);
+      }
     });
     res.json({ok:true});
   } catch(e){next(e);}

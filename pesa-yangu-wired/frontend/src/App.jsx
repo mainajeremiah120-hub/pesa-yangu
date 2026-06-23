@@ -572,9 +572,9 @@ export default function App() {
   const [aiText,       setAiText]    = useState("");
 
   // ── Toast helper
-  const showToast = useCallback((msg, color=C.teal) => {
+  const showToast = useCallback((msg, color=C.teal, duration=2800) => {
     setToast({msg,color});
-    setTimeout(()=>setToast(null), 2800);
+    setTimeout(()=>setToast(null), duration);
   }, []);
 
   // ── Display helper
@@ -1337,7 +1337,21 @@ export default function App() {
       await walletsApi.remove(id);
       setWallets(p=>p.filter(w=>w.id!==id));
       showToast("Account deleted");
-    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete", C.coral); }
+    } catch(err) {
+      const counts = err?.response?.data?.counts;
+      if (counts) {
+        const parts = [];
+        if (counts.transactions)      parts.push(`${counts.transactions} transaction${counts.transactions !== 1 ? "s" : ""}`);
+        if (counts.recurring)         parts.push(`${counts.recurring} recurring payment${counts.recurring !== 1 ? "s" : ""}`);
+        if (counts.goals)             parts.push(`${counts.goals} goal${counts.goals !== 1 ? "s" : ""}`);
+        if (counts.investments)       parts.push(`${counts.investments} investment${counts.investments !== 1 ? "s" : ""}`);
+        if (counts.loan_repayments)   parts.push(`${counts.loan_repayments} loan repayment${counts.loan_repayments !== 1 ? "s" : ""}`);
+        if (counts.investment_returns) parts.push(`${counts.investment_returns} investment return${counts.investment_returns !== 1 ? "s" : ""}`);
+        showToast(`Can't delete — this account has ${parts.join(", ")} linked to it. Remove those first.`, C.coral, 6000);
+      } else {
+        showToast(err?.response?.data?.error || "Failed to delete", C.coral);
+      }
+    }
   };
 
   const deleteGoal = async (id) => {

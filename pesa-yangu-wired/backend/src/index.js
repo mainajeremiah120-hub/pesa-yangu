@@ -15,7 +15,7 @@ async function runMigrations() {
   try {
     await client.query(`CREATE TABLE IF NOT EXISTS _migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     const applied = new Set((await client.query("SELECT filename FROM _migrations")).rows.map(r => r.filename));
-    const dir = path.join(__dirname, "../../migrations");
+    const dir = path.join(__dirname, "../migrations");
     const files = fs.readdirSync(dir).filter(f => f.endsWith(".sql")).sort();
     for (const file of files) {
       if (applied.has(file)) continue;

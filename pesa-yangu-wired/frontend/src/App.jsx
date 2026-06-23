@@ -480,7 +480,7 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
         <span style={{ color:C.textMuted }}>Left: <strong style={{color:C.textPrimary}}>{disp(rem)}</strong></span>
       </div>
       {needed&&<div style={{ marginTop:8, background:C.navyLight, borderRadius:8, padding:"7px 10px", fontSize:11, color:C.textMuted }}>
-        💡 <strong style={{color:g.color}}>{disp(needed)}/mo</strong> needed · {months} months to {g.deadline}
+        💡 <strong style={{color:g.color}}>{disp(needed)}/mo</strong> needed · {months} months to {(g.deadline||"").slice(0,10)}
       </div>}
       {pct>=100
         ? <div style={{ marginTop:10, background:C.teal+"22", borderRadius:8, padding:"9px 14px", textAlign:"center", color:C.teal, fontWeight:700, fontSize:13 }}>🎉 Goal reached!</div>

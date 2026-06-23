@@ -431,8 +431,14 @@ const ConfirmModal = ({ open, onClose, onConfirm, title, message, danger=true })
 function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
   const C = useC();
   const [amt,      setAmt]      = useState("");
-  const [fromWal,  setFromWal]  = useState(g.wallet_id || "");
+  const [fromWal,  setFromWal]  = useState(() => g.wallet_id || wallets[0]?.id || "");
   const [busy,     setBusy]     = useState(false);
+
+  // If wallets loaded after first render (or goal has no wallet_id), pick first available
+  useEffect(() => {
+    if (!fromWal && wallets.length > 0) setFromWal(g.wallet_id || wallets[0].id);
+  }, [wallets]);
+
   const pct    = Math.min((g.saved_kes/g.target_kes)*100, 100);
   const rem    = g.target_kes - g.saved_kes;
   const w      = wallets.find(w=>w.id===g.wallet_id);
@@ -440,12 +446,12 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
   const months = days ? Math.ceil(days/30) : null;
   const needed = months&&months>0 ? rem/months : null;
 
+  const canAdd = !!amt && parseFloat(amt) > 0 && !!fromWal;
+
   const handle = async () => {
-    const a = parseFloat(amt);
-    if (!a || a<=0) return;
-    if (!fromWal) return;
+    if (!canAdd) return;
     setBusy(true);
-    try { await onFund(g.id, a, fromWal); setAmt(""); }
+    try { await onFund(g.id, parseFloat(amt), fromWal); setAmt(""); }
     finally { setBusy(false); }
   };
 
@@ -479,31 +485,32 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
       {pct>=100
         ? <div style={{ marginTop:10, background:C.teal+"22", borderRadius:8, padding:"9px 14px", textAlign:"center", color:C.teal, fontWeight:700, fontSize:13 }}>🎉 Goal reached!</div>
         : <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ color:C.textFaint, fontSize:10, textTransform:"uppercase", letterSpacing:"0.05em" }}>Top up this goal</div>
             {/* From wallet picker */}
-            <div>
-              <div style={{ color:C.textFaint, fontSize:10, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Top up from</div>
-              <select value={fromWal} onChange={e=>setFromWal(e.target.value)}
-                style={{...inputStyle, cursor:"pointer"}}>
-                <option value="">— Select account —</option>
-                {wallets.map(w=>(
-                  <option key={w.id} value={w.id}>{w.icon} {w.name} ({w.currency})</option>
-                ))}
-              </select>
-            </div>
+            <select value={fromWal} onChange={e=>setFromWal(e.target.value)}
+              style={{...inputStyle, cursor:"pointer"}}>
+              <option value="">— Select account to debit —</option>
+              {wallets.map(w=>(
+                <option key={w.id} value={w.id}>{w.icon} {w.name} · {disp(parseFloat(w.balance||0))} available</option>
+              ))}
+            </select>
             {/* Amount + Add button */}
             <div style={{ display:"flex", gap:8, alignItems:"center" }}>
               <input
                 type="number" value={amt}
                 onChange={e=>setAmt(e.target.value)}
-                placeholder="Amount (KES)"
+                placeholder="Enter amount to add"
                 style={{...inputStyle, flex:1}}
                 onFocus={e=>e.target.style.borderColor=C.teal}
                 onBlur={e=>e.target.style.borderColor=C.navyLight}
+                onKeyDown={e=>e.key==="Enter"&&handle()}
               />
-              <Btn onClick={handle} disabled={!amt||!fromWal||busy} style={{padding:"8px 16px",fontSize:12,flexShrink:0}}>
+              <Btn onClick={handle} disabled={!canAdd||busy} style={{padding:"8px 16px",fontSize:12,flexShrink:0}}>
                 {busy?"…":"Add"}
               </Btn>
             </div>
+            {!fromWal&&<div style={{fontSize:10,color:C.coral}}>Select an account above to enable top-up</div>}
+            {fromWal&&!amt&&<div style={{fontSize:10,color:C.textFaint}}>Enter an amount above, then tap Add</div>}
           </div>
       }
     </div>
@@ -2170,7 +2177,7 @@ export default function App() {
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Savings Goals</div>
                 <div style={{color:C.textMuted,fontSize:12}}>Saved: {disp(totalGoalSaved)}</div>
               </div>
-              <Btn onClick={()=>{setFGoal({...blankGoal,wallet:wallets[0]?.id||""});openM("goal");}}>+ New Goal</Btn>
+              <Btn onClick={()=>{setEditGoal(null);setFGoal({...blankGoal,wallet:wallets[0]?.id||""});openM("goal");}}>+ New Goal</Btn>
             </div>
             <div className="grid-2" style={{ gap: 14 }}>
               {goals.map(g=><GoalCard key={g.id} g={g} wallets={wallets} disp={disp} onFund={fundGoal} onEdit={openEditGoal} onDelete={(id,name)=>askConfirm("Delete Goal",`Delete goal "${name}"? This cannot be undone.`,()=>deleteGoal(id))}/>)}
@@ -2567,7 +2574,12 @@ export default function App() {
         </div>
         <Field label={`Target Amount (${baseCurrency})`} type="number" value={fGoal.target} onChange={v=>setFGoal({...fGoal,target:v})} placeholder="e.g. 450000"/>
         <Field label="Save Into" value={fGoal.wallet} onChange={v=>setFGoal({...fGoal,wallet:v})} options={wOpts}/>
-        {!editGoal&&<Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000 (already saved)" note="Will be deducted from the selected account"/>}
+        {!editGoal&&(
+          <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#00D4AA",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Already saving for this goal?</div>
+            <Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note="This amount will be deducted from the selected account and counted as already saved"/>
+          </div>
+        )}
         <Field label="Target Date" type="date" value={fGoal.deadline} onChange={v=>setFGoal({...fGoal,deadline:v})}/>
         <Btn onClick={saveGoal} style={{width:"100%",padding:13,fontSize:14}}>{editGoal?"Save Changes":"Create Goal"}</Btn>
       </Modal>

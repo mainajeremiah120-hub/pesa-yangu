@@ -136,8 +136,9 @@ export const invsApi = {
   list:         ()         => unwrap(client.get("/investments")),
   create:       (p)        => unwrap(client.post("/investments", p)),
   update:       (id, p)    => unwrap(client.patch(`/investments/${id}`, p)),
-  recordReturn: (id, p)    => unwrap(client.post(`/investments/${id}/returns`, p)),
-  remove:       (id)       => unwrap(client.delete(`/investments/${id}`)),
+  recordReturn:  (id, p)       => unwrap(client.post(`/investments/${id}/returns`, p)),
+  removeReturn:  (id, rid)     => unwrap(client.delete(`/investments/${id}/returns/${rid}`)),
+  remove:        (id)          => unwrap(client.delete(`/investments/${id}`)),
 };
 
 // ── Loans ─────────────────────────────────────────────────────────────────────
@@ -146,6 +147,7 @@ export const loansApi = {
   create:            (p)          => unwrap(client.post("/loans", p)),
   update:            (id, p)      => unwrap(client.patch(`/loans/${id}`, p)),
   updateRepayment:   (id, rid, p) => unwrap(client.patch(`/loans/${id}/repayments/${rid}`, p)),
+  removeRepayment:   (id, rid)    => unwrap(client.delete(`/loans/${id}/repayments/${rid}`)),
   remove:            (id)         => unwrap(client.delete(`/loans/${id}`)),
   recordRepayment: (id, p) => {
     const fd = new FormData();

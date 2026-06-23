@@ -51,7 +51,9 @@ categoryRouter.delete("/:id", async (req,res,next)=>{
     const {rows}=await query("SELECT is_system FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     if(rows[0].is_system) return res.status(403).json({error:"System categories cannot be deleted"});
-    await query("DELETE FROM categories WHERE id=$1",[req.params.id]);
+    // Null out category_id on transactions referencing this category
+    await query("UPDATE transactions SET category_id=NULL WHERE category_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    await query("DELETE FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     res.json({ok:true});
   } catch(e){next(e);}
 });
@@ -171,7 +173,19 @@ goalRouter.patch("/:id", async (req,res,next)=>{
 });
 
 goalRouter.delete("/:id", async (req,res,next)=>{
-  try { await query("DELETE FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]); res.json({ok:true}); } catch(e){next(e);}
+  try {
+    const {rows}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    if(!rows.length) return res.status(404).json({error:"Not found"});
+    const g=rows[0];
+    await withTransaction(async(client)=>{
+      // Return saved amount to the linked wallet
+      if(g.wallet_id && parseFloat(g.saved_kes)>0) {
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[g.saved_kes,g.wallet_id,req.user.id]);
+      }
+      await client.query("DELETE FROM goals WHERE id=$1",[g.id]);
+    });
+    res.json({ok:true, returned_kes: parseFloat(g.saved_kes)||0});
+  } catch(e){next(e);}
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -222,11 +236,36 @@ investmentRouter.patch("/:id", async (req,res,next)=>{
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
+investmentRouter.delete("/:id/returns/:rid", async (req,res,next)=>{
+  try {
+    const {rows}=await query(
+      "SELECT r.*,i.user_id FROM investment_returns r JOIN investments i ON i.id=r.investment_id WHERE r.id=$1 AND i.id=$2 AND i.user_id=$3",
+      [req.params.rid,req.params.id,req.user.id]
+    );
+    if(!rows.length) return res.status(404).json({error:"Return not found"});
+    const r=rows[0];
+    await withTransaction(async(client)=>{
+      // Reverse wallet credit
+      if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(r.amount_kes),r.wallet_id]);
+      await client.query("DELETE FROM investment_returns WHERE id=$1",[r.id]);
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
 investmentRouter.delete("/:id", async (req,res,next)=>{
   try {
     const {rows}=await query("SELECT id FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
-    await query("DELETE FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    // Reverse any return credits before deleting
+    const {rows:rets}=await query("SELECT * FROM investment_returns WHERE investment_id=$1",[req.params.id]);
+    await withTransaction(async(client)=>{
+      for(const r of rets) {
+        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(r.amount_kes),r.wallet_id]);
+      }
+      await client.query("DELETE FROM investment_returns WHERE investment_id=$1",[req.params.id]);
+      await client.query("DELETE FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    });
     res.json({ok:true});
   } catch(e){next(e);}
 });
@@ -362,8 +401,40 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
+loanRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
+  try {
+    const {rows}=await query(
+      "SELECT r.*,l.user_id FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",
+      [req.params.rid,req.params.id,req.user.id]
+    );
+    if(!rows.length) return res.status(404).json({error:"Repayment not found"});
+    const r=rows[0];
+    await withTransaction(async(client)=>{
+      // Reverse wallet deduction
+      if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(r.total_kes),r.wallet_id]);
+      // Restore loan remaining
+      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[parseFloat(r.principal_kes),req.params.id]);
+      await client.query("DELETE FROM loan_repayments WHERE id=$1",[r.id]);
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
 loanRouter.delete("/:id", async (req,res,next)=>{
-  try { await query("DELETE FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]); res.json({ok:true}); } catch(e){next(e);}
+  try {
+    const {rows}=await query("SELECT * FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    if(!rows.length) return res.status(404).json({error:"Not found"});
+    await withTransaction(async(client)=>{
+      // Reverse all repayment deductions from wallets
+      const {rows:reps}=await client.query("SELECT * FROM loan_repayments WHERE loan_id=$1",[req.params.id]);
+      for(const r of reps) {
+        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(r.total_kes),r.wallet_id]);
+      }
+      await client.query("DELETE FROM loan_repayments WHERE loan_id=$1",[req.params.id]);
+      await client.query("DELETE FROM loans WHERE id=$1",[req.params.id]);
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

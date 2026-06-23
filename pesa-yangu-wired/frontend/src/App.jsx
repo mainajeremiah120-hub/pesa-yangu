@@ -1334,9 +1334,14 @@ export default function App() {
 
   const deleteGoal = async (id) => {
     try {
-      await goalsApi.remove(id);
+      const res = await goalsApi.remove(id);
+      const g = goals.find(g=>g.id===id);
       setGoals(p=>p.filter(g=>g.id!==id));
-      showToast("Goal deleted");
+      // If backend returned saved_kes, restore to wallet optimistically
+      if(res?.returned_kes>0 && g?.wallet_id) {
+        setWallets(p=>p.map(w=>w.id===g.wallet_id?{...w,balance:parseFloat(w.balance)+(res.returned_kes)}:w));
+      }
+      showToast("Goal deleted" + (res?.returned_kes>0 ? ` · ${disp(res.returned_kes)} returned to wallet` : ""));
     } catch(err) { showToast("Failed to delete", C.coral); }
   };
 
@@ -1371,6 +1376,34 @@ export default function App() {
       else setIncCats(p=>p.filter(c=>c.id!==id));
       showToast("Category deleted");
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete", C.coral); }
+  };
+
+  const deleteRepayment = async (loanId, repaymentId, repaymentTotal) => {
+    try {
+      await loansApi.removeRepayment(loanId, repaymentId);
+      setLoans(p=>p.map(l=>{
+        if(l.id!==loanId) return l;
+        const reps = l.repayments.filter(r=>r.id!==repaymentId);
+        const paidPrincipal = reps.reduce((s,r)=>s+(r.principal||0),0);
+        return {...l, repayments:reps, remaining:Math.max(0,l.principal-paidPrincipal)};
+      }));
+      setWallets(p=>p.map(w=>{
+        // We don't know which wallet without looking it up, so reload
+        return w;
+      }));
+      showToast("Repayment deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete repayment", C.coral); }
+  };
+
+  const deleteReturn = async (investmentId, returnId) => {
+    try {
+      await invsApi.removeReturn(investmentId, returnId);
+      setInvestments(p=>p.map(i=>{
+        if(i.id!==investmentId) return i;
+        return {...i, returns: i.returns.filter(r=>r.id!==returnId)};
+      }));
+      showToast("Return deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete return", C.coral); }
   };
 
   const deactivateAccount = async () => {
@@ -2204,9 +2237,12 @@ export default function App() {
                     </div>
                     {inv.returns.length>0&&<div style={{marginTop:10}}>
                       <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Return History</div>
-                      {inv.returns.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",background:C.navyLight,borderRadius:8,padding:"5px 10px",marginBottom:3,fontSize:11}}>
+                      {inv.returns.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"5px 10px",marginBottom:3,fontSize:11}}>
                         <span style={{color:C.textMuted}}>{r.date||r.return_date} · <span style={{color:C.green,textTransform:"capitalize"}}>{r.type||r.return_type}</span>{r.note&&` · ${r.note}`}</span>
-                        <span style={{fontWeight:600,color:C.teal}}>+{disp(r.amount||parseFloat(r.amount_kes||0))}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontWeight:600,color:C.teal}}>+{disp(r.amount||parseFloat(r.amount_kes||0))}</span>
+                          {r.id&&<button onClick={()=>askConfirm("Delete Return",`Delete this ${r.type||r.return_type} of ${disp(r.amount||parseFloat(r.amount_kes||0))}? The amount will be reversed from the wallet.`,()=>deleteReturn(inv.id,r.id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete return">🗑</button>}
+                        </div>
                       </div>)}
                     </div>}
                   </div>
@@ -2275,6 +2311,7 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <Badge color={C.teal}>Paid</Badge>
                       <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
+                      <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
                     </div>
                   </div>)}
                 </div>}

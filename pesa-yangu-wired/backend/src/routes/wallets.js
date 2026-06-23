@@ -53,11 +53,10 @@ router.delete("/:id", async (req, res, next) => {
       [req.params.id, req.user.id]
     );
     if (!check.length) return res.status(404).json({ error: "Wallet not found" });
-    // Null out wallet_id on related records so they aren't orphaned
-    await query("UPDATE transactions SET wallet_id=NULL WHERE wallet_id=$1", [req.params.id]);
+    await query("DELETE FROM transactions WHERE wallet_id=$1", [req.params.id]);
+    await query("DELETE FROM recurring_transactions WHERE wallet_id=$1", [req.params.id]);
     await query("UPDATE goals SET wallet_id=NULL WHERE wallet_id=$1", [req.params.id]);
     await query("UPDATE investments SET wallet_id=NULL WHERE wallet_id=$1", [req.params.id]);
-    await query("UPDATE recurring_transactions SET wallet_id=NULL WHERE wallet_id=$1", [req.params.id]);
     await query("DELETE FROM wallets WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
   } catch(e) { next(e); }

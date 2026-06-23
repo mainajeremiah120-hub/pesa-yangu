@@ -207,6 +207,53 @@ const Field = ({ label, type="text", value, onChange, placeholder, options, note
   </div>;
 };
 
+
+// ── Color Picker — swatch grid replacing the raw hex dropdown ────────────────
+const ColorPicker = ({ label, value, onChange, colors }) => {
+  const C = useC();
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {label && (
+        <div style={{ color: C.textMuted, fontSize: 11, marginBottom: 7, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {label}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Live preview swatch */}
+        <div style={{
+          width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+          background: value,
+          border: `2px solid ${value}`,
+          boxShadow: `0 0 0 3px ${value}44`,
+          transition: "background 0.2s, box-shadow 0.2s",
+        }}/>
+        {/* Swatch grid */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {colors.map(col => (
+            <button
+              key={col}
+              title={col}
+              onClick={() => onChange(col)}
+              style={{
+                width: 26, height: 26, borderRadius: 7,
+                background: col, border: "none",
+                cursor: "pointer", flexShrink: 0,
+                outline: value === col ? `2.5px solid white` : "2.5px solid transparent",
+                outlineOffset: 2,
+                boxShadow: value === col ? `0 0 0 1px ${col}` : "none",
+                transform: value === col ? "scale(1.18)" : "scale(1)",
+                transition: "transform 0.15s, outline 0.15s, box-shadow 0.15s",
+              }}
+              onMouseEnter={e => { if (col !== value) e.currentTarget.style.transform = "scale(1.1)"; }}
+              onMouseLeave={e => { if (col !== value) e.currentTarget.style.transform = "scale(1)"; }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Btn = ({ children, onClick, color, outline=false, style={}, disabled=false, small=false, className="" }) => {
   const C = useC();
   const col = color || C.teal;
@@ -2048,7 +2095,7 @@ export default function App() {
         <Field label={editWal?`Current Balance (${fWal.currency})`:`Opening Balance (${fWal.currency})`} type="number" value={fWal.openingBalance} onChange={v=>setFWal({...fWal,openingBalance:v})} placeholder="0.00"/>
         <div className="grid-2">
           <Field label="Icon"   value={fWal.icon}  onChange={v=>setFWal({...fWal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
-          <Field label="Colour" value={fWal.color} onChange={v=>setFWal({...fWal,color:v})} options={CAT_COLORS.map(col=>({value:col,label:col}))}/>
+          <ColorPicker label="Colour" value={fWal.color} onChange={v=>setFWal({...fWal,color:v})} colors={CAT_COLORS}/>
         </div>
         <Btn onClick={saveWallet} style={{width:"100%",padding:13,fontSize:14}}>{editWal?"Save Changes":"Create Account"}</Btn>
       </Modal>
@@ -2058,7 +2105,7 @@ export default function App() {
         <Field label="Category Name" value={fExpCat.name} onChange={v=>setFExpCat({...fExpCat,name:v})} placeholder="e.g. Pet Care"/>
         <div className="grid-2">
           <Field label="Icon"   value={fExpCat.icon}  onChange={v=>setFExpCat({...fExpCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
-          <Field label="Colour" value={fExpCat.color} onChange={v=>setFExpCat({...fExpCat,color:v})} options={CAT_COLORS.map(c=>({value:c,label:c}))}/>
+          <ColorPicker label="Colour" value={fExpCat.color} onChange={v=>setFExpCat({...fExpCat,color:v})} colors={CAT_COLORS}/>
         </div>
         <Field label={`Monthly Budget (${baseCurrency})`} type="number" value={fExpCat.budget} onChange={v=>setFExpCat({...fExpCat,budget:v})} placeholder="0 = no budget"/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
@@ -2073,7 +2120,7 @@ export default function App() {
         <Field label="Category Name" value={fIncCat.name} onChange={v=>setFIncCat({...fIncCat,name:v})} placeholder="e.g. Consulting"/>
         <div className="grid-2">
           <Field label="Icon"   value={fIncCat.icon}  onChange={v=>setFIncCat({...fIncCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
-          <Field label="Colour" value={fIncCat.color} onChange={v=>setFIncCat({...fIncCat,color:v})} options={CAT_COLORS.map(c=>({value:c,label:c}))}/>
+          <ColorPicker label="Colour" value={fIncCat.color} onChange={v=>setFIncCat({...fIncCat,color:v})} colors={CAT_COLORS}/>
         </div>
         <Field label={`Monthly Target (${baseCurrency})`} type="number" value={fIncCat.budget} onChange={v=>setFIncCat({...fIncCat,budget:v})} placeholder="0 = no target"/>
         <Btn onClick={addIncCat} style={{width:"100%",padding:13,fontSize:14}}>Add Category</Btn>
@@ -2155,7 +2202,7 @@ export default function App() {
         <Field label="Goal Name" value={fGoal.name} onChange={v=>setFGoal({...fGoal,name:v})} placeholder="e.g. Emergency Fund"/>
         <div className="grid-2">
           <Field label="Icon"   value={fGoal.icon}  onChange={v=>setFGoal({...fGoal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
-          <Field label="Colour" value={fGoal.color} onChange={v=>setFGoal({...fGoal,color:v})} options={CAT_COLORS.map(c=>({value:c,label:c}))}/>
+          <ColorPicker label="Colour" value={fGoal.color} onChange={v=>setFGoal({...fGoal,color:v})} colors={CAT_COLORS}/>
         </div>
         <Field label={`Target Amount (${baseCurrency})`} type="number" value={fGoal.target} onChange={v=>setFGoal({...fGoal,target:v})} placeholder="e.g. 450000"/>
         <Field label="Save Into" value={fGoal.wallet} onChange={v=>setFGoal({...fGoal,wallet:v})} options={wOpts}/>

@@ -5,8 +5,32 @@ const express    = require("express");
 const helmet     = require("helmet");
 const cors       = require("cors");
 const rateLimit  = require("express-rate-limit");
+const fs         = require("fs");
+const path       = require("path");
 const logger     = require("./services/logger");
 const { pool }   = require("./models/db");
+
+async function runMigrations() {
+  const client = await pool.connect();
+  try {
+    await client.query(`CREATE TABLE IF NOT EXISTS _migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    const applied = new Set((await client.query("SELECT filename FROM _migrations")).rows.map(r => r.filename));
+    const dir = path.join(__dirname, "../../migrations");
+    const files = fs.readdirSync(dir).filter(f => f.endsWith(".sql")).sort();
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      logger.info(`Running migration: ${file}`);
+      const sql = fs.readFileSync(path.join(dir, file), "utf-8");
+      await client.query("BEGIN");
+      try {
+        await client.query(sql);
+        await client.query("INSERT INTO _migrations (filename) VALUES ($1)", [file]);
+        await client.query("COMMIT");
+        logger.info(`Migration applied: ${file}`);
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+    }
+  } finally { client.release(); }
+}
 
 // ── Routes
 const authRoutes        = require("./routes/auth");
@@ -103,8 +127,10 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-app.listen(PORT, () =>
-  logger.info(`Pesa Yangu API on :${PORT} [${process.env.NODE_ENV || "development"}]`)
-);
+runMigrations()
+  .then(() => app.listen(PORT, () =>
+    logger.info(`Pesa Yangu API on :${PORT} [${process.env.NODE_ENV || "development"}]`)
+  ))
+  .catch(err => { logger.error(`Migration failed: ${err.message}`); process.exit(1); });
 
 module.exports = app;

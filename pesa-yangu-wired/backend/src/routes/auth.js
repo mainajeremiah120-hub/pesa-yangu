@@ -156,6 +156,9 @@ router.delete("/account", async (req, res, next) => {
 // POST /auth/forgot-password
 router.post("/forgot-password", async (req, res, next) => {
   try {
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      return res.status(503).json({ error: "Email service is not configured yet. Please contact support." });
+    }
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
     // Always respond 200 to prevent email enumeration
     const { rows } = await query(
@@ -180,7 +183,12 @@ router.post("/forgot-password", async (req, res, next) => {
 
     const frontendUrl = process.env.FRONTEND_URL || "https://pesayangu.africa";
     const resetUrl    = `${frontendUrl}?reset=${token}`;
-    await sendResetEmail(email.toLowerCase(), resetUrl);
+    try {
+      await sendResetEmail(email.toLowerCase(), resetUrl);
+    } catch (mailErr) {
+      logger.error({ msg: "Failed to send reset email", error: mailErr.message });
+      return res.status(503).json({ error: "Could not send reset email. Check your SMTP settings." });
+    }
 
     logger.info({ msg: "Password reset requested", userId: rows[0].id });
     res.json({ ok: true });

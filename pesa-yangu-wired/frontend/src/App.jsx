@@ -565,7 +565,13 @@ export default function App() {
   const [tab,    _setTab]   = useState("dashboard");
   const setTab = (newTab) => {
     _setTab(newTab);
-    if (newTab !== "transactions") setTxSearch("");
+    if (newTab !== "transactions") { setTxSearch(""); setTxWalletFilter(""); }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goToWalletTxs = (walletId) => {
+    setTxWalletFilter(walletId);
+    setTxSearch("");
+    _setTab("transactions");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const [modals, setModals] = useState({});
@@ -713,13 +719,17 @@ export default function App() {
 
   // ── Filtered transactions for Records tab (real-time search)
   // ── Search (declared here so filteredTxs useMemo can reference it without TDZ)
-  const [txSearch, setTxSearch] = useState("");
+  const [txSearch,       setTxSearch]       = useState("");
+  const [txWalletFilter, setTxWalletFilter] = useState("");
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
-    if (!txSearch.trim()) return pool;
+    let result = txWalletFilter
+      ? pool.filter(t => (t.wallet || t.wallet_id) === txWalletFilter)
+      : pool;
+    if (!txSearch.trim()) return result;
     const q = txSearch.trim().toLowerCase();
-    return pool.filter(t => {
+    return result.filter(t => {
       const catId  = t.category || t.category_id;
       const cat    = t.type === "expense" ? expCats.find(c => c.id === catId)
                    : t.type === "income"  ? incCats.find(c => c.id === catId)
@@ -732,7 +742,7 @@ export default function App() {
         (wallet?.name || "").toLowerCase().includes(q)
       );
     });
-  }, [txs, txSearch, expCats, incCats, wallets, limits.txHistory]);
+  }, [txs, txSearch, txWalletFilter, expCats, incCats, wallets, limits.txHistory]);
 
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
@@ -1937,7 +1947,7 @@ export default function App() {
                 const wOut=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="expense"||t.type==="transfer_out")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
                 return<Card key={w.id} style={{borderTop:`3px solid ${w.color}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <div>
+                    <div style={{cursor:"pointer"}} onClick={()=>goToWalletTxs(w.id)}>
                       <div style={{fontSize:22,marginBottom:3}}>{w.icon}</div>
                       <div style={{fontWeight:700,fontSize:14}}>{w.name}</div>
                       <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
@@ -1958,6 +1968,9 @@ export default function App() {
                     <span>↑ {disp(wIn)}</span><span>↓ {disp(wOut)}</span>
                   </div>
                   <Sparkline values={[bal*0.82,bal*0.87,bal*0.85,bal*0.92,bal*0.97,bal]} color={w.color} width={170} height={26}/>
+                  <button onClick={()=>goToWalletTxs(w.id)} style={{marginTop:10,width:"100%",background:"none",border:`1px solid ${w.color}44`,borderRadius:8,color:w.color,padding:"6px 0",cursor:"pointer",fontSize:11,fontWeight:600}}>
+                    📋 View transactions
+                  </button>
                 </Card>;
               })}
             </div>
@@ -1992,6 +2005,15 @@ export default function App() {
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
               </div>
             </div>
+
+            {/* ── Wallet filter banner ── */}
+            {txWalletFilter&&(()=>{
+              const fw=wallets.find(w=>w.id===txWalletFilter);
+              return fw?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:fw.color+"22",border:`1px solid ${fw.color}44`,borderRadius:12,padding:"10px 14px",marginBottom:10}}>
+                <span style={{fontSize:13,color:fw.color,fontWeight:600}}>{fw.icon} {fw.name} — showing account transactions only</span>
+                <button onClick={()=>setTxWalletFilter("")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px"}}>✕ Show all</button>
+              </div>:null;
+            })()}
 
             {/* ── Search bar ── */}
             <div style={{position:"relative"}}>

@@ -666,6 +666,7 @@ export default function App() {
       principal: parseFloat(r.principal_kes||0),
       interest:  parseFloat(r.interest_kes||0),
       wallet:    r.wallet_id,
+      date:      (r.payment_date||r.date||"").slice(0,10),
     })),
   });
   const normaliseRecurring = (r) => ({
@@ -947,7 +948,7 @@ export default function App() {
       setLoans(p=>p.map(l=>{
         if(l.id!==loan.id) return l;
         const reduction = l.interest_type==="simple" ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
-        return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:repayment.payment_date,note:repayment.note,attachments:[]}]};
+        return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
       setFRepay(blankRepay); closeM("repay");
       showToast("Repayment recorded");

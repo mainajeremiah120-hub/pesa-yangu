@@ -162,7 +162,7 @@ router.post("/forgot-password", async (req, res, next) => {
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
     // Always respond 200 to prevent email enumeration
     const { rows } = await query(
-      "SELECT id FROM users WHERE email=$1 AND is_active=TRUE",
+      "SELECT id FROM users WHERE email=$1",
       [email.toLowerCase()]
     );
     if (!rows.length) return res.json({ ok: true });

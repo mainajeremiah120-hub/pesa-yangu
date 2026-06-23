@@ -428,10 +428,11 @@ const ConfirmModal = ({ open, onClose, onConfirm, title, message, danger=true })
 // ─────────────────────────────────────────────────────────────────────────────
 // GOAL CARD  — own component so useState doesn't break inside .map()
 // ─────────────────────────────────────────────────────────────────────────────
-function GoalCard({ g, wallets, disp, onFund, onEdit }) {
+function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
   const C = useC();
-  const [amt, setAmt] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [amt,      setAmt]      = useState("");
+  const [fromWal,  setFromWal]  = useState(g.wallet_id || "");
+  const [busy,     setBusy]     = useState(false);
   const pct    = Math.min((g.saved_kes/g.target_kes)*100, 100);
   const rem    = g.target_kes - g.saved_kes;
   const w      = wallets.find(w=>w.id===g.wallet_id);
@@ -440,11 +441,15 @@ function GoalCard({ g, wallets, disp, onFund, onEdit }) {
   const needed = months&&months>0 ? rem/months : null;
 
   const handle = async () => {
-    const a = parseFloat(amt); if (!a||a<=0) return;
+    const a = parseFloat(amt);
+    if (!a || a<=0) return;
+    if (!fromWal) return;
     setBusy(true);
-    try { await onFund(g.id, a); setAmt(""); }
+    try { await onFund(g.id, a, fromWal); setAmt(""); }
     finally { setBusy(false); }
   };
+
+  const inputStyle = { background:C.navyLight, border:`1px solid ${C.navyLight}`, borderRadius:8, padding:"8px 10px", color:C.textPrimary, fontSize:12, outline:"none", width:"100%", boxSizing:"border-box" };
 
   return (
     <div style={{ background:C.navyMid, borderRadius:16, padding:20, border:`1px solid ${C.navyLight}`, borderTop:`3px solid ${g.color}` }}>
@@ -452,13 +457,13 @@ function GoalCard({ g, wallets, disp, onFund, onEdit }) {
         <div>
           <div style={{ fontSize:26, marginBottom:3 }}>{g.icon}</div>
           <div style={{ fontWeight:700, fontSize:14 }}>{g.name}</div>
-          <div style={{ color:C.textMuted, fontSize:10 }}>via {w?.name||"—"}</div>
+          <div style={{ color:C.textMuted, fontSize:10 }}>linked to {w?.name||"—"}</div>
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ fontFamily:"'DM Serif Display',serif", fontSize:22, color:g.color }}>{pct.toFixed(0)}%</div>
           <div style={{ color:C.textMuted, fontSize:10 }}>of {disp(g.target_kes)}</div>
-          {onEdit&&<div style={{display:"flex",gap:5,marginTop:4}}>
-            <button onClick={()=>onEdit(g)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
+          {(onEdit||onDelete)&&<div style={{display:"flex",gap:5,marginTop:4}}>
+            {onEdit&&<button onClick={()=>onEdit(g)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>}
             {onDelete&&<button onClick={()=>onDelete(g.id,g.name)} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>}
           </div>}
         </div>
@@ -473,13 +478,32 @@ function GoalCard({ g, wallets, disp, onFund, onEdit }) {
       </div>}
       {pct>=100
         ? <div style={{ marginTop:10, background:C.teal+"22", borderRadius:8, padding:"9px 14px", textAlign:"center", color:C.teal, fontWeight:700, fontSize:13 }}>🎉 Goal reached!</div>
-        : <div style={{ display:"flex", gap:6, marginTop:10, alignItems:"center" }}>
-            <input type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="Amount to add (KES)"
-              style={{ flex:1, background:C.navyLight, border:`1px solid ${C.navyLight}`, borderRadius:8, padding:"8px 10px", color:C.textPrimary, fontSize:12, outline:"none" }}
-              onFocus={e=>e.target.style.borderColor=C.teal} onBlur={e=>e.target.style.borderColor=C.navyLight}/>
-            <Btn onClick={handle} disabled={!amt||busy} style={{padding:"8px 14px",fontSize:12}}>
-              {busy?"…":"Add"}
-            </Btn>
+        : <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:8 }}>
+            {/* From wallet picker */}
+            <div>
+              <div style={{ color:C.textFaint, fontSize:10, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Top up from</div>
+              <select value={fromWal} onChange={e=>setFromWal(e.target.value)}
+                style={{...inputStyle, cursor:"pointer"}}>
+                <option value="">— Select account —</option>
+                {wallets.map(w=>(
+                  <option key={w.id} value={w.id}>{w.icon} {w.name} ({w.currency})</option>
+                ))}
+              </select>
+            </div>
+            {/* Amount + Add button */}
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <input
+                type="number" value={amt}
+                onChange={e=>setAmt(e.target.value)}
+                placeholder="Amount (KES)"
+                style={{...inputStyle, flex:1}}
+                onFocus={e=>e.target.style.borderColor=C.teal}
+                onBlur={e=>e.target.style.borderColor=C.navyLight}
+              />
+              <Btn onClick={handle} disabled={!amt||!fromWal||busy} style={{padding:"8px 16px",fontSize:12,flexShrink:0}}>
+                {busy?"…":"Add"}
+              </Btn>
+            </div>
           </div>
       }
     </div>
@@ -722,7 +746,7 @@ export default function App() {
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
-  const blankGoal  = { name:"", icon:"🎯", target:"", wallet:"", deadline:"", color:C.teal };
+  const blankGoal  = { name:"", icon:"🎯", target:"", wallet:"", deadline:"", color:C.teal, openingBalance:"" };
   const blankRecur = { type:"expense", category:"", amount:"", wallet:"", merchant:"", note:"", freq:"monthly", nextDate:"" };
   const blankRefund = { refundOf:"", amount:"", wallet:"", note:"", date:todayStr() };
 
@@ -954,9 +978,10 @@ export default function App() {
     const t=parseFloat(fGoal.target); if(!t||!fGoal.name) return;
     try {
       const { goal } = await goalsApi.create({
-        wallet_id:  fGoal.wallet,
+        wallet_id:  fGoal.wallet||undefined,
         name:       fGoal.name, icon:fGoal.icon, color:fGoal.color,
         target_kes: t,
+        saved_kes:  parseFloat(fGoal.openingBalance)||0,
         deadline:   fGoal.deadline||undefined,
       });
       setGoals(p=>[...p, normaliseGoal(goal)]);
@@ -965,10 +990,12 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
-  const fundGoal = async (gid, amt) => {
+  const fundGoal = async (gid, amt, walletId) => {
     try {
-      const { goal } = await goalsApi.fund(gid, amt);
+      const { goal } = await goalsApi.fund(gid, amt, walletId);
       setGoals(p=>p.map(g=>g.id===gid?normaliseGoal(goal):g));
+      // Also update wallet balance optimistically
+      setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)-amt}:w));
       showToast(`Added ${disp(amt)} to goal`);
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
@@ -2472,6 +2499,7 @@ export default function App() {
         </div>
         <Field label={`Target Amount (${baseCurrency})`} type="number" value={fGoal.target} onChange={v=>setFGoal({...fGoal,target:v})} placeholder="e.g. 450000"/>
         <Field label="Save Into" value={fGoal.wallet} onChange={v=>setFGoal({...fGoal,wallet:v})} options={wOpts}/>
+        {!editGoal&&<Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000 (already saved)" note="Will be deducted from the selected account"/>}
         <Field label="Target Date" type="date" value={fGoal.deadline} onChange={v=>setFGoal({...fGoal,deadline:v})}/>
         <Btn onClick={saveGoal} style={{width:"100%",padding:13,fontSize:14}}>{editGoal?"Save Changes":"Create Goal"}</Btn>
       </Modal>

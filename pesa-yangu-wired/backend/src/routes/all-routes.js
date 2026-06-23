@@ -96,25 +96,52 @@ goalRouter.get("/", async (req,res,next)=>{
 
 goalRouter.post("/", async (req,res,next)=>{
   try {
-    if(req.user.plan==="free"){const {rows}=await query("SELECT COUNT(*) FROM goals WHERE user_id=$1",[req.user.id]);if(parseInt(rows[0].count)>=2) return res.status(403).json({error:"Free plan allows 2 goals.",code:"PLAN_LIMIT"});}
-    const d=z.object({wallet_id:z.string().uuid(),name:z.string().min(1),icon:z.string().default("🎯"),color:z.string().default("#00D4AA"),target_kes:z.number().positive(),deadline:z.string().optional()}).parse(req.body);
-    const {rows}=await query("INSERT INTO goals (user_id,wallet_id,name,icon,color,target_kes,deadline) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",[req.user.id,d.wallet_id,d.name,d.icon,d.color,d.target_kes,d.deadline||null]);
-    res.status(201).json({goal:rows[0]});
+    const d=z.object({
+      wallet_id:  z.string().uuid().optional(),
+      name:       z.string().min(1),
+      icon:       z.string().default("🎯"),
+      color:      z.string().default("#00D4AA"),
+      target_kes: z.number().positive(),
+      saved_kes:  z.number().min(0).default(0),
+      deadline:   z.string().optional(),
+    }).parse(req.body);
+    const goal = await withTransaction(async(client)=>{
+      // Deduct opening balance from wallet if provided
+      if(d.saved_kes>0 && d.wallet_id) {
+        const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
+        if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
+        if(parseFloat(wr[0].balance)<d.saved_kes) throw Object.assign(new Error("Insufficient balance for opening amount"),{status:400});
+        await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[d.saved_kes,d.wallet_id]);
+      }
+      const {rows}=await client.query(
+        "INSERT INTO goals (user_id,wallet_id,name,icon,color,target_kes,saved_kes,deadline) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+        [req.user.id,d.wallet_id||null,d.name,d.icon,d.color,d.target_kes,d.saved_kes,d.deadline||null]
+      );
+      return rows[0];
+    });
+    res.status(201).json({goal});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 goalRouter.post("/:id/fund", async (req,res,next)=>{
   try {
-    const {amount}=z.object({amount:z.number().positive()}).parse(req.body);
+    const {amount, wallet_id}=z.object({
+      amount:    z.number().positive(),
+      wallet_id: z.string().uuid().optional(),
+    }).parse(req.body);
     const {rows:gr}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!gr.length) return res.status(404).json({error:"Goal not found"});
     const g=gr[0];
     const toAdd=Math.min(amount,parseFloat(g.target_kes)-parseFloat(g.saved_kes));
     if(toAdd<=0) return res.status(400).json({error:"Goal already reached"});
+    // Use provided wallet_id or fall back to goal's linked wallet
+    const sourceWalletId = wallet_id || g.wallet_id;
+    if(!sourceWalletId) return res.status(400).json({error:"No source wallet specified"});
     const result=await withTransaction(async(client)=>{
-      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[g.wallet_id,req.user.id]);
-      if(!wr.length||parseFloat(wr[0].balance)<toAdd) throw Object.assign(new Error("Insufficient balance"),{status:400});
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[toAdd,g.wallet_id]);
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[sourceWalletId,req.user.id]);
+      if(!wr.length) throw Object.assign(new Error("Source wallet not found"),{status:404});
+      if(parseFloat(wr[0].balance)<toAdd) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[toAdd,sourceWalletId]);
       const {rows}=await client.query("UPDATE goals SET saved_kes=saved_kes+$1,is_achieved=(saved_kes+$1>=target_kes) WHERE id=$2 RETURNING *",[toAdd,g.id]);
       return rows[0];
     });
@@ -124,16 +151,6 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
 
 goalRouter.patch("/:id", async (req,res,next)=>{
   try {
-<<<<<<< HEAD
-    const allowed=["name","icon","color","target_kes","deadline","wallet_id"];
-    const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
-    if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
-    const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE goals SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);
-    if(!rows.length) return res.status(404).json({error:"Not found"});
-    res.json({goal:rows[0]});
-  } catch(e){next(e);}
-=======
     const d=z.object({
       name:       z.string().min(1).optional(),
       icon:       z.string().optional(),
@@ -151,7 +168,6 @@ goalRouter.patch("/:id", async (req,res,next)=>{
     const {rows}=await query(`UPDATE goals SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
     res.json({goal:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
->>>>>>> 814e2b196ec7bdf5bd5a0b1785c0fe9211499cb1
 });
 
 goalRouter.delete("/:id", async (req,res,next)=>{
@@ -186,13 +202,6 @@ investmentRouter.post("/", async (req,res,next)=>{
 
 investmentRouter.patch("/:id", async (req,res,next)=>{
   try {
-<<<<<<< HEAD
-    const allowed=["name","ticker","type","currency","units","buy_price_kes","current_price_kes","wallet_id"];
-    const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
-    if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
-    const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE investments SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);
-=======
     const d=z.object({
       name:              z.string().min(1).optional(),
       ticker:            z.string().nullable().optional(),
@@ -208,7 +217,6 @@ investmentRouter.patch("/:id", async (req,res,next)=>{
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE investments SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
->>>>>>> 814e2b196ec7bdf5bd5a0b1785c0fe9211499cb1
     if(!rows.length) return res.status(404).json({error:"Not found"});
     res.json({investment:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -284,35 +292,6 @@ loanRouter.post("/:id/repayments", upload.array("files",5), async (req,res,next)
 
 loanRouter.patch("/:id", async (req,res,next)=>{
   try {
-<<<<<<< HEAD
-    const allowed=["name","lender","currency","principal_kes","interest_rate","monthly_payment_kes","next_due_date","note"];
-    const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
-    if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
-    const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE loans SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);
-    if(!rows.length) return res.status(404).json({error:"Not found"});
-    res.json({loan:rows[0]});
-  } catch(e){next(e);}
-});
-
-loanRouter.patch("/:id/repayments/:repayId", async (req,res,next)=>{
-  try {
-    const {rows:lr}=await query("SELECT * FROM loan_repayments WHERE id=$1 AND loan_id=$2 AND user_id=$3",[req.params.repayId,req.params.id,req.user.id]);
-    if(!lr.length) return res.status(404).json({error:"Repayment not found"});
-    const old=lr[0];
-    const allowed=["total_kes","principal_kes","interest_kes","payment_date","note"];
-    const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
-    if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
-    // Adjust loan remaining if principal changed
-    if(u.principal_kes!==undefined) {
-      const diff=parseFloat(u.principal_kes)-parseFloat(old.principal_kes);
-      await query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1) WHERE id=$2",[diff,req.params.id]);
-    }
-    const sets=Object.keys(u).map((k,i)=>`${k}=$${i+2}`);
-    const {rows}=await query(`UPDATE loan_repayments SET ${sets.join(",")} WHERE id=$1 RETURNING *`,[req.params.repayId,...Object.values(u)]);
-    res.json({repayment:rows[0]});
-  } catch(e){next(e);}
-=======
     const d=z.object({
       name:                z.string().min(1).optional(),
       lender:              z.string().nullable().optional(),
@@ -372,7 +351,6 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
     });
     res.json({repayment});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
->>>>>>> 814e2b196ec7bdf5bd5a0b1785c0fe9211499cb1
 });
 
 loanRouter.delete("/:id", async (req,res,next)=>{

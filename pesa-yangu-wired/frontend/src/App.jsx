@@ -70,7 +70,108 @@ const todayStr = () => new Date().toISOString().slice(0,10);
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV UTILITIES
 // ─────────────────────────────────────────────────────────────────────────────
-const TX_TEMPLATE = `date,type,category,amount_kes,merchant,note,wallet_id\n2025-06-01,income,Salary,95000,Employer Ltd,June salary,\n2025-06-01,expense,Rent / Mortgage,25000,Landlord,June rent,`;
+// ─── CSV / Export helpers ───────────────────────────────────────────────────
+const TX_TEMPLATE_ROWS = [
+  ["date","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"],
+  ["2025-06-01","income","Salary","95000","Employer Ltd","June salary","Equity Bank","",""],
+  ["2025-06-01","expense","Rent / Mortgage","25000","Landlord","June rent","Equity Bank","",""],
+  ["2025-06-01","transfer","","10000","","Move to savings","","Equity Bank","KCB Savings"],
+];
+const TX_TEMPLATE = TX_TEMPLATE_ROWS.map(r=>r.join(",")).join("\n");
+
+// Parse a CSV string into array of objects
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g,"").toLowerCase());
+  const rows = lines.slice(1).map((line, idx) => {
+    // Handle quoted fields
+    const fields = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"' && !inQ) { inQ = true; continue; }
+      if (ch === '"' && inQ && line[i+1] === '"') { cur += '"'; i++; continue; }
+      if (ch === '"' && inQ) { inQ = false; continue; }
+      if (ch === "," && !inQ) { fields.push(cur); cur = ""; continue; }
+      cur += ch;
+    }
+    fields.push(cur);
+    const obj = { _row: idx + 2 };
+    headers.forEach((h, i) => { obj[h] = (fields[i] || "").trim(); });
+    return obj;
+  });
+  return { headers, rows };
+}
+
+// Validate and classify rows
+function validateImportRows(rows, wallets, expCats, incCats) {
+  const walletByName = {};
+  wallets.forEach(w => { walletByName[w.name.toLowerCase()] = w; });
+  const catByName = {};
+  expCats.forEach(c => { catByName[c.name.toLowerCase() + ":expense"] = c; });
+  incCats.forEach(c => { catByName[c.name.toLowerCase() + ":income"] = c; });
+
+  return rows.map(r => {
+    const errors = [];
+    const type = (r.type || "expense").toLowerCase();
+
+    // Date
+    const dateVal = r.date || r.tx_date || "";
+    if (!dateVal || isNaN(Date.parse(dateVal))) errors.push("Invalid date");
+
+    // Amount
+    const amount = parseFloat(r.amount_kes || r.amount || 0);
+    if (!amount || amount <= 0) errors.push("Invalid amount");
+
+    // Type
+    const validTypes = ["expense","income","transfer","transfer_in","transfer_out","refund"];
+    if (!validTypes.includes(type)) errors.push(`Unknown type "${type}"`);
+
+    // Wallet resolution
+    let walletId = null, fromWalletId = null, toWalletId = null;
+    if (type === "transfer") {
+      const fw = walletByName[(r.from_wallet || "").toLowerCase()];
+      const tw = walletByName[(r.to_wallet || "").toLowerCase()];
+      if (!fw) errors.push(`from_wallet "${r.from_wallet}" not found`);
+      if (!tw) errors.push(`to_wallet "${r.to_wallet}" not found`);
+      fromWalletId = fw?.id || null;
+      toWalletId   = tw?.id || null;
+    } else {
+      const w = walletByName[(r.wallet || "").toLowerCase()];
+      if (!w) errors.push(`wallet "${r.wallet}" not found`);
+      walletId = w?.id || null;
+    }
+
+    // Category (optional but warn if unrecognised)
+    let catId = null;
+    if (r.category && type !== "transfer") {
+      const key = r.category.toLowerCase() + ":" + (type === "income" ? "income" : "expense");
+      const cat = catByName[key];
+      if (cat) catId = cat.id;
+      // Not an error, just unmatched — we'll show it as a warning
+    }
+
+    return {
+      ...r,
+      _type:         type,
+      _date:         dateVal,
+      _amount:       amount,
+      _walletId:     walletId,
+      _fromWalletId: fromWalletId,
+      _toWalletId:   toWalletId,
+      _catId:        catId,
+      _errors:       errors,
+      _valid:        errors.length === 0,
+    };
+  });
+}
+
+// Build export CSV for any array of objects
+function toCSV(headers, rows) {
+  const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  return [headers.join(","), ...rows.map(r => headers.map(h => esc(r[h])).join(","))].join("\n");
+}
 
 const downloadBlob = (blob, name) => {
   const url = URL.createObjectURL(blob);
@@ -628,8 +729,10 @@ export default function App() {
   const [recoBusy,    setRecoBusy]    = useState(false);
 
   // Import
-  const [importRows,  setImportRows]  = useState([]);
-  const [importBusy,  setImportBusy]  = useState(false);
+  const [importRows,   setImportRows]  = useState([]);   // validated preview rows
+  const [importBusy,   setImportBusy]  = useState(false);
+  const [importErrors, setImportErrors]= useState([]);   // skipped row messages
+  const [importStep,   setImportStep]  = useState("upload"); // "upload" | "preview"
 
   // ─────────────────────────────────────────────────────────────────────────
   // API ACTIONS  (optimistic UI: update state first, then call API)
@@ -1151,23 +1254,86 @@ export default function App() {
   };
 
   // ── Export CSV (download from backend)
+  // ── Export: transactions + wallets + goals as separate CSV downloads ───────
   const exportTransactions = async () => {
     try {
       const res = await txApi.exportCSV();
       downloadBlob(new Blob([res.data]), `pesa-yangu-transactions-${todayStr()}.csv`);
-      showToast("Exported");
+      showToast("Transactions exported");
     } catch { showToast("Export failed", C.coral); }
   };
 
+  const exportAll = () => {
+    // Transactions
+    const txHeaders = ["date","type","category","amount_kes","merchant","note","wallet","currency"];
+    const txRows = txs.map(t => {
+      const cat = t.type==="expense"?expCats.find(c=>c.id===(t.category||t.category_id)):incCats.find(c=>c.id===(t.category||t.category_id));
+      const w   = wallets.find(w=>w.id===(t.wallet||t.wallet_id));
+      return { date:t.date||t.tx_date, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
+    });
+    downloadBlob(new Blob([toCSV(txHeaders, txRows)]), `pesa-yangu-transactions-${todayStr()}.csv`);
+
+    // Wallets
+    const walHeaders = ["name","account_type","currency","balance"];
+    const walRows = wallets.map(w => ({ name:w.name, account_type:w.account_type||w.accountType||"", currency:w.currency||"KES", balance:parseFloat(w.balance||0) }));
+    downloadBlob(new Blob([toCSV(walHeaders, walRows)]), `pesa-yangu-wallets-${todayStr()}.csv`);
+
+    // Goals
+    const goalHeaders = ["name","target_kes","saved_kes","deadline","wallet"];
+    const goalRows = goals.map(g => {
+      const w = wallets.find(w=>w.id===(g.wallet||g.wallet_id));
+      return { name:g.name, target_kes:g.target_kes||g.target, saved_kes:g.saved_kes||g.saved, deadline:g.deadline||"", wallet:w?.name||"" };
+    });
+    downloadBlob(new Blob([toCSV(goalHeaders, goalRows)]), `pesa-yangu-goals-${todayStr()}.csv`);
+
+    showToast("3 CSV files downloaded");
+  };
+
   // ── Import CSV
-  const handleImportFile = async (file) => {
+  // ── Import: client-side parse → preview → confirm ───────────────────────────
+  const handleImportFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const { rows } = parseCSV(e.target.result);
+      const validated = validateImportRows(rows, wallets, expCats, incCats);
+      const valid   = validated.filter(r => r._valid);
+      const invalid = validated.filter(r => !r._valid);
+      setImportRows(validated);
+      setImportErrors(invalid.map(r => `Row ${r._row}: ${r._errors.join(", ")}`));
+      setImportStep("preview");
+    };
+    reader.readAsText(file);
+  };
+
+  const confirmImport = async () => {
+    const valid = importRows.filter(r => r._valid);
+    if (!valid.length) return;
     setImportBusy(true);
     try {
+      // Build a CSV from only valid rows and send to backend
+      const headers = ["date","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"];
+      const validRows = valid.map(r => ({
+        date:        r._date,
+        type:        r._type === "transfer" ? "transfer_out" : r._type,
+        category:    r.category || "",
+        amount_kes:  r._amount,
+        merchant:    r.merchant || "",
+        note:        r.note || "",
+        wallet:      r.wallet || (r._type === "transfer" ? r.from_wallet : ""),
+        from_wallet: r.from_wallet || "",
+        to_wallet:   r.to_wallet || "",
+      }));
+      const csvBlob = new Blob([toCSV(headers, validRows)]);
+      const file = new File([csvBlob], "import.csv", { type: "text/csv" });
       const { imported } = await txApi.importCSV(file);
       // Reload transactions
       const { transactions: fresh } = await txApi.list({ limit:500 });
       setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:tx.tx_date })));
+      // Reload wallet balances
+      const { wallets: freshW } = await walletsApi.list();
+      setWallets(freshW || []);
       closeM("importExport");
+      setImportRows([]); setImportErrors([]); setImportStep("upload");
       showToast(`Imported ${imported} transactions`);
     } catch(err) { showToast(err?.response?.data?.error||"Import failed", C.coral); }
     finally { setImportBusy(false); }
@@ -2252,22 +2418,109 @@ export default function App() {
       </Modal>
 
       {/* Import / Export */}
-      <Modal open={isOpen("importExport")} onClose={()=>{closeM("importExport");setImportRows([]);}} title="⬆⬇ Import & Export" wide>
-        <div className="grid-2" style={{gap:20}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:C.teal}}>⬇ Export</div>
-            <Btn onClick={exportTransactions} style={{width:"100%",marginBottom:8}}>Export Transactions CSV</Btn>
-            <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-import-template.csv`)} outline color={C.textMuted} style={{width:"100%",fontSize:12}}>Download Import Template</Btn>
+      <Modal open={isOpen("importExport")} onClose={()=>{closeM("importExport");setImportRows([]);setImportErrors([]);setImportStep("upload");}} title="⬆⬇ Import & Export" wide>
+
+        {/* ── EXPORT SECTION ── */}
+        <div style={{marginBottom:22}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:10,color:C.teal}}>⬇ Export</div>
+          <div className="grid-3" style={{gap:8}}>
+            <Btn onClick={exportTransactions} outline color={C.teal} small style={{width:"100%"}}>📋 Transactions</Btn>
+            <Btn onClick={exportAll} color={C.teal} small style={{width:"100%"}}>📦 Full Export (3 CSVs)</Btn>
+            <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-template.csv`)} outline color={C.textMuted} small style={{width:"100%",fontSize:11}}>📄 Template CSV</Btn>
           </div>
-          <div>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:C.gold}}>⬆ Import</div>
-            <FileUpload label="Transactions CSV" accept=".csv" onFile={handleImportFile} files={[]}/>
-            {importBusy&&<div style={{color:C.textMuted,fontSize:12}}>Importing…</div>}
-            <div style={{marginTop:10,background:C.navyLight,borderRadius:10,padding:"12px 14px",fontSize:11,color:C.textMuted,lineHeight:1.8}}>
-              <strong style={{color:C.textPrimary}}>Required columns:</strong><br/>date, type, category, amount_kes<br/>Download template above for format.
-            </div>
+          <div style={{marginTop:8,background:C.navyLight,borderRadius:8,padding:"8px 12px",fontSize:10,color:C.textFaint,lineHeight:1.7}}>
+            Full export downloads 3 files: <strong style={{color:C.textMuted}}>transactions</strong>, <strong style={{color:C.textMuted}}>wallets</strong>, and <strong style={{color:C.textMuted}}>goals</strong>.
           </div>
         </div>
+
+        <div style={{height:1,background:C.navyLight,margin:"0 0 18px"}}/>
+
+        {/* ── IMPORT SECTION ── */}
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:C.gold}}>⬆ Import Transactions</div>
+
+        {importStep === "upload" && (
+          <>
+            <FileUpload label="Upload CSV File" accept=".csv" onFile={handleImportFile} files={[]}/>
+            <div style={{background:C.navyLight,borderRadius:10,padding:"12px 14px",fontSize:11,color:C.textMuted,lineHeight:1.9}}>
+              <strong style={{color:C.textPrimary}}>Supported columns:</strong><br/>
+              <code style={{color:C.teal}}>date, type, amount_kes, wallet</code> — required<br/>
+              <code style={{color:C.blue}}>category, merchant, note</code> — optional<br/>
+              <code style={{color:C.purple}}>from_wallet, to_wallet</code> — for transfers<br/>
+              <div style={{marginTop:6,color:C.textFaint}}>Types: expense · income · transfer · refund</div>
+            </div>
+          </>
+        )}
+
+        {importStep === "preview" && (
+          <>
+            {/* Summary bar */}
+            <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={{background:C.teal+"22",borderRadius:8,padding:"6px 14px",fontSize:12,color:C.teal,fontWeight:700}}>
+                ✓ {importRows.filter(r=>r._valid).length} valid
+              </div>
+              {importErrors.length > 0 && (
+                <div style={{background:C.coral+"22",borderRadius:8,padding:"6px 14px",fontSize:12,color:C.coral,fontWeight:700}}>
+                  ✗ {importErrors.length} skipped
+                </div>
+              )}
+              <div style={{flex:1}}/>
+              <Btn onClick={()=>{setImportStep("upload");setImportRows([]);setImportErrors([]);}} outline color={C.textMuted} small>← Back</Btn>
+            </div>
+
+            {/* Error log */}
+            {importErrors.length > 0 && (
+              <div style={{background:C.coral+"11",border:`1px solid ${C.coral}33`,borderRadius:10,padding:"10px 14px",marginBottom:14,maxHeight:100,overflowY:"auto"}}>
+                <div style={{color:C.coral,fontSize:11,fontWeight:700,marginBottom:5}}>Skipped rows:</div>
+                {importErrors.map((e,i)=>(
+                  <div key={i} style={{color:C.textMuted,fontSize:11,marginBottom:2}}>• {e}</div>
+                ))}
+              </div>
+            )}
+
+            {/* Preview table */}
+            <div style={{border:`1px solid ${C.navyLight}`,borderRadius:12,overflow:"hidden",marginBottom:14,maxHeight:280,overflowY:"auto"}}>
+              {/* Header */}
+              <div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 90px 90px",gap:8,padding:"8px 14px",background:C.navyLight,position:"sticky",top:0}}>
+                {["Date","Type","Merchant / Note","Amount","Wallet"].map(h=>(
+                  <div key={h} style={{color:C.textFaint,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>
+                ))}
+              </div>
+              {importRows.filter(r=>r._valid).map((r,i)=>(
+                <div key={i} style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 90px 90px",gap:8,padding:"8px 14px",borderBottom:`1px solid ${C.navyLight}`,alignItems:"center"}}>
+                  <div style={{fontSize:11,color:C.textMuted}}>{r._date}</div>
+                  <div>
+                    <span style={{
+                      background:(r._type==="income"?C.teal:r._type==="transfer"?C.blue:r._type==="refund"?C.purple:C.coral)+"22",
+                      color:(r._type==="income"?C.teal:r._type==="transfer"?C.blue:r._type==="refund"?C.purple:C.coral),
+                      borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:600,
+                    }}>{r._type}</span>
+                  </div>
+                  <div style={{fontSize:12,color:C.textPrimary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {r.merchant||r.note||r.category||"—"}
+                  </div>
+                  <div style={{fontSize:12,fontWeight:700,color:r._type==="income"?C.teal:r._type==="transfer"?C.blue:C.textPrimary}}>
+                    {r._type==="income"?"+":"−"}KSh {r._amount.toLocaleString()}
+                  </div>
+                  <div style={{fontSize:11,color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {r._type==="transfer"?`${r.from_wallet}→${r.to_wallet}`:r.wallet||"—"}
+                  </div>
+                </div>
+              ))}
+              {importRows.filter(r=>r._valid).length === 0 && (
+                <div style={{padding:"24px",textAlign:"center",color:C.textFaint,fontSize:13}}>No valid rows to import.</div>
+              )}
+            </div>
+
+            <Btn
+              onClick={confirmImport}
+              disabled={importBusy || importRows.filter(r=>r._valid).length===0}
+              style={{width:"100%",padding:13,fontSize:14}}
+            >
+              {importBusy ? "Importing…" : `Import ${importRows.filter(r=>r._valid).length} Transaction${importRows.filter(r=>r._valid).length!==1?"s":""}`}
+            </Btn>
+          </>
+        )}
+
       </Modal>
 
       {/* Share */}

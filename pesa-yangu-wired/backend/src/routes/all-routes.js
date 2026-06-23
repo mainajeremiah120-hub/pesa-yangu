@@ -504,14 +504,23 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 aiRouter.post("/advice", async (req,res,next)=>{
   try {
+    if(!process.env.ANTHROPIC_API_KEY){
+      return res.status(503).json({error:"AI advisor is not configured. Please contact support."});
+    }
     const {context}=req.body;
     if(!context) return res.status(400).json({error:"context required"});
-    const msg=await anthropic.messages.create({
-      model:"claude-sonnet-4-6", max_tokens:1000,
+    const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
+    const msg=await client.messages.create({
+      model:"claude-haiku-4-5-20251001", max_tokens:1000,
       messages:[{role:"user",content:`You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${context.baseCurrency||"KES"}. Based on their data below, give 5 specific, numbered, actionable insights covering: spending vs budget, watched categories, goals progress, loan strategy, and one forward-looking prediction. Be direct and data-led. Data: ${JSON.stringify(context)}`}],
     });
     res.json({advice:msg.content[0]?.text||""});
-  } catch(e){next(e);}
+  } catch(e){
+    if(e?.status===401||e?.message?.includes("apiKey")||e?.message?.includes("authentication")){
+      return res.status(503).json({error:"AI advisor is not configured correctly. Check the API key."});
+    }
+    next(e);
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -874,7 +874,16 @@ export default function App() {
 
   const overBudget = expCats.filter(c=>c.budget>0 && (spendByCat[c.id]||0)>c.budget);
   const watched    = expCats.filter(c=>c.watch);
-  const score      = Math.max(10, Math.min(99, Math.round(68+savingsRate*0.35-overBudget.length*7)));
+  // 0 when no activity; otherwise built from real behaviour
+  const hasActivity = txs.length > 0 || wallets.some(w=>parseFloat(w.balance||0)!==0);
+  const score = (() => {
+    if (!hasActivity) return 0;
+    let s = 50;                                                     // neutral baseline
+    s += Math.min(35, Math.max(-25, savingsRate * 0.35));           // savings rate ±35
+    s -= overBudget.length * 7;                                     // -7 per over-budget category
+    s += Math.min(10, goals.length * 2);                            // +2 per goal (max +10)
+    return Math.max(1, Math.min(99, Math.round(s)));
+  })();
 
   // ── Filtered transactions for Records tab (real-time search)
   // ── Search (declared here so filteredTxs useMemo can reference it without TDZ)

@@ -62,7 +62,7 @@ router.post("/register", async (req, res, next) => {
     const user = await withTransaction(async (client) => {
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, full_name)
-         VALUES ($1,$2,$3) RETURNING id, email, full_name, plan`,
+         VALUES ($1,$2,$3) RETURNING id, email, full_name, plan, role`,
         [email.toLowerCase(), password_hash, full_name]
       );
       await seed(client, rows[0].id);
@@ -94,7 +94,7 @@ router.post("/login", async (req, res, next) => {
     }).parse(req.body);
 
     const { rows } = await query(
-      "SELECT id,email,full_name,plan,password_hash FROM users WHERE email=$1",
+      "SELECT id,email,full_name,plan,role,password_hash FROM users WHERE email=$1",
       [email.toLowerCase()]
     );
     const user = rows[0];

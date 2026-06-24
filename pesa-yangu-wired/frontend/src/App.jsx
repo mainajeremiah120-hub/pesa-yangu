@@ -15,7 +15,7 @@ import AuthPage from "./pages/AuthPage.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
-  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi,
+  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, adminApi,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 
@@ -549,6 +549,144 @@ function NotifRow({ label, desc, id, C }) {
       <div onClick={()=>{const n=!on;setOn(n);saveNotif(id,n);}}
         style={{width:42,height:24,borderRadius:12,background:on?C.teal:C.navyLight,cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
         <div style={{position:"absolute",top:3,left:on?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+function AdminPanel({ C, showToast }) {
+  const [stats,   setStats]   = useState(null);
+  const [users,   setUsers]   = useState([]);
+  const [search,  setSearch]  = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy,    setBusy]    = useState(null); // userId being updated
+
+  const load = useCallback(async (q="") => {
+    setLoading(true);
+    try {
+      const [s, u] = await Promise.all([adminApi.stats(), adminApi.users(q)]);
+      setStats(s); setUsers(u.users||[]);
+    } catch { /* silently ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(()=>{ load(); }, [load]);
+
+  const patch = async (id, update, label) => {
+    setBusy(id);
+    try {
+      const { user: updated } = await adminApi.updateUser(id, update);
+      setUsers(p => p.map(u => u.id===id ? {...u,...updated} : u));
+      showToast(label, C.teal);
+    } catch(e) { showToast(e?.response?.data?.error||"Failed", C.coral); }
+    finally { setBusy(null); }
+  };
+
+  const statCard = (label, value, color=C.teal) => (
+    <div style={{background:C.navyMid,borderRadius:14,padding:"14px 18px",border:`1px solid ${C.navyLight}`,flex:1,minWidth:110}}>
+      <div style={{fontSize:11,color:C.textFaint,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{label}</div>
+      <div style={{fontSize:22,fontWeight:800,color}}>{value??"-"}</div>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"0 0 80px"}}>
+      <div style={{fontWeight:800,fontSize:18,marginBottom:16,color:C.textPrimary}}>
+        🛡️ Admin Panel
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:20}}>
+        {statCard("Total Users",  stats?.total_users,  C.teal)}
+        {statCard("Today",        stats?.today,        C.blue)}
+        {statCard("This Week",    stats?.this_week,    C.purple)}
+        {statCard("This Month",   stats?.this_month,   C.gold)}
+        {statCard("Active",       stats?.active_users, C.teal)}
+        {statCard("Pro",          stats?.pro_users,    C.gold)}
+      </div>
+
+      {/* Search */}
+      <div style={{position:"relative",marginBottom:16}}>
+        <input
+          value={search}
+          onChange={e=>{setSearch(e.target.value);load(e.target.value);}}
+          placeholder="Search by name or email…"
+          style={{width:"100%",background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:12,
+            padding:"11px 16px",color:C.textPrimary,fontSize:13,outline:"none",boxSizing:"border-box"}}
+        />
+        {loading && <div style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:11,color:C.textFaint}}>loading…</div>}
+      </div>
+
+      {/* User list */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {users.map(u => (
+          <div key={u.id} style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:14,padding:"14px 16px"}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+              {/* Avatar */}
+              <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},${C.blue})`,
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,flexShrink:0,color:"#0B1120"}}>
+                {(u.full_name||u.email||"?")[0].toUpperCase()}
+              </div>
+              {/* Info */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:13,color:C.textPrimary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>
+                    {u.full_name||"(no name)"}
+                  </span>
+                  {/* Role badge */}
+                  {u.role==="admin" && (
+                    <span style={{fontSize:9,fontWeight:700,background:C.purple+"33",color:C.purple,borderRadius:5,padding:"2px 6px",textTransform:"uppercase"}}>Admin</span>
+                  )}
+                  {/* Plan badge */}
+                  <span style={{fontSize:9,fontWeight:700,background:(u.plan==="pro"?C.gold:C.navyLight)+"44",color:u.plan==="pro"?C.gold:C.textFaint,borderRadius:5,padding:"2px 6px",textTransform:"uppercase"}}>
+                    {u.plan}
+                  </span>
+                  {/* Status */}
+                  {!u.is_active && (
+                    <span style={{fontSize:9,fontWeight:700,background:C.coral+"22",color:C.coral,borderRadius:5,padding:"2px 6px",textTransform:"uppercase"}}>Inactive</span>
+                  )}
+                </div>
+                <div style={{fontSize:11,color:C.textMuted,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+                <div style={{fontSize:10,color:C.textFaint,marginTop:3,display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <span>Joined {new Date(u.created_at).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"})}</span>
+                  <span>{u.tx_count} txns</span>
+                  <span>{u.wallet_count} accounts</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+              <button
+                disabled={busy===u.id}
+                onClick={()=>patch(u.id,{is_active:!u.is_active}, u.is_active?"User deactivated":"User activated")}
+                style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${u.is_active?C.coral:C.teal}`,
+                  background:"none",color:u.is_active?C.coral:C.teal,cursor:"pointer",fontWeight:600}}>
+                {u.is_active?"Deactivate":"Activate"}
+              </button>
+              <button
+                disabled={busy===u.id}
+                onClick={()=>patch(u.id,{plan:u.plan==="pro"?"free":"pro"}, u.plan==="pro"?"Downgraded to free":"Upgraded to Pro")}
+                style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${C.gold}`,
+                  background:"none",color:C.gold,cursor:"pointer",fontWeight:600}}>
+                {u.plan==="pro"?"→ Free":"→ Pro"}
+              </button>
+              <button
+                disabled={busy===u.id}
+                onClick={()=>patch(u.id,{role:u.role==="admin"?"user":"admin"}, u.role==="admin"?"Admin removed":"Admin granted")}
+                style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${C.purple}`,
+                  background:"none",color:C.purple,cursor:"pointer",fontWeight:600}}>
+                {u.role==="admin"?"→ User":"→ Admin"}
+              </button>
+            </div>
+          </div>
+        ))}
+        {!loading && users.length===0 && (
+          <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:40}}>No users found.</div>
+        )}
       </div>
     </div>
   );
@@ -1903,6 +2041,7 @@ export default function App() {
     {id:"loans",        label:"Loans",      icon:"🏦"},
     {id:"reconcile",    label:"Reconcile",  icon:"✅"},
     {id:"settings",     label:"Settings",   icon:"⚙️"},
+    ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"🛡️"}] : []),
   ];
 
   const ACCT_TYPE = {current:"Current",savings:"Savings",investment:"Investment",cash:"Cash",digital:"Mobile Money"};
@@ -2675,6 +2814,8 @@ export default function App() {
           askConfirm={askConfirm} deactivateAccount={deactivateAccount}
           loadData={loadData}
         />}
+
+        {tab==="admin"&&user?.role==="admin"&&<AdminPanel C={C} showToast={showToast}/>}
 
         {tab==="more"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>

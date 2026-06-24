@@ -185,6 +185,13 @@ export const aiApi = {
   advice: (ctx) => unwrap(client.post("/ai/advice", { context: ctx })),
 };
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+export const adminApi = {
+  stats:      ()         => unwrap(client.get("/admin/stats")),
+  users:      (search)   => unwrap(client.get("/admin/users", { params: { search } })),
+  updateUser: (id, patch)=> unwrap(client.patch(`/admin/users/${id}`, patch)),
+};
+
 // ── Billing ───────────────────────────────────────────────────────────────────
 export const billingApi = {
   plans:     ()    => unwrap(client.get("/billing/plans")),

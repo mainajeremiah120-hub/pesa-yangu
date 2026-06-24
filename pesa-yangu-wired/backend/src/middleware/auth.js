@@ -11,7 +11,7 @@ const requireAuth = async (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const { rows } = await query(
-      "SELECT id, email, full_name, plan FROM users WHERE id = $1",
+      "SELECT id, email, full_name, plan, role FROM users WHERE id = $1",
       [payload.sub]
     );
     if (!rows.length) return res.status(401).json({ error: "User not found" });
@@ -30,4 +30,10 @@ const requirePro = (req, res, next) => {
   next();
 };
 
-module.exports = { requireAuth, requirePro };
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== "admin")
+    return res.status(403).json({ error: "Admin access required." });
+  next();
+};
+
+module.exports = { requireAuth, requirePro, requireAdmin };

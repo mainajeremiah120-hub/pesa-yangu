@@ -692,6 +692,104 @@ function AdminPanel({ C, showToast }) {
   );
 }
 
+function UserManagementCard({ C, showToast }) {
+  const [users,   setUsers]   = useState([]);
+  const [search,  setSearch]  = useState("");
+  const [loading, setLoading] = useState(false);
+  const [busy,    setBusy]    = useState(null);
+  const [open,    setOpen]    = useState(false);
+
+  const load = useCallback(async (q="") => {
+    setLoading(true);
+    try { const d = await adminApi.users(q); setUsers(d.users||[]); }
+    catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  const patch = async (id, update, msg) => {
+    setBusy(id);
+    try {
+      const { user: u } = await adminApi.updateUser(id, update);
+      setUsers(p => p.map(x => x.id===id ? {...x,...u} : x));
+      showToast(msg, C.teal);
+    } catch(e) { showToast(e?.response?.data?.error||"Failed", C.coral); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <Card>
+      <button onClick={()=>setOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",width:"100%",textAlign:"left",padding:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{fontWeight:700,fontSize:13,color:C.purple,textTransform:"uppercase",letterSpacing:"0.06em"}}>🛡️ User Management</div>
+        <span style={{color:C.textFaint,fontSize:12}}>{open?"▲":"▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{marginTop:14}}>
+          {/* Search */}
+          <input
+            value={search}
+            onChange={e=>{setSearch(e.target.value);load(e.target.value);}}
+            placeholder="Search by name or email…"
+            style={{width:"100%",background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,
+              padding:"10px 14px",color:C.textPrimary,fontSize:12,outline:"none",boxSizing:"border-box",marginBottom:12}}
+            onFocus={e=>e.target.style.borderColor=C.purple}
+            onBlur={e=>e.target.style.borderColor=C.navyLight}
+          />
+
+          {loading && <div style={{textAlign:"center",color:C.textFaint,fontSize:12,padding:12}}>Loading users…</div>}
+
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:360,overflowY:"auto"}}>
+            {users.map(u=>(
+              <div key={u.id} style={{background:C.navyLight,borderRadius:10,padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  {/* Avatar */}
+                  <div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${C.teal},${C.blue})`,
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0,color:"#0B1120"}}>
+                    {(u.full_name||u.email||"?")[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                      <span style={{fontWeight:700,fontSize:12,color:C.textPrimary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>
+                        {u.full_name||"(no name)"}
+                      </span>
+                      {u.role==="admin"&&<span style={{fontSize:9,fontWeight:700,background:C.purple+"33",color:C.purple,borderRadius:5,padding:"1px 5px"}}>ADMIN</span>}
+                      {!u.is_active&&<span style={{fontSize:9,fontWeight:700,background:C.coral+"22",color:C.coral,borderRadius:5,padding:"1px 5px"}}>INACTIVE</span>}
+                    </div>
+                    <div style={{fontSize:10,color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+                    <div style={{fontSize:10,color:C.textFaint,marginTop:1}}>
+                      Joined {new Date(u.created_at).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"})} · {u.tx_count} txns
+                    </div>
+                  </div>
+                </div>
+                {/* Actions */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button disabled={busy===u.id} onClick={()=>patch(u.id,{role:u.role==="admin"?"user":"admin"},u.role==="admin"?"Admin removed":"Admin granted")}
+                    style={{fontSize:10,padding:"4px 10px",borderRadius:7,border:`1px solid ${C.purple}`,background:"none",color:C.purple,cursor:"pointer",fontWeight:700}}>
+                    {u.role==="admin"?"Remove Admin":"Make Admin"}
+                  </button>
+                  <button disabled={busy===u.id} onClick={()=>patch(u.id,{is_active:!u.is_active},u.is_active?"User deactivated":"User activated")}
+                    style={{fontSize:10,padding:"4px 10px",borderRadius:7,border:`1px solid ${u.is_active?C.coral:C.teal}`,background:"none",color:u.is_active?C.coral:C.teal,cursor:"pointer",fontWeight:700}}>
+                    {u.is_active?"Deactivate":"Activate"}
+                  </button>
+                  <button disabled={busy===u.id} onClick={()=>patch(u.id,{plan:u.plan==="pro"?"free":"pro"},u.plan==="pro"?"Downgraded to free":"Upgraded to Pro")}
+                    style={{fontSize:10,padding:"4px 10px",borderRadius:7,border:`1px solid ${C.gold}`,background:"none",color:C.gold,cursor:"pointer",fontWeight:700}}>
+                    {u.plan==="pro"?"→ Free":"→ Pro"}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!loading&&users.length===0&&(
+              <div style={{textAlign:"center",color:C.textFaint,fontSize:12,padding:20}}>No users found.</div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, currencies, updateUser, showToast, logout, exportTransactions, openM, askConfirm, deactivateAccount, loadData }) {
   const [editName,   setEditName]   = useState(user?.full_name || "");
   const [savingName, setSavingName] = useState(false);
@@ -783,6 +881,9 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
             true)}
         </div>
       </Card>
+
+      {/* User Management — admin only */}
+      {user?.role === "admin" && <UserManagementCard C={C} showToast={showToast}/>}
 
       {/* Account */}
       <Card>

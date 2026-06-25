@@ -984,7 +984,7 @@ export default function App() {
   const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
-  const blankLoan  = { name:"", lender:"", principal:"", rate:"", interestType:"compound", monthlyPayment:"", nextDue:"", currency:"KES" };
+  const blankLoan  = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", monthlyPayment:"", nextDue:"", currency:"KES" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
@@ -1155,9 +1155,12 @@ export default function App() {
   const addLoan = async () => {
     const p = parseFloat(fLoan.principal); if(!p||!fLoan.name) return;
     try {
+      const principalKES = toKES(p, fLoan.currency, currencies);
+      const curBal = parseFloat(fLoan.currentBalance);
       const { loan } = await loansApi.create({
         name:fLoan.name, lender:fLoan.lender||undefined, currency:fLoan.currency,
-        principal_kes: toKES(p, fLoan.currency, currencies),
+        principal_kes: principalKES,
+        remaining_kes: !isNaN(curBal) && fLoan.currentBalance !== "" ? toKES(curBal, fLoan.currency, currencies) : undefined,
         interest_rate: parseFloat(fLoan.rate)||0,
         interest_type: fLoan.interestType||"compound",
         monthly_payment_kes: toKES(parseFloat(fLoan.monthlyPayment)||0, fLoan.currency, currencies),
@@ -1340,6 +1343,7 @@ export default function App() {
       name:           l.name,
       lender:         l.lender || "",
       principal:      String(l.principal || l.principal_kes || ""),
+      currentBalance: String(l.remaining ?? l.remaining_kes ?? l.principal ?? l.principal_kes ?? ""),
       rate:           String(l.rate || l.interest_rate || ""),
       monthlyPayment: String(l.monthlyPayment || l.monthly_payment_kes || ""),
       nextDue:        l.nextDue || l.next_due_date || "",
@@ -1478,6 +1482,7 @@ export default function App() {
         if (fLoan.lender)         payload.lender              = fLoan.lender;
         if (fLoan.currency)       payload.currency            = fLoan.currency;
         if (fLoan.principal)      payload.principal_kes       = toKES(parseFloat(fLoan.principal), fLoan.currency, currencies);
+        if (fLoan.currentBalance !== "") payload.remaining_kes = toKES(parseFloat(fLoan.currentBalance)||0, fLoan.currency, currencies);
         if (fLoan.rate)           payload.interest_rate       = parseFloat(fLoan.rate);
         if (fLoan.monthlyPayment) payload.monthly_payment_kes = toKES(parseFloat(fLoan.monthlyPayment), fLoan.currency, currencies);
         if (fLoan.nextDue)        payload.next_due_date       = fLoan.nextDue;
@@ -2905,9 +2910,10 @@ export default function App() {
         <Field label="Lender"    value={fLoan.lender} onChange={v=>setFLoan({...fLoan,lender:v})} placeholder="e.g. KCB Bank"/>
         <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
-          <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v})} placeholder="e.g. 500000"/>
+          <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v,currentBalance:v})} placeholder="e.g. 500000"/>
           <Field label="Rate (%)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 10"/>
         </div>
+        <Field label={`Current Balance (${fLoan.currency})`} type="number" value={fLoan.currentBalance} onChange={v=>setFLoan({...fLoan,currentBalance:v})} placeholder="Outstanding amount remaining" note={!editLoan?"Leave same as principal if no repayments made yet":undefined}/>
         {!editLoan&&<Field label="Interest Type" value={fLoan.interestType} onChange={v=>setFLoan({...fLoan,interestType:v})} options={[{value:"compound",label:"📈 Compound — interest accrues over time"},{value:"simple",label:"📋 Simple — fixed total from the start"}]}/>}
         {(()=>{
           const p=parseFloat(fLoan.principal), r=parseFloat(fLoan.rate);

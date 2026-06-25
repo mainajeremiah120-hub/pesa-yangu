@@ -311,14 +311,16 @@ loanRouter.post("/", async (req,res,next)=>{
     if(req.user.plan==="free"){const {rows}=await query("SELECT COUNT(*) FROM loans WHERE user_id=$1",[req.user.id]);if(parseInt(rows[0].count)>=2) return res.status(403).json({error:"Free plan allows 2 loans.",code:"PLAN_LIMIT"});}
     const d=z.object({
       name:z.string().min(1), lender:z.string().optional(), currency:z.string().length(3).default("KES"),
-      principal_kes:z.number().positive(), interest_rate:z.number().min(0).default(0),
+      principal_kes:z.number().positive(), remaining_kes:z.number().min(0).optional(),
+      interest_rate:z.number().min(0).default(0),
       interest_type:z.enum(["simple","compound"]).default("compound"),
       monthly_payment_kes:z.number().min(0).default(0), next_due_date:z.string().optional(), note:z.string().optional(),
     }).parse(req.body);
     // Simple interest: fix total = principal × (1 + rate/100) at creation time
-    const remaining_kes = d.interest_type === "simple"
+    const defaultRemaining = d.interest_type === "simple"
       ? d.principal_kes * (1 + d.interest_rate / 100)
       : d.principal_kes;
+    const remaining_kes = d.remaining_kes ?? defaultRemaining;
     const {rows}=await query(
       "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,monthly_payment_kes,next_due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
       [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.monthly_payment_kes,d.next_due_date||null,d.note||null]);

@@ -69,7 +69,8 @@ const fmtC = (amtKES, dispCode, currencies, compact=false) => {
   return cur.symbol + new Intl.NumberFormat("en-KE", opts).format(val);
 };
 const fmtPct = (n) => `${n>=0?"+":""}${n.toFixed(1)}%`;
-const todayStr = () => new Date().toISOString().slice(0,10);
+const todayStr  = () => new Date().toISOString().slice(0,10);
+const nowTimeStr = () => { const d = new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
 const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const fmtDate = (d) => {
   if (!d) return "—";
@@ -83,12 +84,19 @@ const fmtDate = (d) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── CSV / Export helpers ───────────────────────────────────────────────────
 const TX_TEMPLATE_ROWS = [
-  ["date","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"],
-  ["2025-06-01","income","Salary","95000","Employer Ltd","June salary","Equity Bank","",""],
-  ["2025-06-01","expense","Rent / Mortgage","25000","Landlord","June rent","Equity Bank","",""],
-  ["2025-06-01","transfer","","10000","","Move to savings","","Equity Bank","KCB Savings"],
+  ["date","time","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"],
+  ["2025-06-01","09:30","income","Salary","95000","Employer Ltd","June salary","Equity Bank","",""],
+  ["2025-06-01","14:00","expense","Rent / Mortgage","25000","Landlord","June rent","Equity Bank","",""],
+  ["2025-06-01","10:00","transfer","","10000","","Move to savings","","Equity Bank","KCB Savings"],
 ];
 const TX_TEMPLATE = TX_TEMPLATE_ROWS.map(r=>r.join(",")).join("\n");
+
+const WALLETS_TEMPLATE = [
+  ["name","account_type","currency","opening_balance"],
+  ["Equity Bank","current","KES","50000"],
+  ["KCB Savings","savings","KES","20000"],
+  ["MPESA","digital","KES","5000"],
+].map(r=>r.join(",")).join("\n");
 
 // Parse a CSV string into array of objects
 function parseCSV(text) {
@@ -127,9 +135,10 @@ function validateImportRows(rows, wallets, expCats, incCats) {
     const errors = [];
     const type = (r.type || "expense").toLowerCase();
 
-    // Date
+    // Date + time
     const dateVal = r.date || r.tx_date || "";
     if (!dateVal || isNaN(Date.parse(dateVal))) errors.push("Invalid date");
+    const timeVal = (r.time || "").trim() || "00:00";
 
     // Amount
     const amount = parseFloat(r.amount_kes || r.amount || 0);
@@ -167,6 +176,7 @@ function validateImportRows(rows, wallets, expCats, incCats) {
       ...r,
       _type:         type,
       _date:         dateVal,
+      _time:         timeVal,
       _amount:       amount,
       _walletId:     walletId,
       _fromWalletId: fromWalletId,
@@ -959,7 +969,7 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
   // FORM BLANKS
   // ─────────────────────────────────────────────────────────────────────────
-  const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly" };
+  const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly", time:"" };
   const blankXfer  = { from:"", to:"", amount:"", note:"" };
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
   const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
@@ -1034,7 +1044,7 @@ export default function App() {
       amount_kes:  amtKES,
       merchant:    fTx.merchant||undefined,
       note:        fTx.note||undefined,
-      tx_date:     todayStr(),
+      tx_date:     `${fTx.date||todayStr()}T${fTx.time||nowTimeStr()}:00`,
     };
     try {
       const { transaction: tx } = await txApi.create(payload);
@@ -1267,7 +1277,8 @@ export default function App() {
       merchant: tx.merchant || "",
       isRecurring: false,
       freq: "monthly",
-      date: tx.date || tx.tx_date || todayStr(),
+      date: tx.date || (tx.tx_date||"").slice(0,10) || todayStr(),
+      time: (() => { const d = tx.tx_date ? new Date(tx.tx_date) : new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); })(),
     });
     openM("tx");
   };
@@ -1358,7 +1369,7 @@ export default function App() {
           amount_kes:  amtKES,
           merchant:    fTx.merchant || undefined,
           note:        fTx.note || undefined,
-          tx_date:     fTx.date || todayStr(),
+          tx_date:     `${fTx.date||todayStr()}T${fTx.time||nowTimeStr()}:00`,
         });
         const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
         setTxs(p => p.map(t => t.id === editTx.id ? norm : t));
@@ -1679,17 +1690,19 @@ export default function App() {
 
   const exportAll = () => {
     // Transactions
-    const txHeaders = ["date","type","category","amount_kes","merchant","note","wallet","currency"];
+    const txHeaders = ["date","time","type","category","amount_kes","merchant","note","wallet","currency"];
     const txRows = txs.map(t => {
       const cat = t.type==="expense"?expCats.find(c=>c.id===(t.category||t.category_id)):incCats.find(c=>c.id===(t.category||t.category_id));
       const w   = wallets.find(w=>w.id===(t.wallet||t.wallet_id));
-      return { date:t.date||t.tx_date, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
+      const dt  = t.tx_date ? new Date(t.tx_date) : null;
+      const timeStr = dt ? String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0") : "00:00";
+      return { date:(t.date||(t.tx_date||"").slice(0,10)), time:timeStr, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
     });
     downloadBlob(new Blob([toCSV(txHeaders, txRows)]), `pesa-yangu-transactions-${todayStr()}.csv`);
 
     // Wallets
-    const walHeaders = ["name","account_type","currency","balance"];
-    const walRows = wallets.map(w => ({ name:w.name, account_type:w.account_type||w.accountType||"", currency:w.currency||"KES", balance:parseFloat(w.balance||0) }));
+    const walHeaders = ["name","account_type","currency","opening_balance","balance"];
+    const walRows = wallets.map(w => ({ name:w.name, account_type:w.account_type||w.accountType||"", currency:w.currency||"KES", opening_balance:parseFloat(w.opening_balance||0), balance:parseFloat(w.balance||0) }));
     downloadBlob(new Blob([toCSV(walHeaders, walRows)]), `pesa-yangu-wallets-${todayStr()}.csv`);
 
     // Goals
@@ -1739,7 +1752,7 @@ export default function App() {
         if (!knownCatKeys.has(key)) newCatMap.set(key, { name: r.category, type: catType });
       });
 
-      const newWallets = [...newWalletNames].map(name => ({ name, type: "current", selected: true }));
+      const newWallets = [...newWalletNames].map(name => ({ name, type: "current", selected: true, openingBalance: "" }));
       const newCats    = [...newCatMap.values()].map(c => ({ ...c, selected: true }));
 
       if (newWallets.length || newCats.length) {
@@ -1761,7 +1774,8 @@ export default function App() {
     try {
       // Create selected wallets
       for (const w of importNewWallets.filter(w => w.selected)) {
-        await walletsApi.create({ name: w.name, account_type: w.type, currency: "KES", balance: 0, color: "#00D4AA", icon: "●" });
+        const bal = parseFloat(w.openingBalance) || 0;
+        await walletsApi.create({ name: w.name, account_type: w.type, currency: "KES", balance: bal, opening_balance: bal, color: "#00D4AA", icon: "🏦" });
       }
       // Create selected categories
       for (const c of importNewCats.filter(c => c.selected)) {
@@ -1791,9 +1805,10 @@ export default function App() {
     setImportBusy(true);
     try {
       // Build a CSV from only valid rows and send to backend
-      const headers = ["date","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"];
+      const headers = ["date","time","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"];
       const validRows = valid.map(r => ({
         date:        r._date,
+        time:        r._time || "00:00",
         type:        r._type === "transfer" ? "transfer_out" : r._type,
         category:    r.category || "",
         amount_kes:  r._amount,
@@ -2751,7 +2766,10 @@ export default function App() {
         <Field label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} options={(fTx.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
-        <Field label="Date" type="date" value={fTx.date||todayStr()} onChange={v=>setFTx({...fTx,date:v})}/>
+        <div className="grid-2">
+          <Field label="Date" type="date" value={fTx.date||todayStr()} onChange={v=>setFTx({...fTx,date:v})}/>
+          <Field label="Time" type="time" value={fTx.time||nowTimeStr()} onChange={v=>setFTx({...fTx,time:v})}/>
+        </div>
         <Field label="Merchant / Source" value={fTx.merchant} onChange={v=>setFTx({...fTx,merchant:v})} placeholder="e.g. Naivas"/>
         <Field label="Note (optional)" value={fTx.note} onChange={v=>setFTx({...fTx,note:v})} placeholder="e.g. Weekly groceries"/>
         {!editTx&&<><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
@@ -2981,7 +2999,10 @@ export default function App() {
           <div className="grid-3" style={{gap:8}}>
             <Btn onClick={exportTransactions} outline color={C.teal} small style={{width:"100%"}}>📋 Transactions</Btn>
             <Btn onClick={exportAll} color={C.teal} small style={{width:"100%"}}>📦 Full Export (3 CSVs)</Btn>
-            <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-template.csv`)} outline color={C.textMuted} small style={{width:"100%",fontSize:11}}>📄 Template CSV</Btn>
+            <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-template.csv`)} outline color={C.textMuted} small style={{width:"100%",fontSize:11}}>📄 Transactions Template</Btn>
+          </div>
+          <div style={{marginTop:8}}>
+            <Btn onClick={()=>downloadBlob(new Blob([WALLETS_TEMPLATE]),`pesa-yangu-wallets-template.csv`)} outline color={C.blue} small style={{fontSize:11}}>🏦 Wallets Template (with Opening Balance)</Btn>
           </div>
           <div style={{marginTop:8,background:C.navyLight,borderRadius:8,padding:"8px 12px",fontSize:10,color:C.textFaint,lineHeight:1.7}}>
             Full export downloads 3 files: <strong style={{color:C.textMuted}}>transactions</strong>, <strong style={{color:C.textMuted}}>wallets</strong>, and <strong style={{color:C.textMuted}}>goals</strong>.
@@ -3004,9 +3025,9 @@ export default function App() {
               <div style={{marginBottom:16}}>
                 <div style={{fontWeight:700,fontSize:12,color:C.teal,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>New Accounts / Wallets</div>
                 {importNewWallets.map((w,i) => (
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,background:C.navyLight,borderRadius:10,padding:"10px 14px"}}>
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,background:C.navyLight,borderRadius:10,padding:"10px 14px",flexWrap:"wrap"}}>
                     <input type="checkbox" checked={w.selected} onChange={()=>setImportNewWallets(p=>p.map((x,j)=>j===i?{...x,selected:!x.selected}:x))} style={{accentColor:C.teal,width:16,height:16,cursor:"pointer"}}/>
-                    <span style={{flex:1,fontWeight:600,fontSize:13}}>{w.name}</span>
+                    <span style={{flex:1,fontWeight:600,fontSize:13,minWidth:80}}>{w.name}</span>
                     <select value={w.type} onChange={e=>setImportNewWallets(p=>p.map((x,j)=>j===i?{...x,type:e.target.value}:x))}
                       style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:7,color:C.textMuted,padding:"4px 8px",fontSize:11,cursor:"pointer"}}>
                       <option value="current">Current</option>
@@ -3015,6 +3036,8 @@ export default function App() {
                       <option value="digital">Digital / M-Pesa</option>
                       <option value="investment">Investment</option>
                     </select>
+                    <input type="number" value={w.openingBalance} onChange={e=>setImportNewWallets(p=>p.map((x,j)=>j===i?{...x,openingBalance:e.target.value}:x))}
+                      placeholder="Opening balance (KES)" style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:7,color:C.textPrimary,padding:"4px 8px",fontSize:11,width:160}}/>
                   </div>
                 ))}
               </div>
@@ -3054,9 +3077,10 @@ export default function App() {
             <div style={{background:C.navyLight,borderRadius:10,padding:"12px 14px",fontSize:11,color:C.textMuted,lineHeight:1.9}}>
               <strong style={{color:C.textPrimary}}>Supported columns:</strong><br/>
               <code style={{color:C.teal}}>date, type, amount_kes, wallet</code> — required<br/>
-              <code style={{color:C.blue}}>category, merchant, note</code> — optional<br/>
+              <code style={{color:C.blue}}>time, category, merchant, note</code> — optional<br/>
               <code style={{color:C.purple}}>from_wallet, to_wallet</code> — for transfers<br/>
-              <div style={{marginTop:6,color:C.textFaint}}>Types: expense · income · transfer · refund</div>
+              <div style={{marginTop:6,color:C.textFaint}}>date format: YYYY-MM-DD · time format: HH:MM · Types: expense · income · transfer · refund</div>
+              <div style={{marginTop:4,color:C.gold}}>⚠ Set correct opening balances on your accounts before importing to get accurate final balances.</div>
             </div>
           </>
         )}

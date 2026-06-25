@@ -158,8 +158,11 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
       const v=line.split(",").map(x=>x.trim().replace(/^"|"$/g,""));
       const type=(v[idx("type")]||"expense").toLowerCase();
       const cat=(v[idx("category")]||"").toLowerCase();
+      const dateStr = v[idx("date")] || new Date().toISOString().slice(0,10);
+      const timeStr = (v[idx("time")] || "").trim() || "00:00";
+      const tx_date = dateStr.includes("T") ? dateStr : `${dateStr}T${timeStr}:00`;
       return {
-        tx_date:  v[idx("date")]||new Date().toISOString().slice(0,10),
+        tx_date,
         type:     ["expense","income","transfer_in","transfer_out"].includes(type)?type:"expense",
         cat_id:   catMap[`${cat}:${type}`]||null,
         amount:   parseFloat(v[idx("amount_kes")]||v[idx("amount")]||"0")||0,

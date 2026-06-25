@@ -2249,9 +2249,11 @@ export default function App() {
                 const bal=parseFloat(w.balance||0);
                 const wIn=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="income"||t.type==="transfer_in")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
                 const wOut=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="expense"||t.type==="transfer_out")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
-                return<Card key={w.id} style={{borderTop:`3px solid ${w.color}`}}>
+                return<Card key={w.id} onClick={()=>goToWalletTxs(w.id)} style={{borderTop:`3px solid ${w.color}`,cursor:"pointer",transition:"box-shadow 0.15s",userSelect:"none"}}
+                  onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 4px 20px ${w.color}33`}
+                  onMouseLeave={e=>e.currentTarget.style.boxShadow=""}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <div style={{cursor:"pointer"}} onClick={()=>goToWalletTxs(w.id)}>
+                    <div>
                       <div style={{fontSize:22,marginBottom:3}}>{w.icon}</div>
                       <div style={{fontWeight:700,fontSize:14}}>{w.name}</div>
                       <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
@@ -2264,8 +2266,8 @@ export default function App() {
                       {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>≈ {disp(bal)}</div>}
                       {w.opening_balance!=null&&<div style={{color:C.textFaint,fontSize:10,marginTop:2}}>Opening: {fmtC(parseFloat(w.opening_balance||0),w.currency,currencies)}</div>}
                       <div style={{display:"flex",gap:5,marginTop:6}}>
-                        <button onClick={()=>openEditWallet(w)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
-                        <button onClick={()=>askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
+                        <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
+                        <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                       </div>
                     </div>
                   </div>
@@ -2273,9 +2275,6 @@ export default function App() {
                     <span>↑ {disp(wIn)}</span><span>↓ {disp(wOut)}</span>
                   </div>
                   <Sparkline values={[bal*0.82,bal*0.87,bal*0.85,bal*0.92,bal*0.97,bal]} color={w.color} width={170} height={26}/>
-                  <button onClick={()=>goToWalletTxs(w.id)} style={{marginTop:10,width:"100%",background:"none",border:`1px solid ${w.color}44`,borderRadius:8,color:w.color,padding:"6px 0",cursor:"pointer",fontSize:11,fontWeight:600}}>
-                    📋 View transactions
-                  </button>
                 </Card>;
               })}
             </div>

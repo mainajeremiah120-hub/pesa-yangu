@@ -1,5 +1,5 @@
 /**
- * theme.js — Design token sets for dark and light mode
+ * theme.js � Design token sets for dark and light mode
  * Used across App.jsx and AuthPage.jsx
  */
 

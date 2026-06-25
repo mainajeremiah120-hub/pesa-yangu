@@ -1,11 +1,11 @@
 ﻿/**
- * Pesa Yangu â€“ App.jsx
- * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * Pesa Yangu – App.jsx
+ * ─────────────────────────────────────────────────────────────────────────────
  * Fully wired to backend API. All data loaded from server on mount.
  * All mutations (add/update/delete) call the API then update local state
  * optimistically for a fast, responsive feel.
  *
- * Stack: React 18 + Vite â†’ Vercel
+ * Stack: React 18 + Vite → Vercel
  * API:   Express on Render  (VITE_API_URL env var)
  * Auth:  JWT (stored in localStorage, auto-refreshed by api.js interceptor)
  */
@@ -21,19 +21,19 @@ import { AdminApp, AdminPanel } from "./AdminDashboard.jsx";
 import { SupportTickets } from "./components/SupportTickets.jsx";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// DESIGN TOKENS  â€” resolved dynamically from theme; see App() for C usage
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// DESIGN TOKENS  — resolved dynamically from theme; see App() for C usage
+// ─────────────────────────────────────────────────────────────────────────────
 // Static accent colours shared by both themes (used outside component scope)
 const ACCENT = {
   teal:"#00D4AA", gold:"#F5C842", coral:"#FF6B6B",
   blue:"#4A90E2", purple:"#9B59B6", green:"#2ECC71", orange:"#E67E22",
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // PLAN LIMITS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// All features unlocked â€” billing restrictions removed
+// ─────────────────────────────────────────────────────────────────────────────
+// All features unlocked — billing restrictions removed
 const PLAN_LIMITS = {
   free: { wallets:Infinity, txHistory:Infinity, goals:Infinity,
           investments:Infinity, loans:Infinity, aiAdvice:true,
@@ -43,18 +43,18 @@ const PLAN_LIMITS = {
           reconcile:true, multiCurrency:true },
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // CURRENCY HELPERS  (rates overwritten from /fx-rates on mount)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const DEFAULT_CURRENCIES = [
   { code:"KES", symbol:"KSh", name:"Kenyan Shilling",    rate:1       },
   { code:"USD", symbol:"$",   name:"US Dollar",           rate:0.00775 },
-  { code:"EUR", symbol:"â‚¬",   name:"Euro",                rate:0.00715 },
-  { code:"GBP", symbol:"Â£",   name:"British Pound",       rate:0.00610 },
+  { code:"EUR", symbol:"€",   name:"Euro",                rate:0.00715 },
+  { code:"GBP", symbol:"£",   name:"British Pound",       rate:0.00610 },
   { code:"UGX", symbol:"USh", name:"Ugandan Shilling",    rate:28.5    },
   { code:"TZS", symbol:"TSh", name:"Tanzanian Shilling",  rate:20.1    },
   { code:"ZAR", symbol:"R",   name:"South African Rand",  rate:0.143   },
-  { code:"NGN", symbol:"â‚¦",   name:"Nigerian Naira",      rate:12.6    },
+  { code:"NGN", symbol:"₦",   name:"Nigerian Naira",      rate:12.6    },
 ];
 
 const getCur  = (currencies, code) => currencies.find(c => c.code === code) || currencies[0];
@@ -71,10 +71,10 @@ const fmtC = (amtKES, dispCode, currencies, compact=false) => {
 const fmtPct = (n) => `${n>=0?"+":""}${n.toFixed(1)}%`;
 const todayStr = () => new Date().toISOString().slice(0,10);
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // CSV UTILITIES
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€â”€ CSV / Export helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── CSV / Export helpers ───────────────────────────────────────────────────
 const TX_TEMPLATE_ROWS = [
   ["date","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"],
   ["2025-06-01","income","Salary","95000","Employer Ltd","June salary","Equity Bank","",""],
@@ -153,7 +153,7 @@ function validateImportRows(rows, wallets, expCats, incCats) {
       const key = r.category.toLowerCase() + ":" + (type === "income" ? "income" : "expense");
       const cat = catByName[key];
       if (cat) catId = cat.id;
-      // Not an error, just unmatched â€” we'll show it as a warning
+      // Not an error, just unmatched — we'll show it as a warning
     }
 
     return {
@@ -184,12 +184,12 @@ const downloadBlob = (blob, name) => {
   URL.revokeObjectURL(url);
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // PRIMITIVE COMPONENTS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// THEME CONTEXT â€” lets primitive components read current C without prop drilling
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// THEME CONTEXT — lets primitive components read current C without prop drilling
+// ─────────────────────────────────────────────────────────────────────────────
 const ThemeCtx = createContext(null);
 const useC = () => useContext(ThemeCtx);
 
@@ -292,7 +292,7 @@ const Modal = ({ open, onClose, title, children, wide=false }) => {
     <div className="modal-container" style={{ background:C.navyMid, borderRadius:20, padding:28, width:"100%", maxWidth:wide?740:480, border:`1px solid ${C.navyLight}`, maxHeight:"94vh", overflowY:"auto", boxShadow:`0 20px 60px ${C.shadow}` }} onClick={e=>e.stopPropagation()}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
         <div style={{ color:C.textPrimary, fontSize:17, fontWeight:700 }}>{title}</div>
-        <button onClick={onClose} style={{ background:C.navyLight, border:"none", color:C.textMuted, borderRadius:8, width:32, height:32, cursor:"pointer", fontSize:15 }}>âœ•</button>
+        <button onClick={onClose} style={{ background:C.navyLight, border:"none", color:C.textMuted, borderRadius:8, width:32, height:32, cursor:"pointer", fontSize:15 }}>✕</button>
       </div>
       {children}
     </div>
@@ -313,7 +313,7 @@ const Field = ({ label, type="text", value, onChange, placeholder, options, note
 };
 
 
-// â”€â”€ Color Picker â€” swatch grid replacing the raw hex dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Color Picker — swatch grid replacing the raw hex dropdown ────────────────
 const ColorPicker = ({ label, value, onChange, colors }) => {
   const C = useC();
   return (
@@ -392,13 +392,13 @@ const FileUpload = ({ label, accept, onFile, files=[] }) => {
     <div onClick={()=>ref.current.click()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)onFile(f);}} onDragOver={e=>e.preventDefault()}
       style={{ border:`2px dashed ${C.navyLight}`, borderRadius:12, padding:16, textAlign:"center", cursor:"pointer" }}
       onMouseEnter={e=>e.currentTarget.style.borderColor=C.teal+"88"} onMouseLeave={e=>e.currentTarget.style.borderColor=C.navyLight}>
-      <div style={{ fontSize:22, marginBottom:5 }}>ðŸ“Ž</div>
+      <div style={{ fontSize:22, marginBottom:5 }}>📎</div>
       <div style={{ color:C.textMuted, fontSize:12 }}>Drop or <span style={{color:C.teal,fontWeight:600}}>browse</span></div>
       <div style={{ color:C.textFaint, fontSize:10, marginTop:3 }}>{accept||"PDF, CSV"}</div>
       <input ref={ref} type="file" accept={accept} style={{display:"none"}} onChange={e=>{if(e.target.files[0])onFile(e.target.files[0]);e.target.value="";}}/>
     </div>
     {files.map((f,i)=><div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginTop:6, background:C.navyLight, borderRadius:8, padding:"7px 12px" }}>
-      <span style={{fontSize:13}}>ðŸ“„</span>
+      <span style={{fontSize:13}}>📄</span>
       <span style={{ color:C.textMuted, fontSize:12, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</span>
       <Badge color={C.teal}>Attached</Badge>
     </div>)}
@@ -406,14 +406,14 @@ const FileUpload = ({ label, accept, onFile, files=[] }) => {
 };
 
 
-// â”€â”€ Confirm Delete Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Confirm Delete Dialog ────────────────────────────────────────────────────
 const ConfirmModal = ({ open, onClose, onConfirm, title, message, danger=true }) => {
   const C = useC();
   if (!open) return null;
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={onClose}>
       <div style={{ background:C.navyMid, borderRadius:16, padding:24, width:"100%", maxWidth:380, border:`1px solid ${danger?C.coral+"44":C.navyLight}`, boxShadow:`0 20px 60px ${C.shadow}` }} onClick={e=>e.stopPropagation()}>
-        <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>{danger ? "âš ï¸" : "â“"}</div>
+        <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>{danger ? "⚠�" : "��"}</div>
         <div style={{ fontWeight:700, fontSize:16, textAlign:"center", marginBottom:8, color:C.textPrimary }}>{title}</div>
         <div style={{ color:C.textMuted, fontSize:13, textAlign:"center", marginBottom:20, lineHeight:1.6 }}>{message}</div>
         <div style={{ display:"flex", gap:10 }}>
@@ -427,9 +427,9 @@ const ConfirmModal = ({ open, onClose, onConfirm, title, message, danger=true })
   );
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// GOAL CARD  â€” own component so useState doesn't break inside .map()
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// GOAL CARD  — own component so useState doesn't break inside .map()
+// ─────────────────────────────────────────────────────────────────────────────
 function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
   const C = useC();
   const [amt,      setAmt]      = useState("");
@@ -465,14 +465,14 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
         <div>
           <div style={{ fontSize:26, marginBottom:3 }}>{g.icon}</div>
           <div style={{ fontWeight:700, fontSize:14 }}>{g.name}</div>
-          <div style={{ color:C.textMuted, fontSize:10 }}>linked to {w?.name||"â€”"}</div>
+          <div style={{ color:C.textMuted, fontSize:10 }}>linked to {w?.name||"—"}</div>
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ fontFamily:"'DM Serif Display',serif", fontSize:22, color:g.color }}>{pct.toFixed(0)}%</div>
           <div style={{ color:C.textMuted, fontSize:10 }}>of {disp(g.target_kes)}</div>
           {(onEdit||onDelete)&&<div style={{display:"flex",gap:5,marginTop:4}}>
-            {onEdit&&<button onClick={()=>onEdit(g)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>âœï¸ Edit</button>}
-            {onDelete&&<button onClick={()=>onDelete(g.id,g.name)} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>ðŸ—‘ Delete</button>}
+            {onEdit&&<button onClick={()=>onEdit(g)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>}
+            {onDelete&&<button onClick={()=>onDelete(g.id,g.name)} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>}
           </div>}
         </div>
       </div>
@@ -482,18 +482,18 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
         <span style={{ color:C.textMuted }}>Left: <strong style={{color:C.textPrimary}}>{disp(rem)}</strong></span>
       </div>
       {needed&&<div style={{ marginTop:8, background:C.navyLight, borderRadius:8, padding:"7px 10px", fontSize:11, color:C.textMuted }}>
-        ðŸ’¡ <strong style={{color:g.color}}>{disp(needed)}/mo</strong> needed Â· {months} months to {(g.deadline||"").slice(0,10)}
+        💡 <strong style={{color:g.color}}>{disp(needed)}/mo</strong> needed · {months} months to {(g.deadline||"").slice(0,10)}
       </div>}
       {pct>=100
-        ? <div style={{ marginTop:10, background:C.teal+"22", borderRadius:8, padding:"9px 14px", textAlign:"center", color:C.teal, fontWeight:700, fontSize:13 }}>ðŸŽ‰ Goal reached!</div>
+        ? <div style={{ marginTop:10, background:C.teal+"22", borderRadius:8, padding:"9px 14px", textAlign:"center", color:C.teal, fontWeight:700, fontSize:13 }}>🎉 Goal reached!</div>
         : <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:8 }}>
             <div style={{ color:C.textFaint, fontSize:10, textTransform:"uppercase", letterSpacing:"0.05em" }}>Top up this goal</div>
             {/* From wallet picker */}
             <select value={fromWal} onChange={e=>setFromWal(e.target.value)}
               style={{...inputStyle, cursor:"pointer"}}>
-              <option value="">â€” Select account to debit â€”</option>
+              <option value="">— Select account to debit —</option>
               {wallets.map(w=>(
-                <option key={w.id} value={w.id}>{w.icon} {w.name} Â· {disp(parseFloat(w.balance||0))} available</option>
+                <option key={w.id} value={w.id}>{w.icon} {w.name} · {disp(parseFloat(w.balance||0))} available</option>
               ))}
             </select>
             {/* Amount + Add button */}
@@ -508,7 +508,7 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
                 onKeyDown={e=>e.key==="Enter"&&handle()}
               />
               <Btn onClick={handle} disabled={!canAdd||busy} style={{padding:"8px 16px",fontSize:12,flexShrink:0}}>
-                {busy?"â€¦":"Add"}
+                {busy?"…":"Add"}
               </Btn>
             </div>
             {!fromWal&&<div style={{fontSize:10,color:C.coral}}>Select an account above to enable top-up</div>}
@@ -519,23 +519,23 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // LOADING SCREEN
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const LoadingScreen = ({ message="Loadingâ€¦" }) => {
+// ─────────────────────────────────────────────────────────────────────────────
+const LoadingScreen = ({ message="Loading…" }) => {
   const C = useC();
   return (
     <div style={{ minHeight:"100vh", background:C.navy, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',sans-serif" }}>
-      <div style={{ fontSize:36, marginBottom:16, color:C.teal, animation:"spin 1.2s linear infinite" }}>â—ˆ</div>
+      <div style={{ fontSize:36, marginBottom:16, color:C.teal, animation:"spin 1.2s linear infinite" }}>◈</div>
       <div style={{ color:C.textMuted, fontSize:14 }}>{message}</div>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS TAB
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const NOTIF_KEY = "py_notif_prefs";
 const loadNotif = () => { try { return JSON.parse(localStorage.getItem(NOTIF_KEY)||"{}"); } catch { return {}; } };
 const saveNotif = (k,v) => { const p={...loadNotif(),[k]:v}; localStorage.setItem(NOTIF_KEY,JSON.stringify(p)); };
@@ -591,7 +591,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Profile */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>ðŸ‘¤ Profile</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>👤 Profile</div>
         <div style={{marginBottom:12}}>
           <div style={{fontSize:11,color:C.textMuted,marginBottom:5}}>Full Name</div>
           <div style={{display:"flex",gap:8}}>
@@ -600,7 +600,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
               onFocus={e=>e.target.style.borderColor=C.teal} onBlur={e=>e.target.style.borderColor=C.navyLight}/>
             <button onClick={saveName} disabled={savingName||editName.trim()===user?.full_name}
               style={{background:C.teal,color:"#0B1120",border:"none",borderRadius:10,padding:"0 16px",fontWeight:700,fontSize:12,cursor:"pointer",opacity:(savingName||editName.trim()===user?.full_name)?0.5:1}}>
-              {savingName?"Savingâ€¦":"Save"}
+              {savingName?"Saving…":"Save"}
             </button>
           </div>
         </div>
@@ -612,26 +612,26 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Display & Currency */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>ðŸŒ Display & Currency</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>� Display & Currency</div>
         <div style={{marginBottom:14}}>
           <div style={{fontSize:11,color:C.textMuted,marginBottom:6}}>Base Currency</div>
           <select value={baseCurrency} onChange={e=>setBase(e.target.value)}
             style={{width:"100%",background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,padding:"10px 14px",color:C.textPrimary,fontSize:13,outline:"none",cursor:"pointer"}}>
-            {currencies.map(c=><option key={c.code} value={c.code}>{c.code} â€” {c.name}</option>)}
+            {currencies.map(c=><option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
           </select>
           <div style={{fontSize:11,color:C.textMuted,marginTop:5}}>All amounts display in this currency using live rates</div>
         </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div><div style={{fontSize:13,fontWeight:600}}>Theme</div><div style={{fontSize:11,color:C.textMuted}}>Currently {theme==="dark"?"Dark":"Light"} mode</div></div>
           <button onClick={toggleTheme} style={{background:C.navyLight,border:"none",borderRadius:10,padding:"8px 16px",color:C.textPrimary,cursor:"pointer",fontWeight:600,fontSize:12}}>
-            {theme==="dark"?"â˜€ï¸ Light Mode":"ðŸŒ™ Dark Mode"}
+            {theme==="dark"?"☀� Light Mode":"🌙 Dark Mode"}
           </button>
         </div>
       </Card>
 
       {/* Notifications */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>ðŸ”” Notification Preferences</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔔 Notification Preferences</div>
         <div style={{fontSize:11,color:C.textMuted,marginBottom:14}}>Controls which alerts you see in the app</div>
         <NotifRow C={C} id="budget_alerts"  label="Budget Alerts"    desc="Notify when a category exceeds its budget"/>
         <NotifRow C={C} id="goal_reminders" label="Goal Reminders"   desc="Remind you of upcoming goal deadlines"/>
@@ -641,12 +641,12 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Data Management */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>ðŸ“ Data Management</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>� Data Management</div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {rowBtn("â¬‡ï¸","Export Transactions","Download all records as CSV", exportTransactions)}
-          {rowBtn("â¬†ï¸","Import Transactions","Upload a CSV file to bulk-add records", ()=>openM("importExport"))}
-          {rowBtn("ðŸ—‘ï¸","Factory Reset","Delete all data and start fresh",
-            ()=>askConfirm("Factory Reset","This will permanently delete ALL your financial data â€” accounts, transactions, goals, loans, investments and categories. Your login account is kept. This cannot be undone.",
+          {rowBtn("⬇�","Export Transactions","Download all records as CSV", exportTransactions)}
+          {rowBtn("⬆�","Import Transactions","Upload a CSV file to bulk-add records", ()=>openM("importExport"))}
+          {rowBtn("🗑�","Factory Reset","Delete all data and start fresh",
+            ()=>askConfirm("Factory Reset","This will permanently delete ALL your financial data — accounts, transactions, goals, loans, investments and categories. Your login account is kept. This cannot be undone.",
               async()=>{try{await authApi.resetData();await loadData();showToast("All data cleared. Fresh start!",C.teal,4000);}catch(e){const msg=e?.response?.data?.error||e?.message||"Unknown error";console.error("Factory reset error:",e);showToast("Reset failed: "+msg,C.coral,6000);}}),
             true)}
         </div>
@@ -657,28 +657,28 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Account */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>ðŸ” Account</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>� Account</div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {rowBtn("ðŸšª","Sign Out","Log out of this device", logout)}
-          {rowBtn("âš ï¸","Deactivate Account","Permanently disable your account",
+          {rowBtn("🚪","Sign Out","Log out of this device", logout)}
+          {rowBtn("⚠�","Deactivate Account","Permanently disable your account",
             ()=>askConfirm("Deactivate Account","Your account will be deactivated and you will be signed out. Contact support to reactivate. Are you sure?",deactivateAccount),
             true)}
         </div>
       </Card>
 
-      <div style={{textAlign:"center",fontSize:11,color:C.textFaint,paddingBottom:20}}>Pesa Yangu Â· Built for Kenya ðŸ‡°ðŸ‡ª</div>
+      <div style={{textAlign:"center",fontSize:11,color:C.textFaint,paddingBottom:20}}>Pesa Yangu · Built for Kenya 🇰🇪</div>
     </div>
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
   const { user, plan, loading: authLoading, login, register, logout, updateUser } = useAuth();
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 
-  // â”€â”€ Theme
+  // ── Theme
   const [theme, setThemeState] = useState(getTheme);
   const C = tokens(theme);
   const toggleTheme = useCallback(() => {
@@ -688,7 +688,7 @@ export default function App() {
     window.dispatchEvent(new Event("py:theme")); // notify AuthPage if open
   }, [theme]);
 
-  // â”€â”€ Data state (all loaded from API)
+  // ── Data state (all loaded from API)
   const [wallets,     setWallets]     = useState([]);
   const [txs,         setTxs]         = useState([]);
   const [expCats,     setExpCats]     = useState([]);
@@ -701,7 +701,7 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError,   setDataError]   = useState("");
 
-  // â”€â”€ UI state
+  // ── UI state
   const [tab,    _setTab]   = useState("dashboard");
   const setTab = (newTab) => {
     _setTab(newTab);
@@ -725,7 +725,7 @@ export default function App() {
   const [aiText,       setAiText]    = useState("");
   const [idleWarning,  setIdleWarning] = useState(false); // show 1-min warning
 
-  // â”€â”€ Auto-logout after 15 min inactivity (warn at 14 min)
+  // ── Auto-logout after 15 min inactivity (warn at 14 min)
   useEffect(() => {
     if (!user) return;
     const WARN_MS   = 14 * 60 * 1000;
@@ -752,16 +752,16 @@ export default function App() {
     };
   }, [user, logout]);
 
-  // â”€â”€ Toast helper
+  // ── Toast helper
   const showToast = useCallback((msg, color=C.teal, duration=2800) => {
     setToast({msg,color});
     setTimeout(()=>setToast(null), duration);
   }, []);
 
-  // â”€â”€ Display helper
+  // ── Display helper
   const disp = useCallback((amtKES) => fmtC(amtKES, baseCurrency, currencies), [baseCurrency, currencies]);
 
-  // â”€â”€ Load all data after login
+  // ── Load all data after login
   const loadData = useCallback(() => {
     if (!user) return;
     setDataLoading(true);
@@ -811,7 +811,7 @@ export default function App() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // â”€â”€ Field normalisers (backend snake_case â†’ UI expectations)
+  // ── Field normalisers (backend snake_case → UI expectations)
   const normaliseCategory = (c) => ({
     ...c, budget: parseFloat(c.budget_kes||0), watch: !!c.watch,
   });
@@ -852,7 +852,7 @@ export default function App() {
     nextDate: r.next_date,
   });
 
-  // â”€â”€ Derived values
+  // ── Derived values
   const totalBalance   = wallets.reduce((s,w)=>s+parseFloat(w.balance||0), 0);
   const totalIncome    = txs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount, 0);
   const totalRefunds   = txs.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount, 0);
@@ -909,14 +909,14 @@ export default function App() {
   const score = (() => {
     if (!hasActivity) return 0;
     let s = 50;                                                     // neutral baseline
-    s += Math.min(35, Math.max(-25, savingsRate * 0.35));           // savings rate Â±35
+    s += Math.min(35, Math.max(-25, savingsRate * 0.35));           // savings rate ±35
     s -= overBudget.length * 7;                                     // -7 per over-budget category
     s += Math.min(10, goals.length * 2);                            // +2 per goal (max +10)
     return Math.max(1, Math.min(99, Math.round(s)));
   })();
 
-  // â”€â”€ Filtered transactions for Records tab (real-time search)
-  // â”€â”€ Search (declared here so filteredTxs useMemo can reference it without TDZ)
+  // ── Filtered transactions for Records tab (real-time search)
+  // ── Search (declared here so filteredTxs useMemo can reference it without TDZ)
   const [txSearch,       setTxSearch]       = useState("");
   const [txWalletFilter, setTxWalletFilter] = useState("");
 
@@ -942,27 +942,27 @@ export default function App() {
     });
   }, [txs, txSearch, txWalletFilter, expCats, incCats, wallets, limits.txHistory]);
 
-  // â”€â”€ Wallet / category select options
+  // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
   const loanOpts = loans.map(l=>({ value:l.id, label:l.name }));
   const invOpts  = investments.map(i=>({ value:i.id, label:`${i.name} (${i.ticker})` }));
-  const ICONS = ["ðŸ ","ðŸ”","ðŸš—","âš¡","ðŸŽ¬","ðŸ’Š","ðŸ›ï¸","ðŸ“š","ðŸ”","ðŸ¦","ðŸ’¼","ðŸ’»","ðŸ“ˆ","ðŸ·ï¸","ðŸŽ¯","ðŸ’µ","ðŸ’¹","ðŸŒ","âœˆï¸","ðŸŽ“","ðŸ’Ž","ðŸ‘¶","ðŸŒ´"];
+  const ICONS = ["��","��","🚗","⚡","🎬","💊","��","📚","�","��","💼","💻","📈","���","🎯","💵","💹","�","✈�","🎓","💎","👶","🌴"];
   const CAT_COLORS = [C.blue,C.teal,C.gold,C.coral,C.purple,C.green,C.orange,"#1ABC9C","#E74C3C","#3498DB","#8E44AD","#27AE60"];
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   // FORM BLANKS
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly" };
   const blankXfer  = { from:"", to:"", amount:"", note:"" };
-  const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"ðŸ¦", color:C.teal, openingBalance:"" };
-  const blankExpCat= { name:"", icon:"ðŸ·ï¸", color:C.blue, budget:"", watch:false };
-  const blankIncCat= { name:"", icon:"ðŸ’µ", color:C.teal, budget:"" };
+  const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"��", color:C.teal, openingBalance:"" };
+  const blankExpCat= { name:"", icon:"���", color:C.blue, budget:"", watch:false };
+  const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan  = { name:"", lender:"", principal:"", rate:"", interestType:"compound", monthlyPayment:"", nextDue:"", currency:"KES" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
-  const blankGoal  = { name:"", icon:"ðŸŽ¯", target:"", wallet:"", deadline:"", color:C.teal, openingBalance:"" };
+  const blankGoal  = { name:"", icon:"🎯", target:"", wallet:"", deadline:"", color:C.teal, openingBalance:"" };
   const blankRecur = { type:"expense", category:"", amount:"", wallet:"", merchant:"", note:"", freq:"monthly", nextDate:"" };
   const blankRefund = { refundOf:"", amount:"", wallet:"", note:"", date:todayStr() };
 
@@ -980,7 +980,7 @@ export default function App() {
   const [fRecur,  setFRecur] = useState(blankRecur);
   const [fRefund, setFRefund]= useState(blankRefund);
 
-  // â”€â”€ Edit targets (stores the entity being edited, null when adding new)
+  // ── Edit targets (stores the entity being edited, null when adding new)
   const [editTx,      setEditTx]      = useState(null);
   const [editWal,     setEditWal]     = useState(null);
   const [editGoal,    setEditGoal]    = useState(null);
@@ -1009,9 +1009,9 @@ export default function App() {
   const [importNewWallets, setImportNewWallets]= useState([]); // [{name, type, selected}]
   const [importNewCats,    setImportNewCats]   = useState([]); // [{name, type, selected}]
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   // API ACTIONS  (optimistic UI: update state first, then call API)
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Helper: get wallet currency
   const walletCur = (wid) => wallets.find(w=>w.id===wid)?.currency||"KES";
@@ -1244,9 +1244,9 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   // EDIT HANDLERS
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Open edit modal pre-filled
   const openEditTx = (tx) => {
@@ -1271,7 +1271,7 @@ export default function App() {
       name:           w.name,
       accountType:    w.account_type || w.accountType || "current",
       currency:       w.currency || "KES",
-      icon:           w.icon || "ðŸ¦",
+      icon:           w.icon || "��",
       color:          w.color || C.teal,
       openingBalance: String(parseFloat(w.balance || 0)),
     });
@@ -1282,7 +1282,7 @@ export default function App() {
     setEditGoal(g);
     setFGoal({
       name:     g.name,
-      icon:     g.icon || "ðŸŽ¯",
+      icon:     g.icon || "🎯",
       target:   String(g.target_kes || g.target || ""),
       wallet:   g.wallet_id || g.wallet || "",
       deadline: g.deadline || "",
@@ -1492,7 +1492,7 @@ export default function App() {
     }
   };
 
-  // â”€â”€ Refund handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Refund handlers ──────────────────────────────────────────────────────────
   const openRefundModal = (tx) => {
     setEditRefund(null);
     setFRefund({ refundOf:tx.id, amount:String(tx.amount||parseFloat(tx.amount_kes||0)), wallet:tx.wallet||tx.wallet_id||wallets[0]?.id||"", note:`Refund: ${tx.merchant||tx.note||""}`.trim(), date:todayStr() });
@@ -1537,7 +1537,7 @@ export default function App() {
     } catch(err) { showToast("Failed", C.coral); }
   };
 
-  // â”€â”€ Delete handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Delete handlers ──────────────────────────────────────────────────────────
   const deleteTx = async (id) => {
     try {
       await txApi.remove(id);
@@ -1568,7 +1568,7 @@ export default function App() {
         if (counts.investments)       parts.push(`${counts.investments} investment${counts.investments !== 1 ? "s" : ""}`);
         if (counts.loan_repayments)   parts.push(`${counts.loan_repayments} loan repayment${counts.loan_repayments !== 1 ? "s" : ""}`);
         if (counts.investment_returns) parts.push(`${counts.investment_returns} investment return${counts.investment_returns !== 1 ? "s" : ""}`);
-        showToast(`Can't delete â€” this account has ${parts.join(", ")} linked to it. Remove those first.`, C.coral, 6000);
+        showToast(`Can't delete — this account has ${parts.join(", ")} linked to it. Remove those first.`, C.coral, 6000);
       } else {
         showToast(err?.response?.data?.error || "Failed to delete", C.coral);
       }
@@ -1584,7 +1584,7 @@ export default function App() {
       if(res?.returned_kes>0 && g?.wallet_id) {
         setWallets(p=>p.map(w=>w.id===g.wallet_id?{...w,balance:parseFloat(w.balance)+(res.returned_kes)}:w));
       }
-      showToast("Goal deleted" + (res?.returned_kes>0 ? ` Â· ${disp(res.returned_kes)} returned to wallet` : ""));
+      showToast("Goal deleted" + (res?.returned_kes>0 ? ` · ${disp(res.returned_kes)} returned to wallet` : ""));
     } catch(err) { showToast("Failed to delete", C.coral); }
   };
 
@@ -1657,8 +1657,8 @@ export default function App() {
     } catch(err) { showToast("Failed to deactivate", C.coral); }
   };
 
-  // â”€â”€ Export CSV (download from backend)
-  // â”€â”€ Export: transactions + wallets + goals as separate CSV downloads â”€â”€â”€â”€â”€â”€â”€
+  // ── Export CSV (download from backend)
+  // ── Export: transactions + wallets + goals as separate CSV downloads ───────
   const exportTransactions = async () => {
     try {
       const res = await txApi.exportCSV();
@@ -1693,8 +1693,8 @@ export default function App() {
     showToast("3 CSV files downloaded");
   };
 
-  // â”€â”€ Import CSV
-  // â”€â”€ Import: client-side parse â†’ preview â†’ confirm â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Import CSV
+  // ── Import: client-side parse → preview → confirm ───────────────────────────
   const resetImport = () => {
     setImportRows([]); setImportErrors([]); setImportStep("upload");
     setImportParsedRows([]); setImportNewWallets([]); setImportNewCats([]);
@@ -1720,7 +1720,7 @@ export default function App() {
         ...expCats.map(c => c.name.toLowerCase()+":expense"),
         ...incCats.map(c => c.name.toLowerCase()+":income"),
       ]);
-      const newCatMap = new Map(); // "name:type" â†’ {name, type}
+      const newCatMap = new Map(); // "name:type" → {name, type}
       rows.forEach(r => {
         if (!r.category) return;
         const t = (r.type||"expense").toLowerCase();
@@ -1751,11 +1751,11 @@ export default function App() {
     try {
       // Create selected wallets
       for (const w of importNewWallets.filter(w => w.selected)) {
-        await walletsApi.create({ name: w.name, account_type: w.type, currency: "KES", balance: 0, color: "#00D4AA", icon: "ðŸ¦" });
+        await walletsApi.create({ name: w.name, account_type: w.type, currency: "KES", balance: 0, color: "#00D4AA", icon: "��" });
       }
       // Create selected categories
       for (const c of importNewCats.filter(c => c.selected)) {
-        await catsApi.create({ name: c.name, type: c.type, icon: c.type==="income"?"ðŸ’°":"ðŸ·ï¸", color:"#4A90E2" });
+        await catsApi.create({ name: c.name, type: c.type, icon: c.type==="income"?"💰":"���", color:"#4A90E2" });
       }
       // Reload fresh data for re-validation
       const [{ wallets: freshW }, { categories: freshCatRaw }] = await Promise.all([
@@ -1809,7 +1809,7 @@ export default function App() {
     finally { setImportBusy(false); }
   };
 
-  // â”€â”€ Reconcile
+  // ── Reconcile
   const handleRecoFile = async (file) => {
     if(!recoWallet) { showToast("Select an account first", C.coral); return; }
     setRecoFile(file); setRecoBusy(true);
@@ -1839,7 +1839,7 @@ export default function App() {
     } catch(err) { showToast("Import failed", C.coral); }
   };
 
-  // â”€â”€ AI Advice
+  // ── AI Advice
   const getAI = async () => {
     setAiLoading(true); setAiText(""); openM("ai");
     const ctx = {
@@ -1861,41 +1861,41 @@ export default function App() {
     setAiLoading(false);
   };
 
-  // â”€â”€ Share
+  // ── Share
   const shareApp = (via) => {
-    const msg = encodeURIComponent("Hey! I'm using Pesa Yangu to manage my finances â€” budgets, goals, investments and loans. Try it: https://pesayangu.africa");
+    const msg = encodeURIComponent("Hey! I'm using Pesa Yangu to manage my finances — budgets, goals, investments and loans. Try it: https://pesayangu.africa");
     if(via==="whatsapp") window.open(`https://wa.me/?text=${msg}`,"_blank");
     else if(via==="copy") { navigator.clipboard.writeText(decodeURIComponent(msg)); showToast("Link copied!"); }
     else if(via==="email") window.open(`mailto:?subject=Try Pesa Yangu&body=${msg}`,"_blank");
   };
 
-  // â”€â”€ Upgrade (demo: toggle plan locally until billing backend is live)
+  // ── Upgrade (demo: toggle plan locally until billing backend is live)
   const handleUpgrade = async () => {
     try {
       // In production this opens Stripe/MPesa checkout
       // For now just update local user state
       updateUser({ plan:"pro" });
       closeM("billing");
-      showToast("Welcome to Pesa Yangu Pro! âœ¦", C.gold);
+      showToast("Welcome to Pesa Yangu Pro! ✦", C.gold);
     } catch { showToast("Upgrade failed", C.coral); }
   };
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   // RENDER GATES
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Password reset link must always show reset form — even if user has an active session
+  // ─────────────────────────────────────────────────────────────────────────
+  // Password reset link must always show reset form � even if user has an active session
   if (new URLSearchParams(window.location.search).get('reset'))
     return <AuthPage onLogin={login} onRegister={register}/>;
 
-  if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yanguâ€¦"/></ThemeCtx.Provider>;
+  if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yangu…"/></ThemeCtx.Provider>;
   if (!user)       return <AuthPage onLogin={login} onRegister={register}/>;
   if (user.role === "admin") return <AdminApp user={user} logout={logout} C={C} theme={theme} toggleTheme={toggleTheme}/>;
-  if (dataLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Loading your dataâ€¦"/></ThemeCtx.Provider>;
+  if (dataLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Loading your data…"/></ThemeCtx.Provider>;
   if (dataError)   return (
     <ThemeCtx.Provider value={C}>
     <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
       <div style={{textAlign:"center",color:C.coral}}>
-        <div style={{fontSize:36,marginBottom:12}}>âš </div>
+        <div style={{fontSize:36,marginBottom:12}}>⚠</div>
         <div style={{fontWeight:700,marginBottom:8}}>{dataError}</div>
         <Btn onClick={()=>window.location.reload()}>Retry</Btn>
       </div>
@@ -1903,28 +1903,28 @@ export default function App() {
     </ThemeCtx.Provider>
   );
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   // NAV
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   const NAV = [
-    {id:"dashboard",    label:"Dashboard",  icon:"â—ˆ"},
-    {id:"accounts",     label:"Accounts",   icon:"ðŸ¦"},
-    {id:"transactions", label:"Records",    icon:"ðŸ“‹"},
-    {id:"budgets",      label:"Budgets",    icon:"ðŸŽ¯"},
-    {id:"goals",        label:"Goals",      icon:"ðŸ†"},
-    {id:"recurring",    label:"Recurring",  icon:"ðŸ”"},
-    {id:"investments",  label:"Invest",     icon:"ðŸ“ˆ"},
-    {id:"loans",        label:"Loans",      icon:"ðŸ¦"},
-    {id:"reconcile",    label:"Reconcile",  icon:"âœ…"},
-    {id:"settings",     label:"Settings",   icon:"âš™ï¸"},
-    ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"ðŸ›¡ï¸"}] : []),
+    {id:"dashboard",    label:"Dashboard",  icon:"◈"},
+    {id:"accounts",     label:"Accounts",   icon:"��"},
+    {id:"transactions", label:"Records",    icon:"📋"},
+    {id:"budgets",      label:"Budgets",    icon:"🎯"},
+    {id:"goals",        label:"Goals",      icon:"��"},
+    {id:"recurring",    label:"Recurring",  icon:"�"},
+    {id:"investments",  label:"Invest",     icon:"📈"},
+    {id:"loans",        label:"Loans",      icon:"��"},
+    {id:"reconcile",    label:"Reconcile",  icon:"✅"},
+    {id:"settings",     label:"Settings",   icon:"⚙�"},
+    ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"🛡�"}] : []),
   ];
 
   const ACCT_TYPE = {current:"Current",savings:"Savings",investment:"Investment",cash:"Cash",digital:"Mobile Money"};
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   // FULL RENDER
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <ThemeCtx.Provider value={C}>
     <div style={{minHeight:"100vh",background:C.navy,color:C.textPrimary,fontFamily:"'Inter',-apple-system,sans-serif",display:"flex",flexDirection:"column",overflowX:"hidden",transition:"background 0.3s,color 0.3s"}}>
@@ -2047,19 +2047,19 @@ export default function App() {
       {/* Header */}
       <div style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,padding:"11px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,gap:8,flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-          <div onClick={()=>setTab(tab==="settings"?"dashboard":"settings")} style={{width:30,height:30,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,cursor:"pointer"}}>â—ˆ</div>
+          <div onClick={()=>setTab(tab==="settings"?"dashboard":"settings")} style={{width:30,height:30,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,cursor:"pointer"}}>◈</div>
           <span style={{fontWeight:800,fontSize:16,letterSpacing:"-0.02em"}}>Pesa Yangu</span>
         </div>
         <select value={baseCurrency} onChange={e=>setBase(e.target.value)} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"5px 10px",fontSize:12,cursor:"pointer",outline:"none"}}>
           {currencies.map(c=><option key={c.code} value={c.code}>{c.code} {c.symbol}</option>)}
         </select>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
-          <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small className="desktop-only-btn">â‡„ Transfer</Btn>
-          <Btn onClick={()=>openM("share")} outline color={C.purple} small className="desktop-only-btn">ðŸ“¤ Share</Btn>
-          <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">â¬†â¬‡ Data</Btn>
-          <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">âœ¦ AI</Btn>
+          <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small className="desktop-only-btn">⇄ Transfer</Btn>
+          <Btn onClick={()=>openM("share")} outline color={C.purple} small className="desktop-only-btn">📤 Share</Btn>
+          <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">⬆⬇ Data</Btn>
+          <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
           <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
-          <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"â˜€ï¸":"ðŸŒ™"}</button>
+          <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀�":"🌙"}</button>
         </div>
       </div>
 
@@ -2075,7 +2075,7 @@ export default function App() {
       {/* Page */}
       <div className="page-container" style={{flex:1,padding:"18px",maxWidth:1000,margin:"0 auto",width:"100%",animation:"fadeUp 0.25s ease"}}>
 
-        {/* â•â• DASHBOARD â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� DASHBOARD ������������������������������������������������������ */}
         {tab==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div className="grid-2-1">
@@ -2083,19 +2083,19 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"center",gap:18}}>
                   <HealthRing score={score}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Financial Health â€” {user.full_name}</div>
+                    <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Financial Health — {user.full_name}</div>
                     <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24,color:score>=75?C.teal:score>=50?C.gold:C.coral,lineHeight:1.1,marginBottom:6}}>
                       {score>=75?"Looking Good":score>=50?"Room to Improve":"Needs Attention"}
                     </div>
-                    <div style={{color:C.textMuted,fontSize:12}}>Savings rate <strong style={{color:C.teal}}>{savingsRate.toFixed(0)}%</strong> Â· {overBudget.length} budget{overBudget.length!==1?"s":""} over</div>
-                    {overBudget.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>{overBudget.map(a=><Badge key={a.id} color={C.coral}>âš  {a.name}</Badge>)}</div>}
+                    <div style={{color:C.textMuted,fontSize:12}}>Savings rate <strong style={{color:C.teal}}>{savingsRate.toFixed(0)}%</strong> · {overBudget.length} budget{overBudget.length!==1?"s":""} over</div>
+                    {overBudget.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>{overBudget.map(a=><Badge key={a.id} color={C.coral}>⚠ {a.name}</Badge>)}</div>}
                   </div>
                 </div>
               </Card>
               <Card onClick={() => setTab("accounts")}>
                 <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Net Worth</div>
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:26,color:C.textPrimary}}>{disp(netWorth)}</div>
-                <div style={{color:C.textMuted,fontSize:11,marginTop:5,marginBottom:8}}>{baseCurrency} Â· Assets âˆ’ Liabilities</div>
+                <div style={{color:C.textMuted,fontSize:11,marginTop:5,marginBottom:8}}>{baseCurrency} · Assets − Liabilities</div>
                 <Sparkline values={[netWorth*0.88,netWorth*0.91,netWorth*0.89,netWorth*0.94,netWorth*0.97,netWorth]} color={C.teal} width={140} height={30}/>
               </Card>
             </div>
@@ -2111,15 +2111,15 @@ export default function App() {
             {watched.length>0&&(
               <Card onClick={() => setTab("budgets")} style={{borderLeft:`3px solid ${C.gold}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div style={{fontWeight:700,fontSize:13}}>ðŸ‘ Watching Closely</div>
-                  <button onClick={(e)=>{e.stopPropagation();setTab("budgets");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>Manage â†’</button>
+                  <div style={{fontWeight:700,fontSize:13}}>� Watching Closely</div>
+                  <button onClick={(e)=>{e.stopPropagation();setTab("budgets");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>Manage →</button>
                 </div>
                 {watched.map(c=>{
                   const spent=spendByCat[c.id]||0,over=c.budget>0&&spent>c.budget;
                   return<div key={c.id} style={{marginBottom:10}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                       <span style={{color:C.textMuted,fontSize:12}}>{c.icon} {c.name}</span>
-                      <span style={{fontSize:12,fontWeight:600,color:over?C.coral:C.textPrimary}}>{disp(spent)}{c.budget>0?` / ${disp(c.budget)}`:""}{over&&<span style={{color:C.coral}}> âš </span>}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:over?C.coral:C.textPrimary}}>{disp(spent)}{c.budget>0?` / ${disp(c.budget)}`:""}{over&&<span style={{color:C.coral}}> ⚠</span>}</span>
                     </div>
                     {c.budget>0&&<Bar value={spent} max={c.budget} color={c.color}/>}
                   </div>;
@@ -2154,7 +2154,7 @@ export default function App() {
               <Card onClick={() => setTab("goals")}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div style={{fontWeight:700,fontSize:13}}>Savings Goals</div>
-                  <button onClick={(e)=>{e.stopPropagation();setTab("goals");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View all â†’</button>
+                  <button onClick={(e)=>{e.stopPropagation();setTab("goals");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View all →</button>
                 </div>
                 <div className="grid-4">
                   {goals.map(g=>{const pct=Math.min((g.saved/g.target)*100,100);return(
@@ -2173,24 +2173,24 @@ export default function App() {
             <Card onClick={() => setTab("transactions")}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                 <div style={{fontWeight:700,fontSize:13}}>Recent Transactions</div>
-                <button onClick={(e)=>{e.stopPropagation();setTab("transactions");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View all â†’</button>
+                <button onClick={(e)=>{e.stopPropagation();setTab("transactions");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View all →</button>
               </div>
               {txs.slice(0,8).map((t,i)=>{
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";
                 const isRefund=t.type==="refund";
                 const catId=t.category||t.category_id;
-                const cat=isT?{icon:"â‡„",name:"Transfer",color:C.blue}:isRefund?{icon:"â†©ï¸",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
+                const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩�",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
                 const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
                 const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
                 return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<7?`1px solid ${C.navyLight}`:"none"}}>
-                  <div style={{width:34,height:34,borderRadius:9,background:(cat?.color||C.blue)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"ðŸ’¸"}</div>
+                  <div style={{width:34,height:34,borderRadius:9,background:(cat?.color||C.blue)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"💸"}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.merchant||t.note||"Transaction"}</div>
-                    <div style={{fontSize:10,color:C.textMuted}}>{cat?.name||"â€”"} Â· {w?.name||"â€”"} Â· {t.date||t.tx_date}</div>
+                    <div style={{fontSize:10,color:C.textMuted}}>{cat?.name||"—"} · {w?.name||"—"} · {t.date||t.tx_date}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontSize:12,fontWeight:700,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"âˆ’"}{disp(t.amount||parseFloat(t.amount_kes||0))}</div>
-                    {isRefund&&<Badge color="#9B59B6">â†© refund</Badge>}
+                    <div style={{fontSize:12,fontWeight:700,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"−"}{disp(t.amount||parseFloat(t.amount_kes||0))}</div>
+                    {isRefund&&<Badge color="#9B59B6">↩ refund</Badge>}
                   </div>
                 </div>;
               })}
@@ -2199,7 +2199,7 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• ACCOUNTS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� ACCOUNTS ������������������������������������������������������ */}
         {tab==="accounts"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2208,7 +2208,7 @@ export default function App() {
                 <div style={{color:C.textMuted,fontSize:12}}>Total: {disp(totalBalance)}</div>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small>â‡„ Transfer</Btn>
+                <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small>⇄ Transfer</Btn>
                 <Btn onClick={()=>{setFWal(blankWal);openM("wallet");}} small>+ Add Account</Btn>
               </div>
             </div>
@@ -2229,19 +2229,19 @@ export default function App() {
                     </div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:w.color}}>{fmtC(bal,w.currency,currencies)}</div>
-                      {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>â‰ˆ {disp(bal)}</div>}
+                      {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>≈ {disp(bal)}</div>}
                       <div style={{display:"flex",gap:5,marginTop:6}}>
-                        <button onClick={()=>openEditWallet(w)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>âœï¸ Edit</button>
-                        <button onClick={()=>askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>ðŸ—‘ Delete</button>
+                        <button onClick={()=>openEditWallet(w)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>
+                        <button onClick={()=>askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                       </div>
                     </div>
                   </div>
                   <div style={{display:"flex",gap:14,fontSize:11,color:C.textMuted,marginBottom:8}}>
-                    <span>â†‘ {disp(wIn)}</span><span>â†“ {disp(wOut)}</span>
+                    <span>↑ {disp(wIn)}</span><span>↓ {disp(wOut)}</span>
                   </div>
                   <Sparkline values={[bal*0.82,bal*0.87,bal*0.85,bal*0.92,bal*0.97,bal]} color={w.color} width={170} height={26}/>
                   <button onClick={()=>goToWalletTxs(w.id)} style={{marginTop:10,width:"100%",background:"none",border:`1px solid ${w.color}44`,borderRadius:8,color:w.color,padding:"6px 0",cursor:"pointer",fontSize:11,fontWeight:600}}>
-                    ðŸ“‹ View transactions
+                    📋 View transactions
                   </button>
                 </Card>;
               })}
@@ -2262,7 +2262,7 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• RECORDS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� RECORDS �������������������������������������������������������� */}
         {tab==="transactions"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2273,28 +2273,28 @@ export default function App() {
                 </div>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <Btn onClick={exportTransactions} outline color={C.textMuted} small>â¬‡ Export</Btn>
+                <Btn onClick={exportTransactions} outline color={C.textMuted} small>⬇ Export</Btn>
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
               </div>
             </div>
 
-            {/* â”€â”€ Wallet filter banner â”€â”€ */}
+            {/* ── Wallet filter banner ── */}
             {txWalletFilter&&(()=>{
               const fw=wallets.find(w=>w.id===txWalletFilter);
               return fw?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:fw.color+"22",border:`1px solid ${fw.color}44`,borderRadius:12,padding:"10px 14px",marginBottom:10}}>
-                <span style={{fontSize:13,color:fw.color,fontWeight:600}}>{fw.icon} {fw.name} â€” showing account transactions only</span>
-                <button onClick={()=>setTxWalletFilter("")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px"}}>âœ• Show all</button>
+                <span style={{fontSize:13,color:fw.color,fontWeight:600}}>{fw.icon} {fw.name} — showing account transactions only</span>
+                <button onClick={()=>setTxWalletFilter("")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px"}}>✕ Show all</button>
               </div>:null;
             })()}
 
-            {/* â”€â”€ Search bar â”€â”€ */}
+            {/* ── Search bar ── */}
             <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,color:C.textFaint,pointerEvents:"none"}}>ðŸ”</span>
+              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,color:C.textFaint,pointerEvents:"none"}}>�</span>
               <input
                 type="text"
                 value={txSearch}
                 onChange={e => setTxSearch(e.target.value)}
-                placeholder="Search by vendor, note, category or accountâ€¦"
+                placeholder="Search by vendor, note, category or account…"
                 style={{
                   width:"100%", boxSizing:"border-box",
                   background:C.navyMid, border:`1.5px solid ${txSearch ? C.teal : C.textFaint}`,
@@ -2315,7 +2315,7 @@ export default function App() {
                     color:C.textMuted, cursor:"pointer", fontSize:12,
                     padding:"2px 7px", lineHeight:1.4,
                   }}
-                >âœ•</button>
+                >✕</button>
               )}
             </div>
 
@@ -2328,7 +2328,7 @@ export default function App() {
             <Card style={{padding:0}}>
               {filteredTxs.length === 0 ? (
                 <div style={{padding:"40px 20px",textAlign:"center"}}>
-                  <div style={{fontSize:32,marginBottom:10}}>ðŸ”</div>
+                  <div style={{fontSize:32,marginBottom:10}}>�</div>
                   <div style={{fontWeight:600,fontSize:14,color:C.textPrimary,marginBottom:6}}>No results found</div>
                   <div style={{color:C.textMuted,fontSize:12,marginBottom:14}}>
                     No transactions match <strong>"{txSearch}"</strong>
@@ -2339,7 +2339,7 @@ export default function App() {
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";
                 const isRefund=t.type==="refund";
                 const catId=t.category||t.category_id;
-                const cat=isT?{icon:"â‡„",name:"Transfer",color:C.blue}:isRefund?{icon:"â†©ï¸",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
+                const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩�",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
                 const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
                 const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
                 const amt=t.amount||parseFloat(t.amount_kes||0);
@@ -2361,32 +2361,32 @@ export default function App() {
                 };
 
                 return<div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<arr.length-1?`1px solid ${C.navyLight}`:"none",background:isRefund?"#9B59B611":"transparent"}}>
-                  <div style={{width:36,height:36,borderRadius:10,background:(cat?.color||C.teal)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{cat?.icon||"ðŸ’¸"}</div>
+                  <div style={{width:36,height:36,borderRadius:10,background:(cat?.color||C.teal)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{cat?.icon||"💸"}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{highlight(label)}</div>
                     <div style={{color:C.textMuted,fontSize:10,marginTop:2,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                      <span>{highlight(cat?.name||"â€”")}</span><span>Â·</span>
-                      <span>{highlight(w?.name||"â€”")}</span><span>Â·</span>
+                      <span>{highlight(cat?.name||"—")}</span><span>·</span>
+                      <span>{highlight(w?.name||"—")}</span><span>·</span>
                       <span>{t.date||t.tx_date}</span>
                       {t.loanId&&<Badge color={C.coral}>Loan</Badge>}
-                      {t.recurring&&<Badge color={C.purple}>ðŸ”</Badge>}
-                      {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>â†© {origTx.merchant||origTx.note||"expense"}</span>}
+                      {t.recurring&&<Badge color={C.purple}>�</Badge>}
+                      {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>↩ {origTx.merchant||origTx.note||"expense"}</span>}
                     </div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontWeight:700,fontSize:13,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"âˆ’"}{disp(amt)}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"−"}{disp(amt)}</div>
                     <div style={{display:"flex",gap:5,justifyContent:"flex-end",marginTop:4,alignItems:"center"}}>
-                      {isRefund?<Badge color="#9B59B6">â†© refund</Badge>:<Badge color={isT?C.blue:isIn?C.teal:C.coral}>{isT?t.type.replace("_"," "):t.type}</Badge>}
-                      {isRefund&&<button onClick={()=>openEditRefundModal(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit refund">âœï¸</button>}
-                      {!isT&&!isRefund&&<button onClick={()=>openEditTx(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit">âœï¸</button>}
-                      {t.type==="expense"&&<button onClick={()=>openRefundModal(t)} style={{background:"none",border:"none",color:"#9B59B6",cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Record refund">â†©</button>}
+                      {isRefund?<Badge color="#9B59B6">↩ refund</Badge>:<Badge color={isT?C.blue:isIn?C.teal:C.coral}>{isT?t.type.replace("_"," "):t.type}</Badge>}
+                      {isRefund&&<button onClick={()=>openEditRefundModal(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit refund">��</button>}
+                      {!isT&&!isRefund&&<button onClick={()=>openEditTx(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit">��</button>}
+                      {t.type==="expense"&&<button onClick={()=>openRefundModal(t)} style={{background:"none",border:"none",color:"#9B59B6",cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Record refund">↩</button>}
                       <button onClick={()=>askConfirm(
                           isT ? "Delete Transfer" : "Delete Transaction",
                           isT
                             ? "Both sides of this transfer will be deleted and wallet balances reversed. This cannot be undone."
                             : "This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",
                           ()=>deleteTx(t.id)
-                        )} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete">ðŸ—‘</button>
+                        )} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete">🗑</button>
                     </div>
                   </div>
                 </div>;
@@ -2396,7 +2396,7 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• BUDGETS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� BUDGETS �������������������������������������������������������� */}
         {tab==="budgets"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2410,8 +2410,8 @@ export default function App() {
               </div>
             </div>
             {overBudget.length>0&&<Card style={{borderLeft:`3px solid ${C.coral}`}}>
-              <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>âš  Overspending Alerts</div>
-              {overBudget.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(spendByCat[a.id])} vs {disp(a.budget)} â€” <span style={{color:C.coral}}>+{disp((spendByCat[a.id]||0)-a.budget)} over</span></div>)}
+              <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>⚠ Overspending Alerts</div>
+              {overBudget.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(spendByCat[a.id])} vs {disp(a.budget)} — <span style={{color:C.coral}}>+{disp((spendByCat[a.id]||0)-a.budget)} over</span></div>)}
             </Card>}
             <Divider label="Expense Categories"/>
             {expCats.map(c=>{
@@ -2421,7 +2421,7 @@ export default function App() {
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:18}}>{c.icon}</span>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>ðŸ‘</Badge>}</div>
+                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>�</Badge>}</div>
                       <div style={{fontSize:10,color:C.textMuted}}>{c.budget>0?`Budget: ${disp(c.budget)}`:"No budget set"}</div>
                     </div>
                   </div>
@@ -2433,7 +2433,7 @@ export default function App() {
                     <div style={{display:"flex",flexDirection:"column",gap:4}}>
                       <button onClick={()=>{setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
                       <button onClick={()=>toggleWatch(c.id)} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:6,color:c.watch?C.gold:C.textMuted,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.watch?"Watching":"Watch"}</button>
-                      <button onClick={()=>askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>ðŸ—‘ Delete</button>
+                      <button onClick={()=>askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
                     </div>
                   </div>
                 </div>
@@ -2455,7 +2455,7 @@ export default function App() {
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:4}}>
                       <button onClick={()=>{setFBudget({catId:c.id,catType:"income",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit":"Set Target"}</button>
-                      <button onClick={()=>askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"income"))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>ðŸ—‘ Delete</button>
+                      <button onClick={()=>askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"income"))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
                     </div>
                   </div>
                   <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:c.color}}>{disp(earned)}</div>
@@ -2466,7 +2466,7 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• GOALS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� GOALS ���������������������������������������������������������� */}
         {tab==="goals"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2483,7 +2483,7 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• RECURRING â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� RECURRING ������������������������������������������������������ */}
         {tab==="recurring"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2502,14 +2502,14 @@ export default function App() {
                   const cat=r.type==="expense"?expCats.find(c=>c.id===(r.category||r.category_id)):incCats.find(c=>c.id===(r.category||r.category_id));
                   const w=wallets.find(w=>w.id===(r.wallet||r.wallet_id));
                   return<div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:r.active?C.navyLight:C.navyLight+"66",borderRadius:10,marginBottom:6,opacity:r.active?1:0.6}}>
-                    <div style={{width:32,height:32,borderRadius:9,background:(cat?.color||C.teal)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"ðŸ’³"}</div>
+                    <div style={{width:32,height:32,borderRadius:9,background:(cat?.color||C.teal)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"💳"}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:600,fontSize:13}}>{r.merchant||r.note}</div>
-                      <div style={{fontSize:10,color:C.textMuted}}>{r.freq} Â· {w?.name} Â· next: {r.nextDate||r.next_date}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>{r.freq} · {w?.name} · next: {r.nextDate||r.next_date}</div>
                     </div>
                     <div style={{fontWeight:700,color:r.type==="income"?C.teal:C.coral,fontSize:13,marginRight:8}}>{disp(r.amount)}/mo</div>
                     <button onClick={()=>toggleRecurring(r.id)} style={{background:r.active?C.teal+"22":C.coral+"22",border:"none",borderRadius:7,color:r.active?C.teal:C.coral,padding:"4px 9px",cursor:"pointer",fontSize:11,fontWeight:600,flexShrink:0}}>{r.active?"Active":"Paused"}</button>
-                    <button onClick={()=>askConfirm("Delete Recurring",`Delete "${r.merchant||r.note}"? This won't delete past transactions.`,()=>deleteRecurring(r.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:7,color:C.coral,padding:"4px 7px",cursor:"pointer",fontSize:11,flexShrink:0}}>ðŸ—‘</button>
+                    <button onClick={()=>askConfirm("Delete Recurring",`Delete "${r.merchant||r.note}"? This won't delete past transactions.`,()=>deleteRecurring(r.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:7,color:C.coral,padding:"4px 7px",cursor:"pointer",fontSize:11,flexShrink:0}}>🗑</button>
                   </div>;
                 })}
                 {recurring.filter(sec.filter).length===0&&<div style={{color:C.textFaint,fontSize:12,textAlign:"center",padding:"12px 0"}}>None added yet.</div>}
@@ -2518,7 +2518,7 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• INVESTMENTS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� INVESTMENTS ���������������������������������������������������� */}
         {tab==="investments"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2554,7 +2554,7 @@ export default function App() {
                       <Badge color={C.blue}>{inv.type}</Badge>
                       <Badge color={C.textFaint}>{inv.currency}</Badge>
                     </div>
-                    <div style={{color:C.textMuted,fontSize:11,marginBottom:10}}>{inv.units} units Â· {fmtC(inv.buyPrice,inv.currency,currencies)} â†’ {fmtC(inv.currentPrice,inv.currency,currencies)} Â· {w?.name||"â€”"}</div>
+                    <div style={{color:C.textMuted,fontSize:11,marginBottom:10}}>{inv.units} units · {fmtC(inv.buyPrice,inv.currency,currencies)} → {fmtC(inv.currentPrice,inv.currency,currencies)} · {w?.name||"—"}</div>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                       <Chip label="Invested" value={disp(invested)} color={C.textMuted}/>
                       <Chip label="Value" value={disp(current)} color={C.gold}/>
@@ -2564,27 +2564,27 @@ export default function App() {
                     {inv.returns.length>0&&<div style={{marginTop:10}}>
                       <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Return History</div>
                       {inv.returns.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"5px 10px",marginBottom:3,fontSize:11}}>
-                        <span style={{color:C.textMuted}}>{r.date||r.return_date} Â· <span style={{color:C.green,textTransform:"capitalize"}}>{r.type||r.return_type}</span>{r.note&&` Â· ${r.note}`}</span>
+                        <span style={{color:C.textMuted}}>{r.date||r.return_date} · <span style={{color:C.green,textTransform:"capitalize"}}>{r.type||r.return_type}</span>{r.note&&` · ${r.note}`}</span>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontWeight:600,color:C.teal}}>+{disp(r.amount||parseFloat(r.amount_kes||0))}</span>
-                          {r.id&&<button onClick={()=>askConfirm("Delete Return",`Delete this ${r.type||r.return_type} of ${disp(r.amount||parseFloat(r.amount_kes||0))}? The amount will be reversed from the wallet.`,()=>deleteReturn(inv.id,r.id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete return">ðŸ—‘</button>}
+                          {r.id&&<button onClick={()=>askConfirm("Delete Return",`Delete this ${r.type||r.return_type} of ${disp(r.amount||parseFloat(r.amount_kes||0))}? The amount will be reversed from the wallet.`,()=>deleteReturn(inv.id,r.id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete return">🗑</button>}
                         </div>
                       </div>)}
                     </div>}
                   </div>
                   <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
                     <Sparkline values={[inv.buyPrice,inv.buyPrice*0.93,inv.buyPrice*1.02,inv.buyPrice*0.97,inv.currentPrice*0.98,inv.currentPrice]} color={gain>=0?C.teal:C.coral} width={80} height={40}/>
-                    <button onClick={()=>openEditInv(inv)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>âœï¸ Edit</button>
-                    <button onClick={()=>askConfirm("Delete Investment",`Delete "${inv.name}"? All return history will also be removed.`,()=>deleteInvestment(inv.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>ðŸ—‘ Delete</button>
+                    <button onClick={()=>openEditInv(inv)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>
+                    <button onClick={()=>askConfirm("Delete Investment",`Delete "${inv.name}"? All return history will also be removed.`,()=>deleteInvestment(inv.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                   </div>
                 </div>
               </Card>;
             })}
-            {investments.length===0&&<Card style={{textAlign:"center",padding:40}}><div style={{fontSize:36,marginBottom:12}}>ðŸ“ˆ</div><div style={{color:C.textMuted,fontSize:13}}>No investments yet. Add one to track your portfolio.</div></Card>}
+            {investments.length===0&&<Card style={{textAlign:"center",padding:40}}><div style={{fontSize:36,marginBottom:12}}>📈</div><div style={{color:C.textMuted,fontSize:13}}>No investments yet. Add one to track your portfolio.</div></Card>}
           </div>
         )}
 
-        {/* â•â• LOANS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� LOANS ���������������������������������������������������������� */}
         {tab==="loans"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2600,7 +2600,7 @@ export default function App() {
               <Chip label="Interest Paid" value={disp(loans.reduce((s,l)=>s+l.repayments.reduce((ss,r)=>ss+(r.interest||0),0),0))} color={C.textMuted}/>
             </div>
             {loans.length===0?<Card style={{textAlign:"center",padding:48}}>
-              <div style={{fontSize:36,marginBottom:12}}>ðŸ¦</div>
+              <div style={{fontSize:36,marginBottom:12}}>��</div>
               <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No loans yet</div>
               <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>Track loans, repayments, and interest splits.</div>
               <Btn onClick={()=>{setEditLoan(null);setFLoan(blankLoan);openM("loan");}}>+ Add Your First Loan</Btn>
@@ -2609,13 +2609,13 @@ export default function App() {
               const monthsLeft=l.monthlyPayment>0?Math.ceil(l.remaining/l.monthlyPayment):0;
               return<Card key={l.id} style={{borderLeft:`3px solid ${C.coral}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                  <div><div style={{fontWeight:700,fontSize:15}}>{l.name}</div><div style={{color:C.textMuted,fontSize:11}}>{l.lender} Â· {l.rate||l.interest_rate}% p.a. Â· {l.currency}</div></div>
+                  <div><div style={{fontWeight:700,fontSize:15}}>{l.name}</div><div style={{color:C.textMuted,fontSize:11}}>{l.lender} · {l.rate||l.interest_rate}% p.a. · {l.currency}</div></div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.coral}}>{disp(l.remaining)}</div>
                     <div style={{color:C.textMuted,fontSize:10}}>remaining</div>
                     <div style={{display:"flex",gap:5,marginTop:4}}>
-                      <button onClick={()=>openEditLoan(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>âœï¸ Edit</button>
-                      <button onClick={()=>askConfirm("Delete Loan",`Delete loan "${l.name}"? All repayment history will also be removed.`,()=>deleteLoan(l.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>ðŸ—‘ Delete</button>
+                      <button onClick={()=>openEditLoan(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>
+                      <button onClick={()=>askConfirm("Delete Loan",`Delete loan "${l.name}"? All repayment history will also be removed.`,()=>deleteLoan(l.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                     </div>
                   </div>
                 </div>
@@ -2630,14 +2630,14 @@ export default function App() {
                   <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Repayment History</div>
                   {l.repayments.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
                     <div>
-                      <div style={{fontSize:12,fontWeight:600}}>{r.date||r.payment_date} â€” {disp(r.total||r.total_kes)}</div>
-                      <div style={{fontSize:10,color:C.textMuted}}>Principal: {disp(r.principal||r.principal_kes||0)} Â· Interest: {disp(r.interest||r.interest_kes||0)}</div>
-                      {r.attachments?.length>0&&<div style={{fontSize:10,color:C.blue,marginTop:2}}>ðŸ“Ž {r.attachments.join(", ")}</div>}
+                      <div style={{fontSize:12,fontWeight:600}}>{r.date||r.payment_date} — {disp(r.total||r.total_kes)}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>Principal: {disp(r.principal||r.principal_kes||0)} · Interest: {disp(r.interest||r.interest_kes||0)}</div>
+                      {r.attachments?.length>0&&<div style={{fontSize:10,color:C.blue,marginTop:2}}>📎 {r.attachments.join(", ")}</div>}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <Badge color={C.teal}>Paid</Badge>
-                      <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">âœï¸</button>
-                      <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">ðŸ—‘</button>
+                      <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">��</button>
+                      <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
                     </div>
                   </div>)}
                 </div>}
@@ -2647,16 +2647,16 @@ export default function App() {
           </div>
         )}
 
-        {/* â•â• RECONCILE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� RECONCILE ������������������������������������������������������ */}
         {tab==="reconcile"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Statement Reconciliation</div><div style={{color:C.textMuted,fontSize:12}}>Upload a bank statement CSV to match and import transactions</div></div>
             <>
                 <Card>
-                  <Field label="Account to Reconcile" value={recoWallet} onChange={v=>{setRecoWallet(v);setRecoRows([]);setRecoFile(null);}} options={[{value:"",label:"Select accountâ€¦"},...wOpts]}/>
+                  <Field label="Account to Reconcile" value={recoWallet} onChange={v=>{setRecoWallet(v);setRecoRows([]);setRecoFile(null);}} options={[{value:"",label:"Select account…"},...wOpts]}/>
                   <FileUpload label="Bank Statement (CSV)" accept=".csv,.txt" onFile={handleRecoFile} files={recoFile?[recoFile]:[]}/>
-                  {recoBusy&&<div style={{color:C.textMuted,fontSize:12}}>Parsing statementâ€¦</div>}
-                  {recoRows.length>0&&<div style={{background:C.navyLight,borderRadius:8,padding:"8px 12px",fontSize:12,color:C.textMuted}}>Found <strong style={{color:C.teal}}>{recoRows.length}</strong> rows Â· <strong style={{color:C.teal}}>{recoRows.filter(r=>r.status==="matched").length}</strong> matched Â· <strong style={{color:C.coral}}>{recoRows.filter(r=>r.status==="unmatched").length}</strong> to import</div>}
+                  {recoBusy&&<div style={{color:C.textMuted,fontSize:12}}>Parsing statement…</div>}
+                  {recoRows.length>0&&<div style={{background:C.navyLight,borderRadius:8,padding:"8px 12px",fontSize:12,color:C.textMuted}}>Found <strong style={{color:C.teal}}>{recoRows.length}</strong> rows · <strong style={{color:C.teal}}>{recoRows.filter(r=>r.status==="matched").length}</strong> matched · <strong style={{color:C.coral}}>{recoRows.filter(r=>r.status==="unmatched").length}</strong> to import</div>}
                 </Card>
                 {recoRows.length>0&&<>
                   <div style={{display:"flex",justifyContent:"flex-end"}}><Btn onClick={importAllReco} outline color={C.teal} small>Import All Unmatched</Btn></div>
@@ -2675,12 +2675,12 @@ export default function App() {
                     </div>)}
                   </Card>
                 </>}
-                {!recoFile&&<Card style={{textAlign:"center",padding:40}}><div style={{fontSize:36,marginBottom:12}}>ðŸ“‚</div><div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No statement uploaded</div><div style={{color:C.textMuted,fontSize:12,lineHeight:1.7}}>Upload a CSV from KCB, Equity, Co-op, NCBA, or M-Pesa.</div></Card>}
+                {!recoFile&&<Card style={{textAlign:"center",padding:40}}><div style={{fontSize:36,marginBottom:12}}>📂</div><div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No statement uploaded</div><div style={{color:C.textMuted,fontSize:12,lineHeight:1.7}}>Upload a CSV from KCB, Equity, Co-op, NCBA, or M-Pesa.</div></Card>}
             </>
           </div>
         )}
 
-        {/* â•â• MORE MENU (MOBILE ONLY) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* �� MORE MENU (MOBILE ONLY) �������������������������������������� */}
         {tab==="settings"&&<SettingsTab
           user={user} C={C} theme={theme} toggleTheme={toggleTheme}
           baseCurrency={baseCurrency} setBase={setBase} currencies={currencies}
@@ -2700,12 +2700,12 @@ export default function App() {
             </div>
             <div className="grid-2">
               {[
-                { id: "goals",      label: "Savings Goals", icon: "ðŸ†", desc: "Track savings targets" },
-                { id: "recurring",  label: "Recurring",    icon: "ðŸ”", desc: "Bills & subscriptions" },
-                { id: "investments",label: "Investments",  icon: "ðŸ“ˆ", desc: "Asset portfolio" },
-                { id: "loans",      label: "Loans & Debt", icon: "ðŸ¦", desc: "Track borrowing" },
-                { id: "reconcile",  label: "Reconcile",    icon: "âœ…", desc: "Import bank statement" },
-                { id: "settings",   label: "Settings",     icon: "âš™ï¸", desc: "Profile & preferences" },
+                { id: "goals",      label: "Savings Goals", icon: "��", desc: "Track savings targets" },
+                { id: "recurring",  label: "Recurring",    icon: "�", desc: "Bills & subscriptions" },
+                { id: "investments",label: "Investments",  icon: "📈", desc: "Asset portfolio" },
+                { id: "loans",      label: "Loans & Debt", icon: "��", desc: "Track borrowing" },
+                { id: "reconcile",  label: "Reconcile",    icon: "✅", desc: "Import bank statement" },
+                { id: "settings",   label: "Settings",     icon: "⚙�", desc: "Profile & preferences" },
               ].map(item => (
                 <Card key={item.id} onClick={() => setTab(item.id)} style={{ display:"flex", flexDirection:"column", gap:6 }}>
                   <div style={{ fontSize: 28 }}>{item.icon}</div>
@@ -2717,26 +2717,26 @@ export default function App() {
 
             <Divider label="Actions & Tools"/>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <Btn onClick={getAI} color={C.gold} style={{width:"100%",padding:12}}>âœ¦ AI Financial Advisor</Btn>
+              <Btn onClick={getAI} color={C.gold} style={{width:"100%",padding:12}}>✦ AI Financial Advisor</Btn>
               <div className="grid-2">
-                <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} style={{padding:12}}>â‡„ Transfer</Btn>
-                <Btn onClick={()=>openM("share")} outline color={C.purple} style={{padding:12}}>ðŸ“¤ Share App</Btn>
+                <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} style={{padding:12}}>⇄ Transfer</Btn>
+                <Btn onClick={()=>openM("share")} outline color={C.purple} style={{padding:12}}>📤 Share App</Btn>
               </div>
               <div className="grid-2">
-                <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} style={{padding:12}}>â¬†â¬‡ Import/Export</Btn>
-                <button onClick={toggleTheme} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>{theme==="dark"?"â˜€ï¸ Light Mode":"ðŸŒ™ Dark Mode"}</button>
-                <button onClick={()=>setTab("settings")} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>âš™ï¸ Settings</button>
+                <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} style={{padding:12}}>⬆⬇ Import/Export</Btn>
+                <button onClick={toggleTheme} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>{theme==="dark"?"☀� Light Mode":"🌙 Dark Mode"}</button>
+                <button onClick={()=>setTab("settings")} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>⚙� Settings</button>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• MODALS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* �������������������� MODALS ���������������������������������������� */}
 
       {/* Add / Edit Transaction */}
-      <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"âœï¸ Edit Transaction":"Add Transaction"}>
-        <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"ðŸ’¸ Expense"},{value:"income",label:"ðŸ’° Income"}]}/>
+      <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"�� Edit Transaction":"Add Transaction"}>
+        <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <Field label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} options={(fTx.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
@@ -2745,14 +2745,14 @@ export default function App() {
         <Field label="Note (optional)" value={fTx.note} onChange={v=>setFTx({...fTx,note:v})} placeholder="e.g. Weekly groceries"/>
         {!editTx&&<><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
           <input type="checkbox" id="isRecurChk" checked={!!fTx.isRecurring} onChange={e=>setFTx({...fTx,isRecurring:e.target.checked})} style={{accentColor:C.teal,width:16,height:16}}/>
-          <label htmlFor="isRecurChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>ðŸ” Make recurring</label>
+          <label htmlFor="isRecurChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>� Make recurring</label>
         </div>
         {fTx.isRecurring&&<Field label="Frequency" value={fTx.freq} onChange={v=>setFTx({...fTx,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>}</>}
         <Btn onClick={saveTx} style={{width:"100%",padding:13,fontSize:14}}>{editTx?"Save Changes":`Add ${fTx.type==="income"?"Income":"Expense"}`}</Btn>
       </Modal>
 
       {/* Transfer */}
-      <Modal open={isOpen("xfer")} onClose={()=>closeM("xfer")} title="â‡„ Transfer Between Accounts">
+      <Modal open={isOpen("xfer")} onClose={()=>closeM("xfer")} title="⇄ Transfer Between Accounts">
         <Field label="From" value={fXfer.from} onChange={v=>{
           const newTo = fXfer.to===v ? (wallets.find(w=>w.id!==v)?.id||"") : fXfer.to;
           setFXfer({...fXfer,from:v,to:newTo});
@@ -2764,10 +2764,10 @@ export default function App() {
       </Modal>
 
       {/* Add / Edit Wallet */}
-      <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"âœï¸ Edit Account":"ðŸ¦ Add Account / Wallet"}>
+      <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"�� Edit Account":"�� Add Account / Wallet"}>
         <Field label="Account Name" value={fWal.name} onChange={v=>setFWal({...fWal,name:v})} placeholder="e.g. Equity Bank Current"/>
-        <Field label="Account Type" value={fWal.accountType} onChange={v=>setFWal({...fWal,accountType:v})} options={[{value:"current",label:"ðŸ¦ Current / Checking"},{value:"savings",label:"ðŸ’° Savings Account"},{value:"investment",label:"ðŸ“ˆ Investment Account"},{value:"cash",label:"ðŸ‘› Cash Wallet"},{value:"digital",label:"ðŸ“± Mobile Money"}]}/>
-        <Field label="Currency" value={fWal.currency} onChange={v=>setFWal({...fWal,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} â€“ ${c.name} (${c.symbol})`}))}/>
+        <Field label="Account Type" value={fWal.accountType} onChange={v=>setFWal({...fWal,accountType:v})} options={[{value:"current",label:"�� Current / Checking"},{value:"savings",label:"💰 Savings Account"},{value:"investment",label:"📈 Investment Account"},{value:"cash",label:"👛 Cash Wallet"},{value:"digital",label:"📱 Mobile Money"}]}/>
+        <Field label="Currency" value={fWal.currency} onChange={v=>setFWal({...fWal,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name} (${c.symbol})`}))}/>
         <Field label={editWal?`Current Balance (${fWal.currency})`:`Opening Balance (${fWal.currency})`} type="number" value={fWal.openingBalance} onChange={v=>setFWal({...fWal,openingBalance:v})} placeholder="0.00"/>
         <div className="grid-2">
           <Field label="Icon"   value={fWal.icon}  onChange={v=>setFWal({...fWal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
@@ -2777,7 +2777,7 @@ export default function App() {
       </Modal>
 
       {/* Add Expense Category */}
-      <Modal open={isOpen("expCat")} onClose={()=>closeM("expCat")} title="ðŸ·ï¸ New Expense Category">
+      <Modal open={isOpen("expCat")} onClose={()=>closeM("expCat")} title="��� New Expense Category">
         <Field label="Category Name" value={fExpCat.name} onChange={v=>setFExpCat({...fExpCat,name:v})} placeholder="e.g. Pet Care"/>
         <div className="grid-2">
           <Field label="Icon"   value={fExpCat.icon}  onChange={v=>setFExpCat({...fExpCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
@@ -2786,13 +2786,13 @@ export default function App() {
         <Field label={`Monthly Budget (${baseCurrency})`} type="number" value={fExpCat.budget} onChange={v=>setFExpCat({...fExpCat,budget:v})} placeholder="0 = no budget"/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
           <input type="checkbox" id="watchChk" checked={!!fExpCat.watch} onChange={e=>setFExpCat({...fExpCat,watch:e.target.checked})} style={{accentColor:C.gold,width:16,height:16}}/>
-          <label htmlFor="watchChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>ðŸ‘ Watch on Dashboard</label>
+          <label htmlFor="watchChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>� Watch on Dashboard</label>
         </div>
         <Btn onClick={addExpCat} style={{width:"100%",padding:13,fontSize:14}}>Add Category</Btn>
       </Modal>
 
       {/* Add Income Category */}
-      <Modal open={isOpen("incCat")} onClose={()=>closeM("incCat")} title="ðŸ’µ New Income Category">
+      <Modal open={isOpen("incCat")} onClose={()=>closeM("incCat")} title="💵 New Income Category">
         <Field label="Category Name" value={fIncCat.name} onChange={v=>setFIncCat({...fIncCat,name:v})} placeholder="e.g. Consulting"/>
         <div className="grid-2">
           <Field label="Icon"   value={fIncCat.icon}  onChange={v=>setFIncCat({...fIncCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
@@ -2803,29 +2803,29 @@ export default function App() {
       </Modal>
 
       {/* Set Budget */}
-      <Modal open={isOpen("budget")} onClose={()=>closeM("budget")} title={fBudget.catType==="expense"?"ðŸŽ¯ Set Budget":"ðŸŽ¯ Set Income Target"}>
+      <Modal open={isOpen("budget")} onClose={()=>closeM("budget")} title={fBudget.catType==="expense"?"🎯 Set Budget":"🎯 Set Income Target"}>
         {(()=>{const cat=fBudget.catType==="expense"?expCats.find(c=>c.id===fBudget.catId):incCats.find(c=>c.id===fBudget.catId);return cat?<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>{cat.icon}</span><div><div style={{fontWeight:600,fontSize:13}}>{cat.name}</div><div style={{fontSize:11,color:C.textMuted}}>Current: {cat.budget>0?disp(cat.budget):"None"}</div></div></div>:null;})()}
         <Field label={`${fBudget.catType==="expense"?"Budget":"Target"} (${baseCurrency})`} type="number" value={fBudget.amount} onChange={v=>setFBudget({...fBudget,amount:v})} placeholder="0.00" note="Set to 0 to remove"/>
         <Btn onClick={saveBudget} style={{width:"100%",padding:13,fontSize:14}}>Save</Btn>
       </Modal>
 
       {/* Add / Edit Loan */}
-      <Modal open={isOpen("loan")} onClose={()=>{closeM("loan");setEditLoan(null);}} title={editLoan?"âœï¸ Edit Loan":"ðŸ¦ Add Loan"}>
+      <Modal open={isOpen("loan")} onClose={()=>{closeM("loan");setEditLoan(null);}} title={editLoan?"�� Edit Loan":"�� Add Loan"}>
         <Field label="Loan Name" value={fLoan.name}   onChange={v=>setFLoan({...fLoan,name:v})}   placeholder="e.g. KCB Personal Loan"/>
         <Field label="Lender"    value={fLoan.lender} onChange={v=>setFLoan({...fLoan,lender:v})} placeholder="e.g. KCB Bank"/>
-        <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} â€“ ${c.name}`}))}/>
+        <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
           <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v})} placeholder="e.g. 500000"/>
           <Field label="Rate (%)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 10"/>
         </div>
-        {!editLoan&&<Field label="Interest Type" value={fLoan.interestType} onChange={v=>setFLoan({...fLoan,interestType:v})} options={[{value:"compound",label:"ðŸ“ˆ Compound â€” interest accrues over time"},{value:"simple",label:"ðŸ“‹ Simple â€” fixed total from the start"}]}/>}
+        {!editLoan&&<Field label="Interest Type" value={fLoan.interestType} onChange={v=>setFLoan({...fLoan,interestType:v})} options={[{value:"compound",label:"📈 Compound — interest accrues over time"},{value:"simple",label:"📋 Simple — fixed total from the start"}]}/>}
         {(()=>{
           const p=parseFloat(fLoan.principal), r=parseFloat(fLoan.rate);
           if(!p||!r) return null;
           if(fLoan.interestType==="simple") {
             const total=p*(1+r/100);
             return <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
-              ðŸ“‹ Simple interest: you will repay a fixed total of <strong style={{color:C.teal}}>{fLoan.currency} {total.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> ({fLoan.currency} {p.toLocaleString()} principal + {fLoan.currency} {(total-p).toLocaleString()} interest) â€” regardless of when you pay.
+              📋 Simple interest: you will repay a fixed total of <strong style={{color:C.teal}}>{fLoan.currency} {total.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> ({fLoan.currency} {p.toLocaleString()} principal + {fLoan.currency} {(total-p).toLocaleString()} interest) — regardless of when you pay.
             </div>;
           }
           return null;
@@ -2834,12 +2834,12 @@ export default function App() {
           <Field label={`Monthly Payment (${fLoan.currency})`} type="number" value={fLoan.monthlyPayment} onChange={v=>setFLoan({...fLoan,monthlyPayment:v})} placeholder="0"/>
           <Field label="Next Due Date" type="date" value={fLoan.nextDue} onChange={v=>setFLoan({...fLoan,nextDue:v})}/>
         </div>
-        {fLoan.interestType!=="simple"&&fLoan.principal&&fLoan.monthlyPayment&&<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:C.textMuted}}>ðŸ’¡ Estimated payoff: <strong style={{color:C.teal}}>{Math.ceil(parseFloat(fLoan.principal)/parseFloat(fLoan.monthlyPayment))} months</strong></div>}
+        {fLoan.interestType!=="simple"&&fLoan.principal&&fLoan.monthlyPayment&&<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:C.textMuted}}>💡 Estimated payoff: <strong style={{color:C.teal}}>{Math.ceil(parseFloat(fLoan.principal)/parseFloat(fLoan.monthlyPayment))} months</strong></div>}
         <Btn onClick={saveLoan} style={{width:"100%",padding:13,fontSize:14}}>{editLoan?"Save Changes":"Add Loan"}</Btn>
       </Modal>
 
       {/* Record / Edit Repayment */}
-      <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);}} title={editRepay?"âœï¸ Edit Repayment":"ðŸ’³ Record Loan Repayment"}>
+      <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);}} title={editRepay?"�� Edit Repayment":"💳 Record Loan Repayment"}>
         {!editRepay&&<Field label="Loan" value={fRepay.loanId} onChange={v=>setFRepay({...fRepay,loanId:v})} options={loanOpts}/>}
         {(()=>{
           const l=loans.find(ln=>ln.id===fRepay.loanId);
@@ -2849,8 +2849,8 @@ export default function App() {
             <div style={{background:C.navyLight,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.textMuted}}>
               Outstanding: <strong style={{color:C.coral}}>{disp(l.remaining)}</strong>
               {isSimple
-                ? <span style={{marginLeft:8,color:"#00D4AA",fontWeight:600}}>ðŸ“‹ Simple interest â€” total is fixed</span>
-                : <span> Â· Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>}
+                ? <span style={{marginLeft:8,color:"#00D4AA",fontWeight:600}}>📋 Simple interest — total is fixed</span>
+                : <span> · Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>}
             </div>
             <Field label="Payment Date" type="date" value={fRepay.date} onChange={v=>setFRepay({...fRepay,date:v})}/>
             <Field label="Pay From Wallet" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
@@ -2871,13 +2871,13 @@ export default function App() {
       </Modal>
 
       {/* Add / Edit Investment */}
-      <Modal open={isOpen("inv")} onClose={()=>{closeM("inv");setEditInv(null);}} title={editInv?"âœï¸ Edit Investment":"ðŸ“ˆ Add Investment"}>
+      <Modal open={isOpen("inv")} onClose={()=>{closeM("inv");setEditInv(null);}} title={editInv?"�� Edit Investment":"📈 Add Investment"}>
         <Field label="Name" value={fInv.name} onChange={v=>setFInv({...fInv,name:v})} placeholder="e.g. Safaricom PLC"/>
         <div className="grid-2">
           <Field label="Ticker" value={fInv.ticker} onChange={v=>setFInv({...fInv,ticker:v})} placeholder="e.g. SCOM"/>
-          <Field label="Type" value={fInv.type} onChange={v=>setFInv({...fInv,type:v})} options={[{value:"Stock",label:"ðŸ“Š Stock"},{value:"ETF",label:"ðŸ“¦ ETF"},{value:"Bond",label:"ðŸ“œ Bond"},{value:"Money Mkt",label:"ðŸ¦ Money Market"},{value:"REIT",label:"ðŸ  REIT"},{value:"Crypto",label:"â‚¿ Crypto"},{value:"Other",label:"ðŸ’¼ Other"}]}/>
+          <Field label="Type" value={fInv.type} onChange={v=>setFInv({...fInv,type:v})} options={[{value:"Stock",label:"📊 Stock"},{value:"ETF",label:"📦 ETF"},{value:"Bond",label:"📜 Bond"},{value:"Money Mkt",label:"�� Money Market"},{value:"REIT",label:"�� REIT"},{value:"Crypto",label:"₿ Crypto"},{value:"Other",label:"💼 Other"}]}/>
         </div>
-        <Field label="Currency" value={fInv.currency} onChange={v=>setFInv({...fInv,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} â€“ ${c.name}`}))}/>
+        <Field label="Currency" value={fInv.currency} onChange={v=>setFInv({...fInv,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
           <Field label="Units / Shares" type="number" value={fInv.units} onChange={v=>setFInv({...fInv,units:v})} placeholder="e.g. 1000"/>
           <Field label={`Buy Price (${fInv.currency})`} type="number" value={fInv.buyPrice} onChange={v=>setFInv({...fInv,buyPrice:v})} placeholder="e.g. 22.50"/>
@@ -2888,9 +2888,9 @@ export default function App() {
       </Modal>
 
       {/* Record Return */}
-      <Modal open={isOpen("ret")} onClose={()=>closeM("ret")} title="ðŸ’¹ Record Investment Return">
+      <Modal open={isOpen("ret")} onClose={()=>closeM("ret")} title="💹 Record Investment Return">
         <Field label="Investment" value={fRet.investmentId} onChange={v=>setFRet({...fRet,investmentId:v})} options={invOpts}/>
-        <Field label="Return Type" value={fRet.type} onChange={v=>setFRet({...fRet,type:v})} options={[{value:"interest",label:"ðŸ¦ Interest"},{value:"dividend",label:"ðŸ’¹ Dividend"},{value:"capital_gain",label:"ðŸ“ˆ Capital Gain"},{value:"coupon",label:"ðŸ“œ Coupon"},{value:"other",label:"ðŸ’µ Other"}]}/>
+        <Field label="Return Type" value={fRet.type} onChange={v=>setFRet({...fRet,type:v})} options={[{value:"interest",label:"�� Interest"},{value:"dividend",label:"💹 Dividend"},{value:"capital_gain",label:"📈 Capital Gain"},{value:"coupon",label:"📜 Coupon"},{value:"other",label:"💵 Other"}]}/>
         <div className="grid-2">
           <Field label="Amount" type="number" value={fRet.amount} onChange={v=>setFRet({...fRet,amount:v})} placeholder="0.00"/>
           <Field label="Date" type="date" value={fRet.date} onChange={v=>setFRet({...fRet,date:v})}/>
@@ -2901,7 +2901,7 @@ export default function App() {
       </Modal>
 
       {/* New / Edit Goal */}
-      <Modal open={isOpen("goal")} onClose={()=>{closeM("goal");setEditGoal(null);}} title={editGoal?"âœï¸ Edit Goal":"ðŸ† New Savings Goal"}>
+      <Modal open={isOpen("goal")} onClose={()=>{closeM("goal");setEditGoal(null);}} title={editGoal?"�� Edit Goal":"�� New Savings Goal"}>
         <Field label="Goal Name" value={fGoal.name} onChange={v=>setFGoal({...fGoal,name:v})} placeholder="e.g. Emergency Fund"/>
         <div className="grid-2">
           <Field label="Icon"   value={fGoal.icon}  onChange={v=>setFGoal({...fGoal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
@@ -2912,7 +2912,7 @@ export default function App() {
         {!editGoal&&(
           <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:"#00D4AA",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Already saving for this goal?</div>
-            <Field label={`Opening Balance (${baseCurrency}) â€” optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note="This amount will be deducted from the selected account and counted as already saved"/>
+            <Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note="This amount will be deducted from the selected account and counted as already saved"/>
           </div>
         )}
         <Field label="Target Date" type="date" value={fGoal.deadline} onChange={v=>setFGoal({...fGoal,deadline:v})}/>
@@ -2920,8 +2920,8 @@ export default function App() {
       </Modal>
 
       {/* Add Recurring */}
-      <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="ðŸ” Add Recurring Transaction">
-        <Field label="Type" value={fRecur.type} onChange={v=>setFRecur({...fRecur,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"ðŸ’¸ Expense"},{value:"income",label:"ðŸ’° Income"}]}/>
+      <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="� Add Recurring Transaction">
+        <Field label="Type" value={fRecur.type} onChange={v=>setFRecur({...fRecur,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <div className="grid-2">
           <Field label="Amount" type="number" value={fRecur.amount} onChange={v=>setFRecur({...fRecur,amount:v})} placeholder="0.00"/>
@@ -2934,16 +2934,16 @@ export default function App() {
       </Modal>
 
       {/* Record / Edit Refund */}
-      <Modal open={isOpen("refund")} onClose={()=>{closeM("refund");setEditRefund(null);setFRefund(blankRefund);}} title={editRefund?"âœï¸ Edit Refund":"â†©ï¸ Record Refund"}>
+      <Modal open={isOpen("refund")} onClose={()=>{closeM("refund");setEditRefund(null);setFRefund(blankRefund);}} title={editRefund?"�� Edit Refund":"↩� Record Refund"}>
         <Field label="Linked Expense" value={fRefund.refundOf} onChange={v=>setFRefund({...fRefund,refundOf:v})}
-          options={[{value:"",label:"â€” Select original expense â€”"},...txs.filter(t=>t.type==="expense").slice(0,100).map(t=>({value:t.id,label:`${t.date||t.tx_date} Â· ${t.merchant||t.note||"Expense"} Â· ${disp(t.amount||parseFloat(t.amount_kes||0))}`}))]}/>
+          options={[{value:"",label:"— Select original expense —"},...txs.filter(t=>t.type==="expense").slice(0,100).map(t=>({value:t.id,label:`${t.date||t.tx_date} · ${t.merchant||t.note||"Expense"} · ${disp(t.amount||parseFloat(t.amount_kes||0))}`}))]}/>
         {fRefund.refundOf&&(()=>{
           const orig=txs.find(t=>t.id===fRefund.refundOf);
           if(!orig) return null;
           const cat=expCats.find(c=>c.id===(orig.category||orig.category_id));
           return<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
-            <span style={{fontSize:16,marginRight:6}}>{cat?.icon||"ðŸ’¸"}</span>
-            <strong style={{color:C.textPrimary}}>{orig.merchant||orig.note||"Expense"}</strong>{" Â· "}{cat?.name||"â€”"}{" Â· "}<strong style={{color:C.coral}}>{disp(orig.amount||parseFloat(orig.amount_kes||0))}</strong>{" on "}{orig.date||orig.tx_date}
+            <span style={{fontSize:16,marginRight:6}}>{cat?.icon||"💸"}</span>
+            <strong style={{color:C.textPrimary}}>{orig.merchant||orig.note||"Expense"}</strong>{" · "}{cat?.name||"—"}{" · "}<strong style={{color:C.coral}}>{disp(orig.amount||parseFloat(orig.amount_kes||0))}</strong>{" on "}{orig.date||orig.tx_date}
           </div>;
         })()}
         <div className="grid-2">
@@ -2953,7 +2953,7 @@ export default function App() {
         <Field label="Credit to Wallet" value={fRefund.wallet} onChange={v=>setFRefund({...fRefund,wallet:v})} options={wOpts}/>
         <Field label="Note (optional)" value={fRefund.note} onChange={v=>setFRefund({...fRefund,note:v})} placeholder="e.g. Returned damaged item"/>
         <div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:11,color:C.textMuted,lineHeight:1.7}}>
-          â†© Refund will be <strong style={{color:C.teal}}>credited to your wallet</strong> and <strong style={{color:C.teal}}>deducted from category spend</strong>.
+          ↩ Refund will be <strong style={{color:C.teal}}>credited to your wallet</strong> and <strong style={{color:C.teal}}>deducted from category spend</strong>.
         </div>
         <Btn onClick={saveRefund} disabled={!fRefund.refundOf||!fRefund.amount||!fRefund.wallet} style={{width:"100%",padding:13,fontSize:14}}>
           {editRefund?"Save Changes":"Record Refund"}
@@ -2961,15 +2961,15 @@ export default function App() {
       </Modal>
 
       {/* Import / Export */}
-      <Modal open={isOpen("importExport")} onClose={()=>{closeM("importExport");resetImport();}} title="â¬†â¬‡ Import & Export" wide>
+      <Modal open={isOpen("importExport")} onClose={()=>{closeM("importExport");resetImport();}} title="⬆⬇ Import & Export" wide>
 
-        {/* â”€â”€ EXPORT SECTION â”€â”€ */}
+        {/* ── EXPORT SECTION ── */}
         <div style={{marginBottom:22}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:10,color:C.teal}}>â¬‡ Export</div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:10,color:C.teal}}>⬇ Export</div>
           <div className="grid-3" style={{gap:8}}>
-            <Btn onClick={exportTransactions} outline color={C.teal} small style={{width:"100%"}}>ðŸ“‹ Transactions</Btn>
-            <Btn onClick={exportAll} color={C.teal} small style={{width:"100%"}}>ðŸ“¦ Full Export (3 CSVs)</Btn>
-            <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-template.csv`)} outline color={C.textMuted} small style={{width:"100%",fontSize:11}}>ðŸ“„ Template CSV</Btn>
+            <Btn onClick={exportTransactions} outline color={C.teal} small style={{width:"100%"}}>📋 Transactions</Btn>
+            <Btn onClick={exportAll} color={C.teal} small style={{width:"100%"}}>📦 Full Export (3 CSVs)</Btn>
+            <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-template.csv`)} outline color={C.textMuted} small style={{width:"100%",fontSize:11}}>📄 Template CSV</Btn>
           </div>
           <div style={{marginTop:8,background:C.navyLight,borderRadius:8,padding:"8px 12px",fontSize:10,color:C.textFaint,lineHeight:1.7}}>
             Full export downloads 3 files: <strong style={{color:C.textMuted}}>transactions</strong>, <strong style={{color:C.textMuted}}>wallets</strong>, and <strong style={{color:C.textMuted}}>goals</strong>.
@@ -2978,10 +2978,10 @@ export default function App() {
 
         <div style={{height:1,background:C.navyLight,margin:"0 0 18px"}}/>
 
-        {/* â”€â”€ IMPORT SECTION â”€â”€ */}
-        <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:C.gold}}>â¬† Import Transactions</div>
+        {/* ── IMPORT SECTION ── */}
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:C.gold}}>⬆ Import Transactions</div>
 
-        {/* â”€â”€ NEW ITEMS STEP â”€â”€ */}
+        {/* ── NEW ITEMS STEP ── */}
         {importStep === "new-items" && (
           <>
             <div style={{background:C.gold+"18",border:`1px solid ${C.gold}44`,borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,color:C.gold}}>
@@ -3030,7 +3030,7 @@ export default function App() {
                 setImportStep("preview");
               }}>Skip, continue anyway</Btn>
               <Btn style={{flex:2}} disabled={importBusy} onClick={confirmNewItems}>
-                {importBusy ? "Creatingâ€¦" : `Create ${[...importNewWallets,...importNewCats].filter(x=>x.selected).length} item(s) & Continue`}
+                {importBusy ? "Creating…" : `Create ${[...importNewWallets,...importNewCats].filter(x=>x.selected).length} item(s) & Continue`}
               </Btn>
             </div>
           </>
@@ -3041,10 +3041,10 @@ export default function App() {
             <FileUpload label="Upload CSV File" accept=".csv" onFile={handleImportFile} files={[]}/>
             <div style={{background:C.navyLight,borderRadius:10,padding:"12px 14px",fontSize:11,color:C.textMuted,lineHeight:1.9}}>
               <strong style={{color:C.textPrimary}}>Supported columns:</strong><br/>
-              <code style={{color:C.teal}}>date, type, amount_kes, wallet</code> â€” required<br/>
-              <code style={{color:C.blue}}>category, merchant, note</code> â€” optional<br/>
-              <code style={{color:C.purple}}>from_wallet, to_wallet</code> â€” for transfers<br/>
-              <div style={{marginTop:6,color:C.textFaint}}>Types: expense Â· income Â· transfer Â· refund</div>
+              <code style={{color:C.teal}}>date, type, amount_kes, wallet</code> — required<br/>
+              <code style={{color:C.blue}}>category, merchant, note</code> — optional<br/>
+              <code style={{color:C.purple}}>from_wallet, to_wallet</code> — for transfers<br/>
+              <div style={{marginTop:6,color:C.textFaint}}>Types: expense · income · transfer · refund</div>
             </div>
           </>
         )}
@@ -3054,15 +3054,15 @@ export default function App() {
             {/* Summary bar */}
             <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
               <div style={{background:C.teal+"22",borderRadius:8,padding:"6px 14px",fontSize:12,color:C.teal,fontWeight:700}}>
-                âœ“ {importRows.filter(r=>r._valid).length} valid
+                ✓ {importRows.filter(r=>r._valid).length} valid
               </div>
               {importErrors.length > 0 && (
                 <div style={{background:C.coral+"22",borderRadius:8,padding:"6px 14px",fontSize:12,color:C.coral,fontWeight:700}}>
-                  âœ— {importErrors.length} skipped
+                  ✗ {importErrors.length} skipped
                 </div>
               )}
               <div style={{flex:1}}/>
-              <Btn onClick={resetImport} outline color={C.textMuted} small>â† Back</Btn>
+              <Btn onClick={resetImport} outline color={C.textMuted} small>� Back</Btn>
             </div>
 
             {/* Error log */}
@@ -3070,7 +3070,7 @@ export default function App() {
               <div style={{background:C.coral+"11",border:`1px solid ${C.coral}33`,borderRadius:10,padding:"10px 14px",marginBottom:14,maxHeight:100,overflowY:"auto"}}>
                 <div style={{color:C.coral,fontSize:11,fontWeight:700,marginBottom:5}}>Skipped rows:</div>
                 {importErrors.map((e,i)=>(
-                  <div key={i} style={{color:C.textMuted,fontSize:11,marginBottom:2}}>â€¢ {e}</div>
+                  <div key={i} style={{color:C.textMuted,fontSize:11,marginBottom:2}}>• {e}</div>
                 ))}
               </div>
             )}
@@ -3094,13 +3094,13 @@ export default function App() {
                     }}>{r._type}</span>
                   </div>
                   <div style={{fontSize:12,color:C.textPrimary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {r.merchant||r.note||r.category||"â€”"}
+                    {r.merchant||r.note||r.category||"—"}
                   </div>
                   <div style={{fontSize:12,fontWeight:700,color:r._type==="income"?C.teal:r._type==="transfer"?C.blue:C.textPrimary}}>
-                    {r._type==="income"?"+":"âˆ’"}KSh {r._amount.toLocaleString()}
+                    {r._type==="income"?"+":"−"}KSh {r._amount.toLocaleString()}
                   </div>
                   <div style={{fontSize:11,color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {r._type==="transfer"?`${r.from_wallet}â†’${r.to_wallet}`:r.wallet||"â€”"}
+                    {r._type==="transfer"?`${r.from_wallet}→${r.to_wallet}`:r.wallet||"—"}
                   </div>
                 </div>
               ))}
@@ -3114,7 +3114,7 @@ export default function App() {
               disabled={importBusy || importRows.filter(r=>r._valid).length===0}
               style={{width:"100%",padding:13,fontSize:14}}
             >
-              {importBusy ? "Importingâ€¦" : `Import ${importRows.filter(r=>r._valid).length} Transaction${importRows.filter(r=>r._valid).length!==1?"s":""}`}
+              {importBusy ? "Importing…" : `Import ${importRows.filter(r=>r._valid).length} Transaction${importRows.filter(r=>r._valid).length!==1?"s":""}`}
             </Btn>
           </>
         )}
@@ -3122,24 +3122,24 @@ export default function App() {
       </Modal>
 
       {/* Share */}
-      <Modal open={isOpen("share")} onClose={()=>closeM("share")} title="ðŸ“¤ Share Pesa Yangu">
+      <Modal open={isOpen("share")} onClose={()=>closeM("share")} title="📤 Share Pesa Yangu">
         <div style={{textAlign:"center",marginBottom:20}}>
-          <div style={{fontSize:40,marginBottom:8}}>â—ˆ</div>
+          <div style={{fontSize:40,marginBottom:8}}>◈</div>
           <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Invite someone to Pesa Yangu</div>
           <div style={{color:C.textMuted,fontSize:12}}>Share the app with friends, family or a partner.</div>
         </div>
         <div style={{background:C.navyLight,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:12,color:C.textMuted,textAlign:"center"}}>https://pesayangu.africa</div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <Btn onClick={()=>shareApp("whatsapp")} color="#25D366" style={{width:"100%",fontSize:14}}>ðŸ’¬ Share on WhatsApp</Btn>
-          <Btn onClick={()=>shareApp("email")} outline color={C.blue} style={{width:"100%",fontSize:14}}>ðŸ“§ Share via Email</Btn>
-          <Btn onClick={()=>shareApp("copy")} outline color={C.textMuted} style={{width:"100%",fontSize:14}}>ðŸ”— Copy Link</Btn>
+          <Btn onClick={()=>shareApp("whatsapp")} color="#25D366" style={{width:"100%",fontSize:14}}>💬 Share on WhatsApp</Btn>
+          <Btn onClick={()=>shareApp("email")} outline color={C.blue} style={{width:"100%",fontSize:14}}>📧 Share via Email</Btn>
+          <Btn onClick={()=>shareApp("copy")} outline color={C.textMuted} style={{width:"100%",fontSize:14}}>🔗 Copy Link</Btn>
         </div>
       </Modal>
 
-      {/* Billing â€” placeholder, all features currently unlocked */}
+      {/* Billing — placeholder, all features currently unlocked */}
       <Modal open={isOpen("billing")} onClose={()=>closeM("billing")} title="Pesa Yangu">
         <div style={{textAlign:"center",padding:"24px 0"}}>
-          <div style={{fontSize:40,marginBottom:12}}>â—ˆ</div>
+          <div style={{fontSize:40,marginBottom:12}}>◈</div>
           <div style={{fontWeight:700,fontSize:16,marginBottom:8,color:C.teal}}>All Features Unlocked</div>
           <div style={{color:C.textMuted,fontSize:13,lineHeight:1.7}}>
             You have full access to all Pesa Yangu features including<br/>
@@ -3149,11 +3149,11 @@ export default function App() {
       </Modal>
 
       {/* AI Advisor */}
-      {/* â”€â”€ Idle warning overlay â”€â”€ */}
+      {/* ── Idle warning overlay ── */}
       {idleWarning&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:C.navyMid,border:`1px solid ${C.coral}`,borderRadius:20,padding:"32px 28px",maxWidth:380,width:"90%",textAlign:"center",boxShadow:`0 20px 60px rgba(0,0,0,0.5)`}}>
-            <div style={{fontSize:36,marginBottom:12}}>â±ï¸</div>
+            <div style={{fontSize:36,marginBottom:12}}>���</div>
             <div style={{fontWeight:700,fontSize:17,color:C.textPrimary,marginBottom:8}}>Still there?</div>
             <div style={{color:C.textMuted,fontSize:13,marginBottom:24,lineHeight:1.6}}>
               You'll be signed out in <strong style={{color:C.coral}}>1 minute</strong> due to inactivity.
@@ -3167,11 +3167,11 @@ export default function App() {
         </div>
       )}
 
-      <Modal open={isOpen("ai")} onClose={()=>closeM("ai")} title="âœ¦ AI Financial Advisor" wide>
+      <Modal open={isOpen("ai")} onClose={()=>closeM("ai")} title="✦ AI Financial Advisor" wide>
         {aiLoading
           ? <div style={{textAlign:"center",padding:"48px 0",color:C.textMuted}}>
-              <div style={{fontSize:34,marginBottom:14,display:"inline-block",animation:"spin 1.2s linear infinite",color:C.gold}}>âœ¦</div>
-              <div style={{fontSize:13}}>Analysing your financesâ€¦</div>
+              <div style={{fontSize:34,marginBottom:14,display:"inline-block",animation:"spin 1.2s linear infinite",color:C.gold}}>✦</div>
+              <div style={{fontSize:13}}>Analysing your finances…</div>
             </div>
           : <div style={{color:C.textMuted,fontSize:14,lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiText}</div>
         }
@@ -3202,11 +3202,11 @@ export default function App() {
         boxShadow: "0 -4px 16px rgba(0,0,0,0.3)"
       }}>
         {[
-          { id: "dashboard", label: "Home",     icon: "â—ˆ" },
-          { id: "accounts",  label: "Wallets",  icon: "ðŸ¦" },
-          { id: "transactions", label: "Records", icon: "ðŸ“‹" },
-          { id: "more",      label: "More",     icon: "â˜°" },
-          { id: "settings",  label: "Settings", icon: "âš™ï¸" },
+          { id: "dashboard", label: "Home",     icon: "◈" },
+          { id: "accounts",  label: "Wallets",  icon: "��" },
+          { id: "transactions", label: "Records", icon: "📋" },
+          { id: "more",      label: "More",     icon: "☰" },
+          { id: "settings",  label: "Settings", icon: "⚙�" },
         ].map(item => {
           const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "reconcile", "budgets"].includes(tab));
           return (

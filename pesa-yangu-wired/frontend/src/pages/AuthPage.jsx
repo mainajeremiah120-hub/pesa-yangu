@@ -133,7 +133,7 @@ export default function AuthPage({ onLogin, onRegister }) {
 
   const titles = {
     login:    { heading: "Welcome back",       sub: "Sign in to your account" },
-    register: { heading: "Create your account", sub: "Free · No card required" },
+    register: { heading: "Create your account", sub: "Free � No card required" },
     forgot:   { heading: "Forgot password?",   sub: "We'll email you a reset link" },
     reset:    { heading: "Set new password",   sub: "Choose a strong password" },
   };
@@ -240,7 +240,7 @@ export default function AuthPage({ onLogin, onRegister }) {
                   border:"none", borderRadius:12, fontWeight:800, fontSize:15,
                   cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1,
                   transition:"opacity 0.2s" }}>
-                {loading ? "Please wait…"
+                {loading ? "Please wait�"
                   : mode === "login"    ? "Sign In"
                   : mode === "register" ? "Create Account"
                   : mode === "forgot"   ? "Send Reset Link"
@@ -258,7 +258,7 @@ export default function AuthPage({ onLogin, onRegister }) {
                   style={{ color:C.teal, cursor:"pointer", fontWeight:600 }}>
                   Forgot password?
                 </span>
-                <span style={{ color:C.textFaint }}> · No account? </span>
+                <span style={{ color:C.textFaint }}> � No account? </span>
                 <span onClick={() => reset("register")}
                   style={{ color:C.teal, cursor:"pointer", fontWeight:600 }}>
                   Create one free
@@ -275,7 +275,7 @@ export default function AuthPage({ onLogin, onRegister }) {
         </div>
 
         <div style={{ textAlign:"center", marginTop:20, color:C.textFaint, fontSize:11 }}>
-          Free to use · No card required · Built for Kenya
+          Free to use � No card required � Built for Kenya
         </div>
       </div>
     </div>

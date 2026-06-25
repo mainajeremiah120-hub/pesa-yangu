@@ -323,6 +323,7 @@ loanRouter.post("/", async (req,res,next)=>{
       principal_kes:z.number().positive().max(1e12), remaining_kes:z.number().min(0).max(1e12).optional(),
       interest_rate:z.number().min(0).max(100).default(0),
       interest_type:z.enum(["simple","compound"]).default("compound"),
+      term_months:z.number().int().min(1).max(600).optional(),
       monthly_payment_kes:z.number().min(0).max(1e12).default(0), next_due_date:z.string().max(20).optional(), note:z.string().max(500).optional(),
     }).parse(req.body);
     // Simple interest: fix total = principal × (1 + rate/100) at creation time
@@ -331,8 +332,8 @@ loanRouter.post("/", async (req,res,next)=>{
       : d.principal_kes;
     const remaining_kes = d.remaining_kes ?? defaultRemaining;
     const {rows}=await query(
-      "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,monthly_payment_kes,next_due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.monthly_payment_kes,d.next_due_date||null,d.note||null]);
+      "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,monthly_payment_kes,next_due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
+      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.monthly_payment_kes,d.next_due_date||null,d.note||null]);
     res.status(201).json({loan:{...rows[0],repayments:[]}});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
@@ -365,18 +366,19 @@ loanRouter.post("/:id/repayments", upload.array("files",5), async (req,res,next)
 loanRouter.patch("/:id", async (req,res,next)=>{
   try {
     const d=z.object({
-      name:                z.string().min(1).optional(),
-      lender:              z.string().nullable().optional(),
+      name:                z.string().min(1).max(100).optional(),
+      lender:              z.string().max(100).nullable().optional(),
       currency:            z.string().length(3).optional(),
       principal_kes:       z.number().positive().optional(),
       remaining_kes:       z.number().min(0).optional(),
-      interest_rate:       z.number().min(0).optional(),
+      interest_rate:       z.number().min(0).max(100).optional(),
       interest_type:       z.enum(["simple","compound"]).optional(),
+      term_months:         z.number().int().min(1).max(600).nullable().optional(),
       monthly_payment_kes: z.number().min(0).optional(),
-      next_due_date:       z.string().nullable().optional(),
-      note:                z.string().nullable().optional(),
+      next_due_date:       z.string().max(20).nullable().optional(),
+      note:                z.string().max(500).nullable().optional(),
     }).parse(req.body);
-    const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","interest_type","monthly_payment_kes","next_due_date","note"];
+    const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","interest_type","term_months","monthly_payment_kes","next_due_date","note"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);

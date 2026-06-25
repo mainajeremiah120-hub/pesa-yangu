@@ -883,6 +883,7 @@ export default function App() {
     ...l,
     principal:      parseFloat(l.principal_kes||0),
     remaining:      parseFloat(l.remaining_kes||0),
+    termMonths:     l.term_months ? parseInt(l.term_months) : null,
     monthlyPayment: parseFloat(l.monthly_payment_kes||0),
     nextDue:        (l.next_due_date||"").slice(0,10)||null,
     repayments:     (l.repayments||[]).map(r=>({
@@ -1011,7 +1012,7 @@ export default function App() {
   const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
-  const blankLoan  = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", monthlyPayment:"", nextDue:"", currency:"KES" };
+  const blankLoan  = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
@@ -1191,6 +1192,7 @@ export default function App() {
         remaining_kes: !isNaN(curBal) && fLoan.currentBalance !== "" ? toKES(curBal, fLoan.currency, currencies) : undefined,
         interest_rate: parseFloat(fLoan.rate)||0,
         interest_type: fLoan.interestType||"compound",
+        term_months: fLoan.termMonths ? parseInt(fLoan.termMonths) : undefined,
         monthly_payment_kes: toKES(parseFloat(fLoan.monthlyPayment)||0, fLoan.currency, currencies),
         next_due_date: fLoan.nextDue||undefined,
       });
@@ -1373,6 +1375,7 @@ export default function App() {
       principal:      String(l.principal || l.principal_kes || ""),
       currentBalance: String(l.remaining ?? l.remaining_kes ?? l.principal ?? l.principal_kes ?? ""),
       rate:           String(l.rate || l.interest_rate || ""),
+      termMonths:     l.termMonths || l.term_months ? String(l.termMonths || l.term_months) : "",
       monthlyPayment: String(l.monthlyPayment || l.monthly_payment_kes || ""),
       nextDue:        l.nextDue || l.next_due_date || "",
       currency:       l.currency || "KES",
@@ -1512,6 +1515,7 @@ export default function App() {
         if (fLoan.principal)      payload.principal_kes       = toKES(parseFloat(fLoan.principal), fLoan.currency, currencies);
         if (fLoan.currentBalance !== "") payload.remaining_kes = toKES(parseFloat(fLoan.currentBalance)||0, fLoan.currency, currencies);
         if (fLoan.rate)           payload.interest_rate       = parseFloat(fLoan.rate);
+        payload.term_months = fLoan.termMonths ? parseInt(fLoan.termMonths) : null;
         if (fLoan.monthlyPayment) payload.monthly_payment_kes = toKES(parseFloat(fLoan.monthlyPayment), fLoan.currency, currencies);
         if (fLoan.nextDue)        payload.next_due_date       = fLoan.nextDue;
         const { loan } = await loansApi.update(editLoan.id, payload);
@@ -2744,6 +2748,7 @@ export default function App() {
                 <div style={{display:"flex",gap:10,marginTop:7,fontSize:11,flexWrap:"wrap"}}>
                   <span style={{color:C.textMuted}}>Paid: <strong style={{color:C.teal}}>{pct.toFixed(0)}%</strong></span>
                   <span style={{color:C.textMuted}}>Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>
+                  {l.termMonths&&<span style={{color:C.textMuted}}>Term: <strong style={{color:C.textPrimary}}>{l.termMonths >= 12 ? `${Math.floor(l.termMonths/12)}yr${l.termMonths%12?` ${l.termMonths%12}mo`:""}` : `${l.termMonths}mo`}</strong></span>}
                   <span style={{color:C.textMuted}}>~{monthsLeft} months left</span>
                   <span style={{color:C.textMuted}}>Next: <strong>{l.nextDue||l.next_due_date}</strong></span>
                 </div>
@@ -2982,7 +2987,10 @@ export default function App() {
           <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v,currentBalance:v})} placeholder="e.g. 500000"/>
           <Field label="Rate (%)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 10"/>
         </div>
-        <Field label={`Current Balance (${fLoan.currency})`} type="number" value={fLoan.currentBalance} onChange={v=>setFLoan({...fLoan,currentBalance:v})} placeholder="Outstanding amount remaining" note={!editLoan?"Leave same as principal if no repayments made yet":undefined}/>
+        <div className="grid-2">
+          <Field label={`Current Balance (${fLoan.currency})`} type="number" value={fLoan.currentBalance} onChange={v=>setFLoan({...fLoan,currentBalance:v})} placeholder="Outstanding amount" note={!editLoan?"Leave same as principal if no repayments yet":undefined}/>
+          <Field label="Loan Term (months)" type="number" value={fLoan.termMonths} onChange={v=>setFLoan({...fLoan,termMonths:v})} placeholder="e.g. 36" note="e.g. 12 = 1 yr, 36 = 3 yrs"/>
+        </div>
         {!editLoan&&<Field label="Interest Type" value={fLoan.interestType} onChange={v=>setFLoan({...fLoan,interestType:v})} options={[{value:"compound",label:"📈 Compound — interest accrues over time"},{value:"simple",label:"📋 Simple — fixed total from the start"}]}/>}
         {(()=>{
           const p=parseFloat(fLoan.principal), r=parseFloat(fLoan.rate);

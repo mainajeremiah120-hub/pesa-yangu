@@ -70,6 +70,13 @@ const fmtC = (amtKES, dispCode, currencies, compact=false) => {
 };
 const fmtPct = (n) => `${n>=0?"+":""}${n.toFixed(1)}%`;
 const todayStr = () => new Date().toISOString().slice(0,10);
+const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = (d) => {
+  if (!d) return "—";
+  const s = String(d).slice(0,10).split("-");
+  if (s.length !== 3) return String(d);
+  return `${parseInt(s[2])}-${_MONTHS[parseInt(s[1])-1]}-${s[0]}`;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV UTILITIES
@@ -2186,7 +2193,7 @@ export default function App() {
                   <div style={{width:34,height:34,borderRadius:9,background:(cat?.color||C.blue)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"💸"}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.merchant||t.note||"Transaction"}</div>
-                    <div style={{fontSize:10,color:C.textMuted}}>{cat?.name||"—"} · {w?.name||"—"} · {t.date||t.tx_date}</div>
+                    <div style={{fontSize:10,color:C.textMuted}}>{cat?.name||"—"} · {w?.name||"—"} · {fmtDate(t.date||t.tx_date)}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontSize:12,fontWeight:700,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"−"}{disp(t.amount||parseFloat(t.amount_kes||0))}</div>
@@ -2367,7 +2374,7 @@ export default function App() {
                     <div style={{color:C.textMuted,fontSize:10,marginTop:2,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                       <span>{highlight(cat?.name||"—")}</span><span>·</span>
                       <span>{highlight(w?.name||"—")}</span><span>·</span>
-                      <span>{t.date||t.tx_date}</span>
+                      <span>{fmtDate(t.date||t.tx_date)}</span>
                       {t.loanId&&<Badge color={C.coral}>Loan</Badge>}
                       {t.recurring&&<Badge color={C.purple}>🔁</Badge>}}
                       {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>↩ {origTx.merchant||origTx.note||"expense"}</span>}
@@ -2564,7 +2571,7 @@ export default function App() {
                     {inv.returns.length>0&&<div style={{marginTop:10}}>
                       <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Return History</div>
                       {inv.returns.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"5px 10px",marginBottom:3,fontSize:11}}>
-                        <span style={{color:C.textMuted}}>{r.date||r.return_date} · <span style={{color:C.green,textTransform:"capitalize"}}>{r.type||r.return_type}</span>{r.note&&` · ${r.note}`}</span>
+                        <span style={{color:C.textMuted}}>{fmtDate(r.date||r.return_date)} · <span style={{color:C.green,textTransform:"capitalize"}}>{r.type||r.return_type}</span>{r.note&&` · ${r.note}`}</span>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontWeight:600,color:C.teal}}>+{disp(r.amount||parseFloat(r.amount_kes||0))}</span>
                           {r.id&&<button onClick={()=>askConfirm("Delete Return",`Delete this ${r.type||r.return_type} of ${disp(r.amount||parseFloat(r.amount_kes||0))}? The amount will be reversed from the wallet.`,()=>deleteReturn(inv.id,r.id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete return">🗑</button>}
@@ -2630,7 +2637,7 @@ export default function App() {
                   <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Repayment History</div>
                   {l.repayments.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
                     <div>
-                      <div style={{fontSize:12,fontWeight:600}}>{r.date||r.payment_date} — {disp(r.total||r.total_kes)}</div>
+                      <div style={{fontSize:12,fontWeight:600}}>{fmtDate(r.date||r.payment_date)} — {disp(r.total||r.total_kes)}</div>
                       <div style={{fontSize:10,color:C.textMuted}}>Principal: {disp(r.principal||r.principal_kes||0)} · Interest: {disp(r.interest||r.interest_kes||0)}</div>
                       {r.attachments?.length>0&&<div style={{fontSize:10,color:C.blue,marginTop:2}}>📎 {r.attachments.join(", ")}</div>}
                     </div>
@@ -2665,7 +2672,7 @@ export default function App() {
                       {["Date","Description","Amount","Status"].map(h=><div key={h} style={{color:C.textFaint,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>)}
                     </div>
                     {recoRows.map((row,idx)=><div key={idx} className="reco-grid-row" style={{borderBottom:`1px solid ${C.navyLight}`,alignItems:"center",background:row.status==="matched"?C.teal+"08":"transparent"}}>
-                      <div className="reco-date" style={{fontSize:11,color:C.textMuted}}>{row.date}</div>
+                      <div className="reco-date" style={{fontSize:11,color:C.textMuted}}>{fmtDate(row.date)}</div>
                       <div className="reco-desc" style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.desc||row.description}</div>
                       <div className="reco-amt" style={{fontSize:12,fontWeight:700,color:row.amount>0?C.teal:C.textPrimary}}>{row.amount>0?"+":""}{disp(Math.abs(row.amount))}</div>
                       <div className="reco-status" style={{display:"flex",alignItems:"center",gap:6}}>
@@ -2936,14 +2943,14 @@ export default function App() {
       {/* Record / Edit Refund */}
       <Modal open={isOpen("refund")} onClose={()=>{closeM("refund");setEditRefund(null);setFRefund(blankRefund);}} title={editRefund?"✏️ Edit Refund":"↩️ Record Refund"}>
         <Field label="Linked Expense" value={fRefund.refundOf} onChange={v=>setFRefund({...fRefund,refundOf:v})}
-          options={[{value:"",label:"— Select original expense —"},...txs.filter(t=>t.type==="expense").slice(0,100).map(t=>({value:t.id,label:`${t.date||t.tx_date} · ${t.merchant||t.note||"Expense"} · ${disp(t.amount||parseFloat(t.amount_kes||0))}`}))]}/>
+          options={[{value:"",label:"— Select original expense —"},...txs.filter(t=>t.type==="expense").slice(0,100).map(t=>({value:t.id,label:`${fmtDate(t.date||t.tx_date)} · ${t.merchant||t.note||"Expense"} · ${disp(t.amount||parseFloat(t.amount_kes||0))}`}))]}/>
         {fRefund.refundOf&&(()=>{
           const orig=txs.find(t=>t.id===fRefund.refundOf);
           if(!orig) return null;
           const cat=expCats.find(c=>c.id===(orig.category||orig.category_id));
           return<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
             <span style={{fontSize:16,marginRight:6}}>{cat?.icon||"💸"}</span>
-            <strong style={{color:C.textPrimary}}>{orig.merchant||orig.note||"Expense"}</strong>{" · "}{cat?.name||"—"}{" · "}<strong style={{color:C.coral}}>{disp(orig.amount||parseFloat(orig.amount_kes||0))}</strong>{" on "}{orig.date||orig.tx_date}
+            <strong style={{color:C.textPrimary}}>{orig.merchant||orig.note||"Expense"}</strong>{" · "}{cat?.name||"—"}{" · "}<strong style={{color:C.coral}}>{disp(orig.amount||parseFloat(orig.amount_kes||0))}</strong>{" on "}{fmtDate(orig.date||orig.tx_date)}
           </div>;
         })()}
         <div className="grid-2">

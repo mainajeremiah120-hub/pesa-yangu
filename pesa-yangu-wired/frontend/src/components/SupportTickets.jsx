@@ -15,6 +15,14 @@ const CAT_LABELS = {
   account:"Account Issue", data:"Data / Import", billing:"Billing", other:"Other",
 };
 
+const _M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = (d) => {
+  if (!d) return "—";
+  const s = String(d).slice(0,10).split("-");
+  if (s.length !== 3) return String(d);
+  return `${parseInt(s[2])}-${_M[parseInt(s[1])-1]}-${s[0]}`;
+};
+
 function relTime(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
@@ -24,7 +32,7 @@ function relTime(dateStr) {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7)  return `${d}d ago`;
-  return new Date(dateStr).toLocaleDateString("en-KE", { day:"numeric", month:"short" });
+  return fmtDate(dateStr);
 }
 
 function StatusTracker({ status, C }) {

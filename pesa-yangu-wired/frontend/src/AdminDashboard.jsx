@@ -6,6 +6,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { adminApi } from "./lib/api.js";
 
+const _M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = (d) => {
+  if (!d) return "—";
+  const s = String(d).slice(0,10).split("-");
+  if (s.length !== 3) return String(d);
+  return `${parseInt(s[2])}-${_M[parseInt(s[1])-1]}-${s[0]}`;
+};
+const fmtDateTime = (d) => {
+  if (!d) return "—";
+  const dt = new Date(d);
+  if (isNaN(dt)) return String(d);
+  return `${fmtDate(d)} ${dt.toLocaleTimeString("en-KE",{hour:"2-digit",minute:"2-digit"})}`;
+};
+
 // ─── shared constants ─────────────────────────────────────────────────────────
 export const STATUS_COLOR   = { open:"#E67E22", in_progress:"#4A90E2", resolved:"#00D4AA", closed:"#888" };
 export const PRIORITY_COLOR = { urgent:"#E74C3C", high:"#E67E22", normal:"#4A90E2", low:"#888" };
@@ -162,7 +176,7 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
                     <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.full_name||"(no name)"}</div>
                     <div style={{fontSize:10,color:C.textFaint,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
                   </div>
-                  <div style={{fontSize:10,color:C.textFaint,flexShrink:0}}>{new Date(u.created_at).toLocaleDateString("en-KE",{day:"numeric",month:"short"})}</div>
+                  <div style={{fontSize:10,color:C.textFaint,flexShrink:0}}>{fmtDate(u.created_at)}</div>
                 </div>
               ))}
             </div>
@@ -190,7 +204,7 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
                         {!u.is_active&&<span style={{fontSize:9,fontWeight:700,background:C.coral+"22",color:C.coral,borderRadius:5,padding:"1px 5px"}}>INACTIVE</span>}
                       </div>
                       <div style={{fontSize:10,color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
-                      <div style={{fontSize:10,color:C.textFaint,marginTop:1}}>Joined {new Date(u.created_at).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"})} · {u.tx_count} txns · {u.wallet_count} accounts</div>
+                      <div style={{fontSize:10,color:C.textFaint,marginTop:1}}>Joined {fmtDate(u.created_at)} · {u.tx_count} txns · {u.wallet_count} accounts</div>
                     </div>
                   </div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -282,7 +296,7 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
                   </div>
                   <div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>{t.full_name} · {t.email}</div>
                   <div style={{fontSize:12,color:C.textPrimary,marginBottom:8,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{t.message}</div>
-                  <div style={{fontSize:10,color:C.textFaint,marginBottom:10}}>{new Date(t.created_at).toLocaleString("en-KE")}</div>
+                  <div style={{fontSize:10,color:C.textFaint,marginBottom:10}}>{fmtDateTime(t.created_at)}</div>
                   {t.admin_reply&&<div style={{background:C.teal+"11",borderRadius:8,padding:"8px 12px",fontSize:11,color:C.textMuted,marginBottom:8}}>✓ Replied: {t.admin_reply.slice(0,80)}{t.admin_reply.length>80?"…":""}</div>}
                   <button onClick={()=>{setActiveTicket(t);setReplyText(t.admin_reply||"");setReplyStatus("resolved");}}
                     style={{fontSize:11,padding:"6px 14px",borderRadius:8,border:`1px solid ${C.teal}`,background:"none",color:C.teal,cursor:"pointer",fontWeight:700}}>
@@ -427,7 +441,7 @@ export function AdminPanel({ C, showToast }) {
                 </div>
                 <div style={{fontSize:11,color:C.textMuted,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
                 <div style={{fontSize:10,color:C.textFaint,marginTop:3,display:"flex",gap:10,flexWrap:"wrap"}}>
-                  <span>Joined {new Date(u.created_at).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"})}</span>
+                  <span>Joined {fmtDate(u.created_at)}</span>
                   <span>{u.tx_count} txns</span>
                   <span>{u.wallet_count} accounts</span>
                 </div>

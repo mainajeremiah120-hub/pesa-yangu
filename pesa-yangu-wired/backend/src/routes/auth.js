@@ -173,6 +173,7 @@ router.post("/reset-data", requireAuth, async (req, res) => {
       await client.query("DELETE FROM loans                  WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM wallets                WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM categories             WHERE user_id=$1", [uid]);
+      await seed(client, uid);
     });
     res.json({ ok: true });
   } catch(err) {

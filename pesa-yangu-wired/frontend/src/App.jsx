@@ -18,6 +18,7 @@ import {
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi,
 } from "./lib/api.js";
 import { AdminApp, AdminPanel } from "./AdminDashboard.jsx";
+import { SupportTickets } from "./components/SupportTickets.jsx";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -557,106 +558,7 @@ function NotifRow({ label, desc, id, C }) {
 
 // AdminApp and AdminPanel are imported from AdminDashboard.jsx
 
-const TICKET_STATUS_COLOR = { open:"#E67E22", in_progress:"#4A90E2", resolved:"#00D4AA", closed:"#888" };
-
-function SupportCard({ C, showToast }) {
-  const [tickets,  setTickets]  = useState([]);
-  const [view,     setView]     = useState("list"); // "list" | "new"
-  const [subject,  setSubject]  = useState("");
-  const [message,  setMessage]  = useState("");
-  const [category, setCategory] = useState("general");
-  const [busy,     setBusy]     = useState(false);
-  const [open,     setOpen]     = useState(false);
-
-  const load = useCallback(async () => {
-    try { const d = await ticketsApi.list(); setTickets(d.tickets||[]); } catch {}
-  }, []);
-
-  useEffect(()=>{ if(open) load(); }, [open, load]);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!subject.trim()||!message.trim()) return;
-    setBusy(true);
-    try {
-      await ticketsApi.create({ subject, message, category });
-      showToast("Support ticket submitted! We'll get back to you shortly.", C.teal, 4000);
-      setSubject(""); setMessage(""); setCategory("general");
-      setView("list"); load();
-    } catch(err) { showToast(err?.response?.data?.error||"Failed to submit ticket", C.coral); }
-    finally { setBusy(false); }
-  };
-
-  const inp = { width:"100%", background:C.navyLight, border:`1px solid ${C.navyLight}`,
-    borderRadius:10, padding:"10px 14px", color:C.textPrimary, fontSize:13,
-    outline:"none", boxSizing:"border-box", marginBottom:10 };
-
-  return (
-    <Card>
-      <button onClick={()=>setOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",width:"100%",textAlign:"left",padding:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontWeight:700,fontSize:13,color:C.blue,textTransform:"uppercase",letterSpacing:"0.06em"}}>ðŸŽ« Help & Support</div>
-        <span style={{color:C.textFaint,fontSize:12}}>{open?"â–²":"â–¼"}</span>
-      </button>
-
-      {open&&(
-        <div style={{marginTop:14}}>
-          {view==="list"&&(
-            <>
-              <button onClick={()=>setView("new")}
-                style={{width:"100%",padding:"11px",borderRadius:10,border:`1px solid ${C.blue}`,background:C.blue+"18",color:C.blue,cursor:"pointer",fontWeight:700,fontSize:13,marginBottom:12}}>
-                + Raise a Support Ticket
-              </button>
-
-              {tickets.length===0&&<div style={{textAlign:"center",color:C.textFaint,fontSize:12,padding:"16px 0"}}>No tickets yet.</div>}
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {tickets.map(t=>(
-                  <div key={t.id} style={{background:C.navyLight,borderRadius:10,padding:"12px 14px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:4}}>
-                      <div style={{fontWeight:600,fontSize:12,flex:1}}>{t.subject}</div>
-                      <span style={{fontSize:9,fontWeight:700,background:TICKET_STATUS_COLOR[t.status]+"22",color:TICKET_STATUS_COLOR[t.status],borderRadius:5,padding:"2px 6px",flexShrink:0,textTransform:"capitalize"}}>{t.status.replace("_"," ")}</span>
-                    </div>
-                    <div style={{fontSize:11,color:C.textFaint}}>{new Date(t.created_at).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"})}</div>
-                    {t.admin_reply&&(
-                      <div style={{marginTop:8,background:C.teal+"14",borderRadius:8,padding:"8px 12px",fontSize:11,color:C.teal,borderLeft:`3px solid ${C.teal}`}}>
-                        <strong>Support reply:</strong> {t.admin_reply}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {view==="new"&&(
-            <form onSubmit={submit}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-                <button type="button" onClick={()=>setView("list")} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:12}}>â† Back</button>
-                <div style={{fontWeight:700,fontSize:13}}>New Support Ticket</div>
-              </div>
-              <select value={category} onChange={e=>setCategory(e.target.value)} style={{...inp}}>
-                <option value="general">General Enquiry</option>
-                <option value="bug">Bug / Something broken</option>
-                <option value="account">Account Issue</option>
-                <option value="data">Data / Import Issue</option>
-                <option value="billing">Billing</option>
-                <option value="other">Other</option>
-              </select>
-              <input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject" required style={inp}
-                onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor=C.navyLight}/>
-              <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="Describe your issue in detailâ€¦" rows={4} required
-                style={{...inp,resize:"vertical"}}
-                onFocus={e=>e.target.style.borderColor=C.blue} onBlur={e=>e.target.style.borderColor=C.navyLight}/>
-              <button type="submit" disabled={busy||!subject.trim()||!message.trim()}
-                style={{width:"100%",padding:12,borderRadius:10,border:"none",background:C.blue,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",opacity:busy?0.7:1}}>
-                {busy?"Submittingâ€¦":"Submit Ticket"}
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
+// SupportTickets is imported from ./components/SupportTickets.jsx
 
 function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, currencies, updateUser, showToast, logout, exportTransactions, openM, askConfirm, deactivateAccount, loadData }) {
   const [editName,   setEditName]   = useState(user?.full_name || "");
@@ -751,7 +653,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
       </Card>
 
       {/* Support */}
-      <SupportCard C={C} showToast={showToast}/>
+      <SupportTickets user={user} C={C} showToast={showToast}/>
 
       {/* Account */}
       <Card>

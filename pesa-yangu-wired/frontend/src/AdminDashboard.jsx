@@ -61,6 +61,16 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
     finally { setBusy(null); }
   };
 
+  const deleteUser = async (id, email) => {
+    if (!window.confirm(`Permanently delete ${email}?\n\nThis removes all their data and cannot be undone.`)) return;
+    setBusy(id);
+    try {
+      await adminApi.deleteUser(id);
+      setUsers(p => p.filter(x => x.id !== id));
+    } catch(e) { alert(e?.response?.data?.error||"Failed"); }
+    finally { setBusy(null); }
+  };
+
   const submitReply = async () => {
     if (!activeTicket) return;
     setReplying(true);
@@ -195,6 +205,10 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
                     <button disabled={busy===u.id} onClick={()=>patchUser(u.id,{plan:u.plan==="pro"?"free":"pro"})}
                       style={{fontSize:10,padding:"5px 12px",borderRadius:8,border:`1px solid ${C.gold}`,background:"none",color:C.gold,cursor:"pointer",fontWeight:700}}>
                       {u.plan==="pro"?"→ Free":"→ Pro"}
+                    </button>
+                    <button disabled={busy===u.id} onClick={()=>deleteUser(u.id, u.email)}
+                      style={{fontSize:10,padding:"5px 12px",borderRadius:8,border:`1px solid ${C.coral}`,background:"none",color:C.coral,cursor:"pointer",fontWeight:700}}>
+                      Delete
                     </button>
                   </div>
                 </div>

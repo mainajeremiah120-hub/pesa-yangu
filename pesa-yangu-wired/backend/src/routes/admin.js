@@ -1,6 +1,6 @@
 "use strict";
 const express = require("express");
-const { query } = require("../models/db");
+const { query, withTransaction } = require("../models/db");
 const router  = express.Router();
 
 // GET /admin/stats
@@ -64,6 +64,20 @@ router.patch("/users/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /admin/users/:id — permanently delete a user account
+router.delete("/users/:id", async (req, res, next) => {
+  try {
+    if (req.params.id === req.user.id)
+      return res.status(400).json({ error: "You cannot delete your own admin account." });
+    const { rows: [user] } = await query(
+      `DELETE FROM users WHERE id=$1 RETURNING id, email, full_name`,
+      [req.params.id]
+    );
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ deleted: user });
+  } catch (err) { next(err); }
+});
+
 // GET /admin/tickets?status=open
 router.get("/tickets", async (req, res, next) => {
   try {
@@ -86,18 +100,43 @@ router.get("/tickets", async (req, res, next) => {
 router.patch("/tickets/:id", async (req, res, next) => {
   try {
     const { status, admin_reply, priority } = req.body;
-    const { rows: [ticket] } = await query(`
-      UPDATE support_tickets SET
-        status      = COALESCE($1, status),
-        priority    = COALESCE($2, priority),
-        admin_reply = COALESCE($3, admin_reply),
-        replied_by  = CASE WHEN $3 IS NOT NULL THEN $4 ELSE replied_by END,
-        replied_at  = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE replied_at END,
-        updated_at  = NOW()
-      WHERE id=$5
-      RETURNING *
-    `, [status||null, priority||null, admin_reply||null, req.user.id, req.params.id]);
-    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    let ticket;
+
+    if (admin_reply?.trim()) {
+      // Atomic: update ticket + seed into conversation thread
+      await withTransaction(async (client) => {
+        const { rows: [t] } = await client.query(`
+          UPDATE support_tickets SET
+            status      = COALESCE($1, status),
+            priority    = COALESCE($2, priority),
+            admin_reply = $3,
+            replied_by  = $4,
+            replied_at  = NOW(),
+            updated_at  = NOW()
+          WHERE id=$5
+          RETURNING *
+        `, [status||null, priority||null, admin_reply.trim(), req.user.id, req.params.id]);
+        if (!t) throw Object.assign(new Error("Ticket not found"), { status: 404 });
+        ticket = t;
+        await client.query(
+          `INSERT INTO ticket_messages (ticket_id, sender_id, sender_role, message)
+           VALUES ($1,$2,'admin',$3)`,
+          [t.id, req.user.id, admin_reply.trim()]
+        );
+      });
+    } else {
+      const { rows: [t] } = await query(`
+        UPDATE support_tickets SET
+          status     = COALESCE($1, status),
+          priority   = COALESCE($2, priority),
+          updated_at = NOW()
+        WHERE id=$3
+        RETURNING *
+      `, [status||null, priority||null, req.params.id]);
+      if (!t) return res.status(404).json({ error: "Ticket not found" });
+      ticket = t;
+    }
+
     res.json({ ticket });
   } catch (err) { next(err); }
 });

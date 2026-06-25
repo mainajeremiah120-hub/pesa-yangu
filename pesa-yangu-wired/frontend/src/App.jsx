@@ -943,6 +943,8 @@ export default function App() {
   // ── Search (declared here so filteredTxs useMemo can reference it without TDZ)
   const [txSearch,       setTxSearch]       = useState("");
   const [txWalletFilter, setTxWalletFilter] = useState("");
+  const [walletSearch,   setWalletSearch]   = useState("");
+  const [walletView,     setWalletView]     = useState("grid");
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -2244,40 +2246,92 @@ export default function App() {
                 <Btn onClick={()=>{setFWal(blankWal);openM("wallet");}} small>+ Add Account</Btn>
               </div>
             </div>
-            <div className="grid-2">
-              {wallets.map(w=>{
-                const bal=parseFloat(w.balance||0);
-                const wIn=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="income"||t.type==="transfer_in")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
-                const wOut=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="expense"||t.type==="transfer_out")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
-                return<Card key={w.id} onClick={()=>goToWalletTxs(w.id)} style={{borderTop:`3px solid ${w.color}`,cursor:"pointer",transition:"box-shadow 0.15s",userSelect:"none"}}
-                  onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 4px 20px ${w.color}33`}
-                  onMouseLeave={e=>e.currentTarget.style.boxShadow=""}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <div>
-                      <div style={{fontSize:22,marginBottom:3}}>{w.icon}</div>
-                      <div style={{fontWeight:700,fontSize:14}}>{w.name}</div>
-                      <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
-                        <Badge color={w.color}>{ACCT_TYPE[w.account_type||w.accountType]||w.account_type}</Badge>
-                        <Badge color={C.textFaint}>{w.currency}</Badge>
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:w.color}}>{fmtC(bal,w.currency,currencies)}</div>
-                      {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>≈ {disp(bal)}</div>}
-                      {w.opening_balance!=null&&<div style={{color:C.textFaint,fontSize:10,marginTop:2}}>Opening: {fmtC(parseFloat(w.opening_balance||0),w.currency,currencies)}</div>}
-                      <div style={{display:"flex",gap:5,marginTop:6}}>
-                        <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
-                        <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:14,fontSize:11,color:C.textMuted,marginBottom:8}}>
-                    <span>↑ {disp(wIn)}</span><span>↓ {disp(wOut)}</span>
-                  </div>
-                  <Sparkline values={[bal*0.82,bal*0.87,bal*0.85,bal*0.92,bal*0.97,bal]} color={w.color} width={170} height={26}/>
-                </Card>;
-              })}
+
+            {/* Search + View Toggle */}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{flex:1,position:"relative"}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:13}}>🔍</span>
+                <input value={walletSearch} onChange={e=>setWalletSearch(e.target.value)} placeholder="Search accounts…"
+                  style={{width:"100%",background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,padding:"9px 12px 9px 34px",color:C.textPrimary,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+              </div>
+              <div style={{display:"flex",background:C.navyLight,borderRadius:10,padding:3,gap:2}}>
+                <button onClick={()=>setWalletView("grid")} style={{background:walletView==="grid"?C.teal:"none",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:14,color:walletView==="grid"?"#fff":C.textMuted}}>⊞</button>
+                <button onClick={()=>setWalletView("list")} style={{background:walletView==="list"?C.teal:"none",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:14,color:walletView==="list"?"#fff":C.textMuted}}>☰</button>
+              </div>
             </div>
+
+            {/* Wallet cards — grid or list */}
+            {(()=>{
+              const visibleWallets = wallets
+                .filter(w=>w.name.toLowerCase().includes(walletSearch.toLowerCase()))
+                .sort((a,b)=>a.name.localeCompare(b.name));
+
+              if(!visibleWallets.length) return <div style={{color:C.textMuted,fontSize:13,textAlign:"center",padding:32}}>No accounts match "{walletSearch}"</div>;
+
+              return walletView==="grid" ? (
+                <div className="grid-2">
+                  {visibleWallets.map(w=>{
+                    const bal=parseFloat(w.balance||0);
+                    const wIn=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="income"||t.type==="transfer_in")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
+                    const wOut=txs.filter(t=>(t.wallet||t.wallet_id)===w.id&&(t.type==="expense"||t.type==="transfer_out")).reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
+                    return<Card key={w.id} onClick={()=>goToWalletTxs(w.id)} style={{borderTop:`3px solid ${w.color}`,cursor:"pointer",transition:"box-shadow 0.15s",userSelect:"none"}}
+                      onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 4px 20px ${w.color}33`}
+                      onMouseLeave={e=>e.currentTarget.style.boxShadow=""}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:22,marginBottom:3}}>{w.icon}</div>
+                          <div style={{fontWeight:700,fontSize:14}}>{w.name}</div>
+                          <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
+                            <Badge color={w.color}>{ACCT_TYPE[w.account_type||w.accountType]||w.account_type}</Badge>
+                            <Badge color={C.textFaint}>{w.currency}</Badge>
+                          </div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:w.color}}>{fmtC(bal,w.currency,currencies)}</div>
+                          {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>≈ {disp(bal)}</div>}
+                          {w.opening_balance!=null&&<div style={{color:C.textFaint,fontSize:10,marginTop:2}}>Opening: {fmtC(parseFloat(w.opening_balance||0),w.currency,currencies)}</div>}
+                          <div style={{display:"flex",gap:5,marginTop:6}}>
+                            <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
+                            <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:14,fontSize:11,color:C.textMuted,marginBottom:8}}>
+                        <span>↑ {disp(wIn)}</span><span>↓ {disp(wOut)}</span>
+                      </div>
+                      <Sparkline values={[bal*0.82,bal*0.87,bal*0.85,bal*0.92,bal*0.97,bal]} color={w.color} width={170} height={26}/>
+                    </Card>;
+                  })}
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {visibleWallets.map(w=>{
+                    const bal=parseFloat(w.balance||0);
+                    return<div key={w.id} onClick={()=>goToWalletTxs(w.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:C.navyMid,borderRadius:14,cursor:"pointer",borderLeft:`4px solid ${w.color}`,transition:"box-shadow 0.15s",userSelect:"none"}}
+                      onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 2px 12px ${w.color}33`}
+                      onMouseLeave={e=>e.currentTarget.style.boxShadow=""}>
+                      <div style={{fontSize:22,flexShrink:0}}>{w.icon}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:14}}>{w.name}</div>
+                        <div style={{display:"flex",gap:5,marginTop:3,flexWrap:"wrap"}}>
+                          <Badge color={w.color}>{ACCT_TYPE[w.account_type||w.accountType]||w.account_type}</Badge>
+                          <Badge color={C.textFaint}>{w.currency}</Badge>
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:17,color:w.color}}>{fmtC(bal,w.currency,currencies)}</div>
+                        {w.opening_balance!=null&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>Opening: {fmtC(parseFloat(w.opening_balance||0),w.currency,currencies)}</div>}
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                        <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️</button>
+                        <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑</button>
+                      </div>
+                    </div>;
+                  })}
+                </div>
+              );
+            })()}
+
             {wallets.length>1&&<Card>
               <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>Allocation</div>
               <div style={{display:"flex",gap:3,height:12,borderRadius:8,overflow:"hidden",marginBottom:12}}>
@@ -2769,7 +2823,7 @@ export default function App() {
       {/* Add / Edit Transaction */}
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
-        <Field label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} options={(fTx.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
+        <Field label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} options={(fTx.type==="expense"?expCats:incCats).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
         <div className="grid-2">
@@ -2958,7 +3012,7 @@ export default function App() {
       {/* Add Recurring */}
       <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="➕ Add Recurring Transaction">
         <Field label="Type" value={fRecur.type} onChange={v=>setFRecur({...fRecur,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
-        <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
+        <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expCats:incCats).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <div className="grid-2">
           <Field label="Amount" type="number" value={fRecur.amount} onChange={v=>setFRecur({...fRecur,amount:v})} placeholder="0.00"/>
           <Field label="Frequency" value={fRecur.freq} onChange={v=>setFRecur({...fRecur,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>

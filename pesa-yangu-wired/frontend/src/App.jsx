@@ -413,7 +413,7 @@ const ConfirmModal = ({ open, onClose, onConfirm, title, message, danger=true })
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={onClose}>
       <div style={{ background:C.navyMid, borderRadius:16, padding:24, width:"100%", maxWidth:380, border:`1px solid ${danger?C.coral+"44":C.navyLight}`, boxShadow:`0 20px 60px ${C.shadow}` }} onClick={e=>e.stopPropagation()}>
-        <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>{danger ? "⚠�" : "��"}</div>
+        <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>{danger ? "⚠️" : "💡"}</div>
         <div style={{ fontWeight:700, fontSize:16, textAlign:"center", marginBottom:8, color:C.textPrimary }}>{title}</div>
         <div style={{ color:C.textMuted, fontSize:13, textAlign:"center", marginBottom:20, lineHeight:1.6 }}>{message}</div>
         <div style={{ display:"flex", gap:10 }}>
@@ -471,7 +471,7 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
           <div style={{ fontFamily:"'DM Serif Display',serif", fontSize:22, color:g.color }}>{pct.toFixed(0)}%</div>
           <div style={{ color:C.textMuted, fontSize:10 }}>of {disp(g.target_kes)}</div>
           {(onEdit||onDelete)&&<div style={{display:"flex",gap:5,marginTop:4}}>
-            {onEdit&&<button onClick={()=>onEdit(g)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>}
+            {onEdit&&<button onClick={()=>onEdit(g)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>}
             {onDelete&&<button onClick={()=>onDelete(g.id,g.name)} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>}
           </div>}
         </div>
@@ -612,7 +612,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Display & Currency */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>� Display & Currency</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>🌐 Display & Currency</div>
         <div style={{marginBottom:14}}>
           <div style={{fontSize:11,color:C.textMuted,marginBottom:6}}>Base Currency</div>
           <select value={baseCurrency} onChange={e=>setBase(e.target.value)}
@@ -624,7 +624,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div><div style={{fontSize:13,fontWeight:600}}>Theme</div><div style={{fontSize:11,color:C.textMuted}}>Currently {theme==="dark"?"Dark":"Light"} mode</div></div>
           <button onClick={toggleTheme} style={{background:C.navyLight,border:"none",borderRadius:10,padding:"8px 16px",color:C.textPrimary,cursor:"pointer",fontWeight:600,fontSize:12}}>
-            {theme==="dark"?"☀� Light Mode":"🌙 Dark Mode"}
+            {theme==="dark"?"☀️ Light Mode":"🌙 Dark Mode"}
           </button>
         </div>
       </Card>
@@ -641,11 +641,11 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Data Management */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>� Data Management</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>📁 Data Management</div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {rowBtn("⬇�","Export Transactions","Download all records as CSV", exportTransactions)}
-          {rowBtn("⬆�","Import Transactions","Upload a CSV file to bulk-add records", ()=>openM("importExport"))}
-          {rowBtn("🗑�","Factory Reset","Delete all data and start fresh",
+          {rowBtn("⬇️","Export Transactions","Download all records as CSV", exportTransactions)}
+          {rowBtn("⬆️","Import Transactions","Upload a CSV file to bulk-add records", ()=>openM("importExport"))}
+          {rowBtn("🚫","Factory Reset","Delete all data and start fresh",
             ()=>askConfirm("Factory Reset","This will permanently delete ALL your financial data — accounts, transactions, goals, loans, investments and categories. Your login account is kept. This cannot be undone.",
               async()=>{try{await authApi.resetData();await loadData();showToast("All data cleared. Fresh start!",C.teal,4000);}catch(e){const msg=e?.response?.data?.error||e?.message||"Unknown error";console.error("Factory reset error:",e);showToast("Reset failed: "+msg,C.coral,6000);}}),
             true)}
@@ -657,10 +657,10 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
 
       {/* Account */}
       <Card>
-        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>� Account</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.06em"}}>👤 Account</div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {rowBtn("🚪","Sign Out","Log out of this device", logout)}
-          {rowBtn("⚠�","Deactivate Account","Permanently disable your account",
+          {rowBtn("⚠️","Deactivate Account","Permanently disable your account",
             ()=>askConfirm("Deactivate Account","Your account will be deactivated and you will be signed out. Contact support to reactivate. Are you sure?",deactivateAccount),
             true)}
         </div>
@@ -946,7 +946,7 @@ export default function App() {
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
   const loanOpts = loans.map(l=>({ value:l.id, label:l.name }));
   const invOpts  = investments.map(i=>({ value:i.id, label:`${i.name} (${i.ticker})` }));
-  const ICONS = ["��","��","🚗","⚡","🎬","💊","��","📚","�","��","💼","💻","📈","���","🎯","💵","💹","�","✈�","🎓","💎","👶","🌴"];
+  const ICONS = ["💰","💳","🏠","🚗","⚡","🎬","💊","🍔","📚","🎓","💼","💻","📈","🎯","💵","💹","✈️","🎁","💎","👶","🌴","🔧","⚕️","🎵","🐾","📱","🛒","🏋️","🎮","🌟"];
   const CAT_COLORS = [C.blue,C.teal,C.gold,C.coral,C.purple,C.green,C.orange,"#1ABC9C","#E74C3C","#3498DB","#8E44AD","#27AE60"];
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -954,8 +954,8 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
   const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly" };
   const blankXfer  = { from:"", to:"", amount:"", note:"" };
-  const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"��", color:C.teal, openingBalance:"" };
-  const blankExpCat= { name:"", icon:"���", color:C.blue, budget:"", watch:false };
+  const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"" };
+  const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan  = { name:"", lender:"", principal:"", rate:"", interestType:"compound", monthlyPayment:"", nextDue:"", currency:"KES" };
@@ -1271,7 +1271,7 @@ export default function App() {
       name:           w.name,
       accountType:    w.account_type || w.accountType || "current",
       currency:       w.currency || "KES",
-      icon:           w.icon || "��",
+      icon:           w.icon || "🏦",
       color:          w.color || C.teal,
       openingBalance: String(parseFloat(w.balance || 0)),
     });
@@ -1751,11 +1751,11 @@ export default function App() {
     try {
       // Create selected wallets
       for (const w of importNewWallets.filter(w => w.selected)) {
-        await walletsApi.create({ name: w.name, account_type: w.type, currency: "KES", balance: 0, color: "#00D4AA", icon: "��" });
+        await walletsApi.create({ name: w.name, account_type: w.type, currency: "KES", balance: 0, color: "#00D4AA", icon: "●" });
       }
       // Create selected categories
       for (const c of importNewCats.filter(c => c.selected)) {
-        await catsApi.create({ name: c.name, type: c.type, icon: c.type==="income"?"💰":"���", color:"#4A90E2" });
+        await catsApi.create({ name: c.name, type: c.type, icon: c.type==="income"?"💰":"🏷️", color:"#4A90E2" });
       }
       // Reload fresh data for re-validation
       const [{ wallets: freshW }, { categories: freshCatRaw }] = await Promise.all([
@@ -1883,7 +1883,7 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER GATES
   // ─────────────────────────────────────────────────────────────────────────
-  // Password reset link must always show reset form � even if user has an active session
+  // Password reset link must always show reset form even if user has an active session
   if (new URLSearchParams(window.location.search).get('reset'))
     return <AuthPage onLogin={login} onRegister={register}/>;
 
@@ -1908,16 +1908,16 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
   const NAV = [
     {id:"dashboard",    label:"Dashboard",  icon:"◈"},
-    {id:"accounts",     label:"Accounts",   icon:"��"},
+    {id:"accounts",     label:"Accounts",   icon:"🏦"},
     {id:"transactions", label:"Records",    icon:"📋"},
     {id:"budgets",      label:"Budgets",    icon:"🎯"},
-    {id:"goals",        label:"Goals",      icon:"��"},
-    {id:"recurring",    label:"Recurring",  icon:"�"},
+    {id:"goals",        label:"Goals",      icon:"🏆"},
+    {id:"recurring",    label:"Recurring",  icon:"🔁"},
     {id:"investments",  label:"Invest",     icon:"📈"},
-    {id:"loans",        label:"Loans",      icon:"��"},
+    {id:"loans",        label:"Loans",      icon:"🏦"},
     {id:"reconcile",    label:"Reconcile",  icon:"✅"},
-    {id:"settings",     label:"Settings",   icon:"⚙�"},
-    ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"🛡�"}] : []),
+    {id:"settings",     label:"Settings",   icon:"⚙️"},
+    ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"🛡️"}] : []),
   ];
 
   const ACCT_TYPE = {current:"Current",savings:"Savings",investment:"Investment",cash:"Cash",digital:"Mobile Money"};
@@ -2059,7 +2059,7 @@ export default function App() {
           <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">⬆⬇ Data</Btn>
           <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
           <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
-          <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀�":"🌙"}</button>
+          <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀️":"🌙"}</button>
         </div>
       </div>
 
@@ -2075,7 +2075,7 @@ export default function App() {
       {/* Page */}
       <div className="page-container" style={{flex:1,padding:"18px",maxWidth:1000,margin:"0 auto",width:"100%",animation:"fadeUp 0.25s ease"}}>
 
-        {/* �� DASHBOARD ������������������������������������������������������ */}
+        {/* DASHBOARD  */}
         {tab==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div className="grid-2-1">
@@ -2111,7 +2111,7 @@ export default function App() {
             {watched.length>0&&(
               <Card onClick={() => setTab("budgets")} style={{borderLeft:`3px solid ${C.gold}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div style={{fontWeight:700,fontSize:13}}>� Watching Closely</div>
+                  <div style={{fontWeight:700,fontSize:13}}>🔔 Watching Closely</div>
                   <button onClick={(e)=>{e.stopPropagation();setTab("budgets");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>Manage →</button>
                 </div>
                 {watched.map(c=>{
@@ -2179,7 +2179,7 @@ export default function App() {
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";
                 const isRefund=t.type==="refund";
                 const catId=t.category||t.category_id;
-                const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩�",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
+                const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩️",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
                 const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
                 const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
                 return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<7?`1px solid ${C.navyLight}`:"none"}}>
@@ -2199,7 +2199,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� ACCOUNTS ������������������������������������������������������ */}
+        {/* ACCOUNTS  */}
         {tab==="accounts"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2231,7 +2231,7 @@ export default function App() {
                       <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:w.color}}>{fmtC(bal,w.currency,currencies)}</div>
                       {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>≈ {disp(bal)}</div>}
                       <div style={{display:"flex",gap:5,marginTop:6}}>
-                        <button onClick={()=>openEditWallet(w)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>
+                        <button onClick={()=>openEditWallet(w)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
                         <button onClick={()=>askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                       </div>
                     </div>
@@ -2262,7 +2262,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� RECORDS �������������������������������������������������������� */}
+        {/* RECORDS  */}
         {tab==="transactions"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2289,7 +2289,7 @@ export default function App() {
 
             {/* ── Search bar ── */}
             <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,color:C.textFaint,pointerEvents:"none"}}>�</span>
+              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,color:C.textFaint,pointerEvents:"none"}}>🔍</span>
               <input
                 type="text"
                 value={txSearch}
@@ -2328,7 +2328,7 @@ export default function App() {
             <Card style={{padding:0}}>
               {filteredTxs.length === 0 ? (
                 <div style={{padding:"40px 20px",textAlign:"center"}}>
-                  <div style={{fontSize:32,marginBottom:10}}>�</div>
+                  <div style={{fontSize:32,marginBottom:10}}>🏆</div>
                   <div style={{fontWeight:600,fontSize:14,color:C.textPrimary,marginBottom:6}}>No results found</div>
                   <div style={{color:C.textMuted,fontSize:12,marginBottom:14}}>
                     No transactions match <strong>"{txSearch}"</strong>
@@ -2339,7 +2339,7 @@ export default function App() {
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";
                 const isRefund=t.type==="refund";
                 const catId=t.category||t.category_id;
-                const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩�",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
+                const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩️",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
                 const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
                 const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
                 const amt=t.amount||parseFloat(t.amount_kes||0);
@@ -2369,7 +2369,7 @@ export default function App() {
                       <span>{highlight(w?.name||"—")}</span><span>·</span>
                       <span>{t.date||t.tx_date}</span>
                       {t.loanId&&<Badge color={C.coral}>Loan</Badge>}
-                      {t.recurring&&<Badge color={C.purple}>�</Badge>}
+                      {t.recurring&&<Badge color={C.purple}>🔁</Badge>}}
                       {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>↩ {origTx.merchant||origTx.note||"expense"}</span>}
                     </div>
                   </div>
@@ -2377,8 +2377,8 @@ export default function App() {
                     <div style={{fontWeight:700,fontSize:13,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"−"}{disp(amt)}</div>
                     <div style={{display:"flex",gap:5,justifyContent:"flex-end",marginTop:4,alignItems:"center"}}>
                       {isRefund?<Badge color="#9B59B6">↩ refund</Badge>:<Badge color={isT?C.blue:isIn?C.teal:C.coral}>{isT?t.type.replace("_"," "):t.type}</Badge>}
-                      {isRefund&&<button onClick={()=>openEditRefundModal(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit refund">��</button>}
-                      {!isT&&!isRefund&&<button onClick={()=>openEditTx(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit">��</button>}
+                      {isRefund&&<button onClick={()=>openEditRefundModal(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit refund">✏️</button>}
+                      {!isT&&!isRefund&&<button onClick={()=>openEditTx(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit">✏️</button>}
                       {t.type==="expense"&&<button onClick={()=>openRefundModal(t)} style={{background:"none",border:"none",color:"#9B59B6",cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Record refund">↩</button>}
                       <button onClick={()=>askConfirm(
                           isT ? "Delete Transfer" : "Delete Transaction",
@@ -2396,7 +2396,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� BUDGETS �������������������������������������������������������� */}
+        {/* BUDGETS  */}
         {tab==="budgets"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2421,7 +2421,7 @@ export default function App() {
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:18}}>{c.icon}</span>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>�</Badge>}</div>
+                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}}</div>
                       <div style={{fontSize:10,color:C.textMuted}}>{c.budget>0?`Budget: ${disp(c.budget)}`:"No budget set"}</div>
                     </div>
                   </div>
@@ -2466,7 +2466,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� GOALS ���������������������������������������������������������� */}
+        {/* GOALS  */}
         {tab==="goals"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2483,7 +2483,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� RECURRING ������������������������������������������������������ */}
+        {/* RECURRING  */}
         {tab==="recurring"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2518,7 +2518,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� INVESTMENTS ���������������������������������������������������� */}
+        {/* INVESTMENTS  */}
         {tab==="investments"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2574,7 +2574,7 @@ export default function App() {
                   </div>
                   <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
                     <Sparkline values={[inv.buyPrice,inv.buyPrice*0.93,inv.buyPrice*1.02,inv.buyPrice*0.97,inv.currentPrice*0.98,inv.currentPrice]} color={gain>=0?C.teal:C.coral} width={80} height={40}/>
-                    <button onClick={()=>openEditInv(inv)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>
+                    <button onClick={()=>openEditInv(inv)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
                     <button onClick={()=>askConfirm("Delete Investment",`Delete "${inv.name}"? All return history will also be removed.`,()=>deleteInvestment(inv.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                   </div>
                 </div>
@@ -2584,7 +2584,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� LOANS ���������������������������������������������������������� */}
+        {/* LOANS  */}
         {tab==="loans"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -2600,7 +2600,7 @@ export default function App() {
               <Chip label="Interest Paid" value={disp(loans.reduce((s,l)=>s+l.repayments.reduce((ss,r)=>ss+(r.interest||0),0),0))} color={C.textMuted}/>
             </div>
             {loans.length===0?<Card style={{textAlign:"center",padding:48}}>
-              <div style={{fontSize:36,marginBottom:12}}>��</div>
+              <div style={{fontSize:36,marginBottom:12}}>🏦</div>
               <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No loans yet</div>
               <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>Track loans, repayments, and interest splits.</div>
               <Btn onClick={()=>{setEditLoan(null);setFLoan(blankLoan);openM("loan");}}>+ Add Your First Loan</Btn>
@@ -2614,7 +2614,7 @@ export default function App() {
                     <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.coral}}>{disp(l.remaining)}</div>
                     <div style={{color:C.textMuted,fontSize:10}}>remaining</div>
                     <div style={{display:"flex",gap:5,marginTop:4}}>
-                      <button onClick={()=>openEditLoan(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>�� Edit</button>
+                      <button onClick={()=>openEditLoan(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
                       <button onClick={()=>askConfirm("Delete Loan",`Delete loan "${l.name}"? All repayment history will also be removed.`,()=>deleteLoan(l.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                     </div>
                   </div>
@@ -2636,7 +2636,7 @@ export default function App() {
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <Badge color={C.teal}>Paid</Badge>
-                      <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">��</button>
+                      <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
                       <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
                     </div>
                   </div>)}
@@ -2647,7 +2647,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� RECONCILE ������������������������������������������������������ */}
+        {/* RECONCILE  */}
         {tab==="reconcile"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Statement Reconciliation</div><div style={{color:C.textMuted,fontSize:12}}>Upload a bank statement CSV to match and import transactions</div></div>
@@ -2680,7 +2680,7 @@ export default function App() {
           </div>
         )}
 
-        {/* �� MORE MENU (MOBILE ONLY) �������������������������������������� */}
+        {/* MORE MENU (MOBILE ONLY)  */}
         {tab==="settings"&&<SettingsTab
           user={user} C={C} theme={theme} toggleTheme={toggleTheme}
           baseCurrency={baseCurrency} setBase={setBase} currencies={currencies}
@@ -2700,12 +2700,12 @@ export default function App() {
             </div>
             <div className="grid-2">
               {[
-                { id: "goals",      label: "Savings Goals", icon: "��", desc: "Track savings targets" },
-                { id: "recurring",  label: "Recurring",    icon: "�", desc: "Bills & subscriptions" },
+                { id: "goals",      label: "Savings Goals", icon: "🏆", desc: "Track savings targets" },
+                { id: "recurring",  label: "Recurring",    icon: "🔁", desc: "Bills & subscriptions" },
                 { id: "investments",label: "Investments",  icon: "📈", desc: "Asset portfolio" },
-                { id: "loans",      label: "Loans & Debt", icon: "��", desc: "Track borrowing" },
+                { id: "loans",      label: "Loans & Debt", icon: "🏦", desc: "Track borrowing" },
                 { id: "reconcile",  label: "Reconcile",    icon: "✅", desc: "Import bank statement" },
-                { id: "settings",   label: "Settings",     icon: "⚙�", desc: "Profile & preferences" },
+                { id: "settings",   label: "Settings",     icon: "⚙️", desc: "Profile & preferences" },
               ].map(item => (
                 <Card key={item.id} onClick={() => setTab(item.id)} style={{ display:"flex", flexDirection:"column", gap:6 }}>
                   <div style={{ fontSize: 28 }}>{item.icon}</div>
@@ -2724,18 +2724,18 @@ export default function App() {
               </div>
               <div className="grid-2">
                 <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} style={{padding:12}}>⬆⬇ Import/Export</Btn>
-                <button onClick={toggleTheme} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>{theme==="dark"?"☀� Light Mode":"🌙 Dark Mode"}</button>
-                <button onClick={()=>setTab("settings")} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>⚙� Settings</button>
+                <button onClick={toggleTheme} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>{theme==="dark"?"☀️ Light Mode":"🌙 Dark Mode"}</button>
+                <button onClick={()=>setTab("settings")} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textPrimary,padding:12,cursor:"pointer",fontSize:13,fontWeight:700}}>⚙️ Settings</button>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* �������������������� MODALS ���������������������������������������� */}
+      {/* MODALS  */}
 
       {/* Add / Edit Transaction */}
-      <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"�� Edit Transaction":"Add Transaction"}>
+      <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <Field label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} options={(fTx.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
@@ -2745,7 +2745,7 @@ export default function App() {
         <Field label="Note (optional)" value={fTx.note} onChange={v=>setFTx({...fTx,note:v})} placeholder="e.g. Weekly groceries"/>
         {!editTx&&<><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
           <input type="checkbox" id="isRecurChk" checked={!!fTx.isRecurring} onChange={e=>setFTx({...fTx,isRecurring:e.target.checked})} style={{accentColor:C.teal,width:16,height:16}}/>
-          <label htmlFor="isRecurChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>� Make recurring</label>
+          <label htmlFor="isRecurChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>🔁 Make recurring</label>
         </div>
         {fTx.isRecurring&&<Field label="Frequency" value={fTx.freq} onChange={v=>setFTx({...fTx,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>}</>}
         <Btn onClick={saveTx} style={{width:"100%",padding:13,fontSize:14}}>{editTx?"Save Changes":`Add ${fTx.type==="income"?"Income":"Expense"}`}</Btn>
@@ -2764,9 +2764,9 @@ export default function App() {
       </Modal>
 
       {/* Add / Edit Wallet */}
-      <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"�� Edit Account":"�� Add Account / Wallet"}>
+      <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"✏️ Edit Account":"🏦 Add Account / Wallet"}>
         <Field label="Account Name" value={fWal.name} onChange={v=>setFWal({...fWal,name:v})} placeholder="e.g. Equity Bank Current"/>
-        <Field label="Account Type" value={fWal.accountType} onChange={v=>setFWal({...fWal,accountType:v})} options={[{value:"current",label:"�� Current / Checking"},{value:"savings",label:"💰 Savings Account"},{value:"investment",label:"📈 Investment Account"},{value:"cash",label:"👛 Cash Wallet"},{value:"digital",label:"📱 Mobile Money"}]}/>
+        <Field label="Account Type" value={fWal.accountType} onChange={v=>setFWal({...fWal,accountType:v})} options={[{value:"current",label:"🏦 Current / Checking"},{value:"savings",label:"💰 Savings Account"},{value:"investment",label:"📈 Investment Account"},{value:"cash",label:"👛 Cash Wallet"},{value:"digital",label:"📱 Mobile Money"}]}/>
         <Field label="Currency" value={fWal.currency} onChange={v=>setFWal({...fWal,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name} (${c.symbol})`}))}/>
         <Field label={editWal?`Current Balance (${fWal.currency})`:`Opening Balance (${fWal.currency})`} type="number" value={fWal.openingBalance} onChange={v=>setFWal({...fWal,openingBalance:v})} placeholder="0.00"/>
         <div className="grid-2">
@@ -2777,7 +2777,7 @@ export default function App() {
       </Modal>
 
       {/* Add Expense Category */}
-      <Modal open={isOpen("expCat")} onClose={()=>closeM("expCat")} title="��� New Expense Category">
+      <Modal open={isOpen("expCat")} onClose={()=>closeM("expCat")} title="🏷️ New Expense Category">
         <Field label="Category Name" value={fExpCat.name} onChange={v=>setFExpCat({...fExpCat,name:v})} placeholder="e.g. Pet Care"/>
         <div className="grid-2">
           <Field label="Icon"   value={fExpCat.icon}  onChange={v=>setFExpCat({...fExpCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
@@ -2786,7 +2786,7 @@ export default function App() {
         <Field label={`Monthly Budget (${baseCurrency})`} type="number" value={fExpCat.budget} onChange={v=>setFExpCat({...fExpCat,budget:v})} placeholder="0 = no budget"/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
           <input type="checkbox" id="watchChk" checked={!!fExpCat.watch} onChange={e=>setFExpCat({...fExpCat,watch:e.target.checked})} style={{accentColor:C.gold,width:16,height:16}}/>
-          <label htmlFor="watchChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>� Watch on Dashboard</label>
+          <label htmlFor="watchChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>👁 Watch on Dashboard</label>
         </div>
         <Btn onClick={addExpCat} style={{width:"100%",padding:13,fontSize:14}}>Add Category</Btn>
       </Modal>
@@ -2810,7 +2810,7 @@ export default function App() {
       </Modal>
 
       {/* Add / Edit Loan */}
-      <Modal open={isOpen("loan")} onClose={()=>{closeM("loan");setEditLoan(null);}} title={editLoan?"�� Edit Loan":"�� Add Loan"}>
+      <Modal open={isOpen("loan")} onClose={()=>{closeM("loan");setEditLoan(null);}} title={editLoan?"✏️ Edit Loan":"🏦 Add Loan"}>
         <Field label="Loan Name" value={fLoan.name}   onChange={v=>setFLoan({...fLoan,name:v})}   placeholder="e.g. KCB Personal Loan"/>
         <Field label="Lender"    value={fLoan.lender} onChange={v=>setFLoan({...fLoan,lender:v})} placeholder="e.g. KCB Bank"/>
         <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
@@ -2839,7 +2839,7 @@ export default function App() {
       </Modal>
 
       {/* Record / Edit Repayment */}
-      <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);}} title={editRepay?"�� Edit Repayment":"💳 Record Loan Repayment"}>
+      <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);}} title={editRepay?"✏️ Edit Repayment":"💳 Record Loan Repayment"}>
         {!editRepay&&<Field label="Loan" value={fRepay.loanId} onChange={v=>setFRepay({...fRepay,loanId:v})} options={loanOpts}/>}
         {(()=>{
           const l=loans.find(ln=>ln.id===fRepay.loanId);
@@ -2871,11 +2871,11 @@ export default function App() {
       </Modal>
 
       {/* Add / Edit Investment */}
-      <Modal open={isOpen("inv")} onClose={()=>{closeM("inv");setEditInv(null);}} title={editInv?"�� Edit Investment":"📈 Add Investment"}>
+      <Modal open={isOpen("inv")} onClose={()=>{closeM("inv");setEditInv(null);}} title={editInv?"✏️ Edit Investment":"📈 Add Investment"}>
         <Field label="Name" value={fInv.name} onChange={v=>setFInv({...fInv,name:v})} placeholder="e.g. Safaricom PLC"/>
         <div className="grid-2">
           <Field label="Ticker" value={fInv.ticker} onChange={v=>setFInv({...fInv,ticker:v})} placeholder="e.g. SCOM"/>
-          <Field label="Type" value={fInv.type} onChange={v=>setFInv({...fInv,type:v})} options={[{value:"Stock",label:"📊 Stock"},{value:"ETF",label:"📦 ETF"},{value:"Bond",label:"📜 Bond"},{value:"Money Mkt",label:"�� Money Market"},{value:"REIT",label:"�� REIT"},{value:"Crypto",label:"₿ Crypto"},{value:"Other",label:"💼 Other"}]}/>
+          <Field label="Type" value={fInv.type} onChange={v=>setFInv({...fInv,type:v})} options={[{value:"Stock",label:"📊 Stock"},{value:"ETF",label:"📦 ETF"},{value:"Bond",label:"📜 Bond"},{value:"Money Mkt",label:"🏦 Money Market"},{value:"REIT",label:"🏢 REIT"},{value:"Crypto",label:"₿ Crypto"},{value:"Other",label:"💼 Other"}]}/>
         </div>
         <Field label="Currency" value={fInv.currency} onChange={v=>setFInv({...fInv,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
@@ -2890,7 +2890,7 @@ export default function App() {
       {/* Record Return */}
       <Modal open={isOpen("ret")} onClose={()=>closeM("ret")} title="💹 Record Investment Return">
         <Field label="Investment" value={fRet.investmentId} onChange={v=>setFRet({...fRet,investmentId:v})} options={invOpts}/>
-        <Field label="Return Type" value={fRet.type} onChange={v=>setFRet({...fRet,type:v})} options={[{value:"interest",label:"�� Interest"},{value:"dividend",label:"💹 Dividend"},{value:"capital_gain",label:"📈 Capital Gain"},{value:"coupon",label:"📜 Coupon"},{value:"other",label:"💵 Other"}]}/>
+        <Field label="Return Type" value={fRet.type} onChange={v=>setFRet({...fRet,type:v})} options={[{value:"interest",label:"💰 Interest"},{value:"dividend",label:"💹 Dividend"},{value:"capital_gain",label:"📈 Capital Gain"},{value:"coupon",label:"📜 Coupon"},{value:"other",label:"💵 Other"}]}/>
         <div className="grid-2">
           <Field label="Amount" type="number" value={fRet.amount} onChange={v=>setFRet({...fRet,amount:v})} placeholder="0.00"/>
           <Field label="Date" type="date" value={fRet.date} onChange={v=>setFRet({...fRet,date:v})}/>
@@ -2901,7 +2901,7 @@ export default function App() {
       </Modal>
 
       {/* New / Edit Goal */}
-      <Modal open={isOpen("goal")} onClose={()=>{closeM("goal");setEditGoal(null);}} title={editGoal?"�� Edit Goal":"�� New Savings Goal"}>
+      <Modal open={isOpen("goal")} onClose={()=>{closeM("goal");setEditGoal(null);}} title={editGoal?"✏️ Edit Goal":"🏆 New Savings Goal"}>
         <Field label="Goal Name" value={fGoal.name} onChange={v=>setFGoal({...fGoal,name:v})} placeholder="e.g. Emergency Fund"/>
         <div className="grid-2">
           <Field label="Icon"   value={fGoal.icon}  onChange={v=>setFGoal({...fGoal,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
@@ -2920,7 +2920,7 @@ export default function App() {
       </Modal>
 
       {/* Add Recurring */}
-      <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="� Add Recurring Transaction">
+      <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="➕ Add Recurring Transaction">
         <Field label="Type" value={fRecur.type} onChange={v=>setFRecur({...fRecur,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expCats:incCats).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <div className="grid-2">
@@ -2934,7 +2934,7 @@ export default function App() {
       </Modal>
 
       {/* Record / Edit Refund */}
-      <Modal open={isOpen("refund")} onClose={()=>{closeM("refund");setEditRefund(null);setFRefund(blankRefund);}} title={editRefund?"�� Edit Refund":"↩� Record Refund"}>
+      <Modal open={isOpen("refund")} onClose={()=>{closeM("refund");setEditRefund(null);setFRefund(blankRefund);}} title={editRefund?"✏️ Edit Refund":"↩️ Record Refund"}>
         <Field label="Linked Expense" value={fRefund.refundOf} onChange={v=>setFRefund({...fRefund,refundOf:v})}
           options={[{value:"",label:"— Select original expense —"},...txs.filter(t=>t.type==="expense").slice(0,100).map(t=>({value:t.id,label:`${t.date||t.tx_date} · ${t.merchant||t.note||"Expense"} · ${disp(t.amount||parseFloat(t.amount_kes||0))}`}))]}/>
         {fRefund.refundOf&&(()=>{
@@ -3062,7 +3062,7 @@ export default function App() {
                 </div>
               )}
               <div style={{flex:1}}/>
-              <Btn onClick={resetImport} outline color={C.textMuted} small>� Back</Btn>
+              <Btn outline color={C.textMuted} small>← Back</Btn>
             </div>
 
             {/* Error log */}
@@ -3153,7 +3153,7 @@ export default function App() {
       {idleWarning&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:C.navyMid,border:`1px solid ${C.coral}`,borderRadius:20,padding:"32px 28px",maxWidth:380,width:"90%",textAlign:"center",boxShadow:`0 20px 60px rgba(0,0,0,0.5)`}}>
-            <div style={{fontSize:36,marginBottom:12}}>���</div>
+            <div style={{fontSize:36,marginBottom:12}}>🏦</div>
             <div style={{fontWeight:700,fontSize:17,color:C.textPrimary,marginBottom:8}}>Still there?</div>
             <div style={{color:C.textMuted,fontSize:13,marginBottom:24,lineHeight:1.6}}>
               You'll be signed out in <strong style={{color:C.coral}}>1 minute</strong> due to inactivity.
@@ -3203,10 +3203,10 @@ export default function App() {
       }}>
         {[
           { id: "dashboard", label: "Home",     icon: "◈" },
-          { id: "accounts",  label: "Wallets",  icon: "��" },
+          { id: "accounts",  label: "Wallets",  icon: "🏦" },
           { id: "transactions", label: "Records", icon: "📋" },
           { id: "more",      label: "More",     icon: "☰" },
-          { id: "settings",  label: "Settings", icon: "⚙�" },
+          { id: "settings",  label: "Settings", icon: "⚙️" },
         ].map(item => {
           const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "reconcile", "budgets"].includes(tab));
           return (

@@ -2395,8 +2395,9 @@ export default function App() {
                   {txSearch.trim() ? `${filteredTxs.length} of ${txs.length} transactions` : `${txs.length} transactions`}
                 </div>
               </div>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
                 <Btn onClick={exportTransactions} outline color={C.textMuted} small>⬇ Export</Btn>
+                <Btn onClick={()=>openM("expCat")} outline color={C.blue} small>＋ Category</Btn>
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
               </div>
             </div>
@@ -2826,12 +2827,11 @@ export default function App() {
             </div>
             <div className="grid-2">
               {[
-                { id: "goals",      label: "Savings Goals", icon: "🏆", desc: "Track savings targets" },
-                { id: "recurring",  label: "Recurring",    icon: "🔁", desc: "Bills & subscriptions" },
-                { id: "investments",label: "Investments",  icon: "📈", desc: "Asset portfolio" },
-                { id: "loans",      label: "Loans & Debt", icon: "🏦", desc: "Track borrowing" },
-                { id: "reconcile",  label: "Reconcile",    icon: "✅", desc: "Import bank statement" },
-                { id: "settings",   label: "Settings",     icon: "⚙️", desc: "Profile & preferences" },
+                { id: "goals",       label: "Savings Goals", icon: "🏆", desc: "Track savings targets" },
+                { id: "recurring",   label: "Recurring",     icon: "🔁", desc: "Bills & subscriptions" },
+                { id: "investments", label: "Investments",   icon: "📈", desc: "Asset portfolio" },
+                { id: "loans",       label: "Loans & Debt",  icon: "🏦", desc: "Track borrowing" },
+                { id: "reconcile",   label: "Reconcile",     icon: "✅", desc: "Import bank statement" },
               ].map(item => (
                 <Card key={item.id} onClick={() => setTab(item.id)} style={{ display:"flex", flexDirection:"column", gap:6 }}>
                   <div style={{ fontSize: 28 }}>{item.icon}</div>
@@ -3381,13 +3381,13 @@ export default function App() {
         boxShadow: "0 -4px 16px rgba(0,0,0,0.3)"
       }}>
         {[
-          { id: "dashboard", label: "Home",     icon: "◈" },
-          { id: "accounts",  label: "Wallets",  icon: "🏦" },
+          { id: "dashboard",    label: "Home",    icon: "◈" },
+          { id: "accounts",     label: "Wallets", icon: "🏦" },
           { id: "transactions", label: "Records", icon: "📋" },
-          { id: "more",      label: "More",     icon: "☰" },
-          { id: "settings",  label: "Settings", icon: "⚙️" },
+          { id: "budgets",      label: "Budgets", icon: "📊" },
+          { id: "more",         label: "More",    icon: "☰" },
         ].map(item => {
-          const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "reconcile", "budgets"].includes(tab));
+          const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "reconcile"].includes(tab));
           return (
             <button
               key={item.id}

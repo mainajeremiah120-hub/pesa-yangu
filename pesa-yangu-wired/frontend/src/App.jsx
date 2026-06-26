@@ -1043,6 +1043,7 @@ export default function App() {
   const [editRepay,   setEditRepay]   = useState(null); // { loan, repayment }
   const [editRefund,  setEditRefund]  = useState(null);
   const [catHistory,  setCatHistory]  = useState(null); // { cat, type } — category records modal
+  const [txDetail,    setTxDetail]    = useState(null); // transaction detail modal
 
   // Confirm dialog
   const [confirm, setConfirm] = useState({ open:false, title:"", message:"", onConfirm:()=>{} });
@@ -2484,7 +2485,10 @@ export default function App() {
                   );
                 };
 
-                return<div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<arr.length-1?`1px solid ${C.navyLight}`:"none",background:isRefund?"#9B59B611":"transparent"}}>
+                return<div key={t.id} onClick={()=>setTxDetail(t)}
+                  onMouseEnter={e=>e.currentTarget.style.background=isRefund?"#9B59B622":C.navyMid}
+                  onMouseLeave={e=>e.currentTarget.style.background=isRefund?"#9B59B611":"transparent"}
+                  style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<arr.length-1?`1px solid ${C.navyLight}`:"none",background:isRefund?"#9B59B611":"transparent",cursor:"pointer"}}>
                   <div style={{width:36,height:36,borderRadius:10,background:(cat?.color||C.teal)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{cat?.icon||"💸"}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{highlight(label)}</div>
@@ -2499,18 +2503,8 @@ export default function App() {
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontWeight:700,fontSize:13,color:isIn?C.teal:C.textPrimary}}>{isIn?"+":"−"}{disp(amt)}</div>
-                    <div style={{display:"flex",gap:5,justifyContent:"flex-end",marginTop:4,alignItems:"center"}}>
+                    <div style={{marginTop:4}}>
                       {isRefund?<Badge color="#9B59B6">↩ refund</Badge>:<Badge color={isT?C.blue:isIn?C.teal:C.coral}>{isT?t.type.replace("_"," "):t.type}</Badge>}
-                      {isRefund&&<button onClick={()=>openEditRefundModal(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit refund">✏️</button>}
-                      {!isT&&!isRefund&&<button onClick={()=>openEditTx(t)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit">✏️</button>}
-                      {t.type==="expense"&&<button onClick={()=>openRefundModal(t)} style={{background:"none",border:"none",color:"#9B59B6",cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Record refund">↩</button>}
-                      <button onClick={()=>askConfirm(
-                          isT ? "Delete Transfer" : "Delete Transaction",
-                          isT
-                            ? "Both sides of this transfer will be deleted and wallet balances reversed. This cannot be undone."
-                            : "This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",
-                          ()=>deleteTx(t.id)
-                        )} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete">🗑</button>
                     </div>
                   </div>
                 </div>;
@@ -2540,13 +2534,14 @@ export default function App() {
             <Divider label="Expense Categories"/>
             {expCats.map(c=>{
               const spent=spendByCat[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
-              return<Card key={c.id} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent"}}>
+              const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
+              return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:c.budget>0?10:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:18}}>{c.icon}</span>
                     <div>
                       <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}}</div>
-                      <div style={{fontSize:10,color:C.textMuted}}>{c.budget>0?`Budget: ${disp(c.budget)}`:"No budget set"}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{c.budget>0?`Budget: ${disp(c.budget)}`:"No budget set"}</div>
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -2555,10 +2550,9 @@ export default function App() {
                       {c.budget>0&&<div style={{fontSize:10,color:over?C.coral:C.teal}}>{over?`+${disp(spent-c.budget)} over`:`${disp(c.budget-spent)} left`}</div>}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                      {(()=>{const cnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;return cnt>0&&<button onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{background:c.color+"22",border:`1px solid ${c.color}55`,borderRadius:6,color:c.color,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 {cnt} record{cnt!==1?"s":""}</button>;})()}
-                      <button onClick={()=>{setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
-                      <button onClick={()=>toggleWatch(c.id)} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:6,color:c.watch?C.gold:C.textMuted,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.watch?"Watching":"Watch"}</button>
-                      <button onClick={()=>askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
+                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
+                      <button onClick={e=>{e.stopPropagation();toggleWatch(c.id);}} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:6,color:c.watch?C.gold:C.textMuted,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.watch?"Watching":"Watch"}</button>
+                      <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
                     </div>
                   </div>
                 </div>
@@ -2569,19 +2563,19 @@ export default function App() {
             <div className="grid-2">
               {incCats.map(c=>{
                 const earned=earnByCat[c.id]||0;
-                return<Card key={c.id}>
+                const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
+                return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"income"})} style={{cursor:"pointer"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:18}}>{c.icon}</span>
                       <div>
                         <div style={{fontWeight:600,fontSize:13}}>{c.name}</div>
-                        <div style={{fontSize:10,color:C.textMuted}}>{c.budget>0?`Target: ${disp(c.budget)}`:"No target"}</div>
+                        <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{c.budget>0?`Target: ${disp(c.budget)}`:"No target"}</div>
                       </div>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                      {(()=>{const cnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;return cnt>0&&<button onClick={()=>setCatHistory({cat:c,type:"income"})} style={{background:c.color+"22",border:`1px solid ${c.color}55`,borderRadius:6,color:c.color,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 {cnt} record{cnt!==1?"s":""}</button>;})()}
-                      <button onClick={()=>{setFBudget({catId:c.id,catType:"income",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit":"Set Target"}</button>
-                      <button onClick={()=>askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"income"))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
+                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"income",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit":"Set Target"}</button>
+                      <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"income"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
                     </div>
                   </div>
                   <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:c.color}}>{disp(earned)}</div>
@@ -2906,6 +2900,58 @@ export default function App() {
         <Btn onClick={saveWallet} style={{width:"100%",padding:13,fontSize:14}}>{editWal?"Save Changes":"Create Account"}</Btn>
       </Modal>
 
+      {/* Transaction Detail Modal */}
+      {txDetail&&(()=>{
+        const t=txDetail;
+        const isT=t.type?.startsWith("transfer");
+        const isRefund=t.type==="refund";
+        const catId=t.category||t.category_id;
+        const cat=isT?{icon:"⇄",name:"Transfer",color:C.blue}:isRefund?{icon:"↩️",name:"Refund",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
+        const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
+        const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
+        const amt=t.amount||parseFloat(t.amount_kes||0);
+        const ts=txTime(t);
+        const label=t.merchant||t.note||"Transaction";
+        const hasNote=!!(t.note&&t.merchant);
+        return(
+          <Modal open={!!txDetail} onClose={()=>setTxDetail(null)} title="Transaction Detail">
+            <div style={{textAlign:"center",marginBottom:22,paddingTop:4}}>
+              <div style={{width:64,height:64,borderRadius:18,background:(cat?.color||C.teal)+"22",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:12}}>{cat?.icon||"💸"}</div>
+              <div style={{fontFamily:"'DM Serif Display',serif",fontSize:32,color:isIn?C.teal:C.coral,lineHeight:1}}>{isIn?"+":"−"}{disp(amt)}</div>
+              <div style={{fontWeight:600,fontSize:15,marginTop:8,color:C.textPrimary}}>{label}</div>
+            </div>
+            <div style={{background:C.navyLight,borderRadius:12,padding:"14px 16px",marginBottom:20,display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:13}}>
+                <span style={{color:C.textMuted}}>Category</span>
+                <span style={{fontWeight:600,color:cat?.color||C.textPrimary}}>{cat?.icon} {cat?.name||"—"}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:C.textMuted}}>Wallet</span>
+                <span style={{fontWeight:600,color:C.textPrimary}}>{w?.name||"—"}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:C.textMuted}}>Date</span>
+                <span style={{fontWeight:600,color:C.textPrimary}}>{fmtDate(t.date||t.tx_date)}{ts?" · "+ts:""}</span>
+              </div>
+              {hasNote&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,gap:10}}>
+                <span style={{color:C.textMuted,flexShrink:0}}>Note</span>
+                <span style={{fontWeight:600,color:C.textPrimary,textAlign:"right"}}>{t.note}</span>
+              </div>}
+              {t.loanId&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:C.textMuted}}>Linked To</span>
+                <Badge color={C.coral}>Loan Repayment</Badge>
+              </div>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {!isT&&!isRefund&&<Btn onClick={()=>{openEditTx(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Transaction</Btn>}
+              {isRefund&&<Btn onClick={()=>{openEditRefundModal(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Refund</Btn>}
+              {t.type==="expense"&&<Btn onClick={()=>{openRefundModal(t);setTxDetail(null);}} color="#9B59B6" style={{width:"100%",padding:14,fontSize:14}}>↩  Record Refund</Btn>}
+              <Btn onClick={()=>{askConfirm(isT?"Delete Transfer":"Delete Transaction",isT?"Both sides of this transfer will be deleted and wallet balances reversed. This cannot be undone.":"This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",()=>{deleteTx(t.id);setTxDetail(null);});}} color={C.coral} outline style={{width:"100%",padding:14,fontSize:14}}>🗑  Delete</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {/* Category History Modal */}
       {catHistory&&(()=>{
         const {cat,type}=catHistory;
@@ -2926,7 +2972,10 @@ export default function App() {
                 const wn=walletName(t);
                 const ts=txTime(t);
                 return(
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
+                  <div key={t.id} onClick={()=>setTxDetail(t)}
+                    onMouseEnter={e=>e.currentTarget.style.background=C.navyMid}
+                    onMouseLeave={e=>e.currentTarget.style.background=C.navyLight}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.navyLight,borderRadius:10,cursor:"pointer"}}>
                     <div style={{width:6,height:36,borderRadius:3,background:cat.color,flexShrink:0}}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.merchant||t.note||cat.name}</div>

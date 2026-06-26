@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS insurance_policies (
+  id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id            UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name               TEXT         NOT NULL,
+  provider           TEXT         NOT NULL DEFAULT '',
+  policy_type        TEXT         NOT NULL DEFAULT 'life',
+  policy_number      TEXT,
+  premium_amount     NUMERIC(15,2) NOT NULL DEFAULT 0,
+  premium_frequency  TEXT         NOT NULL DEFAULT 'monthly',
+  start_date         DATE,
+  end_date           DATE,
+  sum_assured        NUMERIC(15,2),
+  surrender_value    NUMERIC(15,2),
+  beneficiary        TEXT,
+  wallet_id          UUID         REFERENCES wallets(id) ON DELETE SET NULL,
+  currency           TEXT         NOT NULL DEFAULT 'KES',
+  notes              TEXT,
+  is_active          BOOLEAN      DEFAULT TRUE,
+  created_at         TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ  DEFAULT NOW()
+);

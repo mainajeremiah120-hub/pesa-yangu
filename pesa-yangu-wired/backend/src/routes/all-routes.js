@@ -633,6 +633,72 @@ reconcileRouter.post("/confirm", async (req,res,next)=>{
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// INSURANCE POLICIES
+// ══════════════════════════════════════════════════════════════════════════════
+const insuranceRouter = express.Router();
+
+const insuranceSchema = z.object({
+  name:               z.string().min(1).max(200).trim(),
+  provider:           z.string().max(100).default(""),
+  policy_type:        z.enum(["life","education","medical","motor","property","last_expense","investment_linked"]).default("life"),
+  policy_number:      z.string().max(100).optional(),
+  premium_amount:     z.number().min(0).max(1e10).default(0),
+  premium_frequency:  z.enum(["monthly","quarterly","annually"]).default("monthly"),
+  start_date:         z.string().optional(),
+  end_date:           z.string().optional(),
+  sum_assured:        z.number().min(0).max(1e12).optional(),
+  surrender_value:    z.number().min(0).max(1e12).optional(),
+  beneficiary:        z.string().max(200).optional(),
+  wallet_id:          z.string().uuid().optional(),
+  currency:           z.string().length(3).default("KES"),
+  notes:              z.string().max(2000).optional(),
+  is_active:          z.boolean().default(true),
+});
+
+insuranceRouter.get("/", async (req,res,next) => {
+  try {
+    const {rows} = await query("SELECT * FROM insurance_policies WHERE user_id=$1 ORDER BY created_at DESC", [req.user.id]);
+    res.json({policies:rows});
+  } catch(e){next(e);}
+});
+
+insuranceRouter.post("/", async (req,res,next) => {
+  try {
+    const d = insuranceSchema.parse(req.body);
+    const {rows} = await query(
+      `INSERT INTO insurance_policies (user_id,name,provider,policy_type,policy_number,premium_amount,premium_frequency,start_date,end_date,sum_assured,surrender_value,beneficiary,wallet_id,currency,notes,is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [req.user.id,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active]
+    );
+    res.status(201).json({policy:rows[0]});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+insuranceRouter.patch("/:id", async (req,res,next) => {
+  try {
+    const d = insuranceSchema.partial().parse(req.body);
+    const allowed=["name","provider","policy_type","policy_number","premium_amount","premium_frequency","start_date","end_date","sum_assured","surrender_value","beneficiary","wallet_id","currency","notes","is_active"];
+    const updates=Object.fromEntries(Object.entries(d).filter(([k])=>allowed.includes(k)));
+    if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
+    const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
+    const {rows}=await query(
+      `UPDATE insurance_policies SET ${sets.join(",")},updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING *`,
+      [req.params.id,req.user.id,...Object.values(updates)]
+    );
+    if(!rows.length) return res.status(404).json({error:"Not found"});
+    res.json({policy:rows[0]});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+insuranceRouter.delete("/:id", async (req,res,next) => {
+  try {
+    const {rows}=await query("DELETE FROM insurance_policies WHERE id=$1 AND user_id=$2 RETURNING id",[req.params.id,req.user.id]);
+    if(!rows.length) return res.status(404).json({error:"Not found"});
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // EXPORTS — each router exported for use in src/index.js
 // ══════════════════════════════════════════════════════════════════════════════
 module.exports = {
@@ -646,4 +712,5 @@ module.exports = {
   aiRouter,
   billingRouter,
   reconcileRouter,
+  insuranceRouter,
 };

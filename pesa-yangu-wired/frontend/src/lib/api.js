@@ -228,4 +228,12 @@ export const reconcileApi = {
     unwrap(client.post("/reconcile/confirm", { rows, walletId })),
 };
 
+// ── Insurance ─────────────────────────────────────────────────────────────────
+export const insuranceApi = {
+  list:   ()         => unwrap(client.get("/insurance")),
+  create: (p)        => unwrap(client.post("/insurance", p)),
+  update: (id, p)    => unwrap(client.patch(`/insurance/${id}`, p)),
+  remove: (id)       => unwrap(client.delete(`/insurance/${id}`)),
+};
+
 export default client;

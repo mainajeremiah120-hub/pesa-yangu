@@ -51,6 +51,7 @@ const {
   aiRouter:         aiRoutes,
   billingRouter:    billingRoutes,
   reconcileRouter:  reconcileRoutes,
+  insuranceRouter:  insuranceRoutes,
 } = require("./routes/all-routes");
 
 const app  = express();
@@ -173,6 +174,7 @@ v1.use("/recurring",    requireAuth, recurringRoutes);
 v1.use("/ai",           requireAuth, aiRoutes);
 v1.use("/billing",      requireAuth, billingRoutes);
 v1.use("/reconcile",    requireAuth, reconcileRoutes);
+v1.use("/insurance",    requireAuth, insuranceRoutes);
 
 app.use("/api/v1", v1);
 

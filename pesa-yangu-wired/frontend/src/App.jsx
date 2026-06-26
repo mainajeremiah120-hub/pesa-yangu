@@ -15,7 +15,7 @@ import AuthPage from "./pages/AuthPage.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
-  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi,
+  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi,
 } from "./lib/api.js";
 import { AdminApp, AdminPanel } from "./AdminDashboard.jsx";
 import { SupportTickets } from "./components/SupportTickets.jsx";
@@ -397,6 +397,58 @@ const Btn = ({ children, onClick, color, outline=false, style={}, disabled=false
   );
 };
 
+// Searchable category picker — replaces plain <select> for categories
+const CatPicker = ({ value, onChange, categories, label }) => {
+  const C = useC();
+  const [query,  setQuery]  = useState("");
+  const [open,   setOpen]   = useState(false);
+  const ref = useRef(null);
+  const selected = categories.find(c => c.id === value);
+  const sorted = [...categories].sort((a,b) => a.name.localeCompare(b.name));
+  const filtered = query.trim() ? sorted.filter(c => c.name.toLowerCase().includes(query.toLowerCase()) || c.icon.includes(query)) : sorted;
+
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery(""); } };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ marginBottom: 12 }}>
+      {label && <div style={{ fontSize:11, color:C.textMuted, marginBottom:5, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.05em" }}>{label}</div>}
+      <div onClick={() => setOpen(o => !o)}
+        style={{ background:C.navyLight, border:`1px solid ${open ? C.teal : (C.inputBorder||C.navyLight)}`, borderRadius: open ? "10px 10px 0 0" : 10, padding:"10px 14px", cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", gap:8, transition:"border-color 0.15s" }}>
+        {selected
+          ? <><span style={{fontSize:16}}>{selected.icon}</span><span style={{fontWeight:600,color:C.textPrimary}}>{selected.name}</span></>
+          : <span style={{color:C.textMuted}}>Select category…</span>}
+        <span style={{marginLeft:"auto",color:C.textMuted,fontSize:10}}>{open?"▴":"▾"}</span>
+      </div>
+      {open && (
+        <div style={{background:C.navyLight,borderRadius:"0 0 10px 10px",border:`1px solid ${C.teal}`,borderTop:"none",overflow:"hidden"}}>
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${C.navyMid}`}}>
+            <input autoFocus value={query} onChange={e=>setQuery(e.target.value)}
+              placeholder="Search categories…"
+              style={{background:C.navyMid,border:"none",borderRadius:7,padding:"7px 11px",color:C.textPrimary,width:"100%",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            {filtered.length===0 && <div style={{padding:"14px",color:C.textMuted,fontSize:13,textAlign:"center"}}>No categories match</div>}
+            {filtered.map(c=>(
+              <div key={c.id} onClick={()=>{onChange(c.id);setOpen(false);setQuery("");}}
+                onMouseEnter={e=>e.currentTarget.style.background=c.id===value?c.color+"33":C.navyMid}
+                onMouseLeave={e=>e.currentTarget.style.background=c.id===value?c.color+"22":"transparent"}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",background:c.id===value?c.color+"22":"transparent",borderLeft:`3px solid ${c.id===value?c.color:"transparent"}`}}>
+                <span style={{fontSize:16,width:22,textAlign:"center",flexShrink:0}}>{c.icon}</span>
+                <span style={{fontSize:13,fontWeight:c.id===value?700:500,color:c.id===value?c.color:C.textPrimary}}>{c.name}</span>
+                {c.id===value&&<span style={{marginLeft:"auto",color:c.color,fontWeight:800,fontSize:12}}>✓</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Divider = ({ label }) => {
   const C = useC();
   return (
@@ -720,6 +772,7 @@ export default function App() {
   const [goals,       setGoals]       = useState([]);
   const [investments, setInvestments] = useState([]);
   const [loans,       setLoans]       = useState([]);
+  const [policies,    setPolicies]    = useState([]);
   const [recurring,   setRecurring]   = useState([]);
   const [currencies,  setCurrencies]  = useState(DEFAULT_CURRENCIES);
   const [dataLoading, setDataLoading] = useState(false);
@@ -790,7 +843,7 @@ export default function App() {
   const writeCache = (data) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {} };
   const readCache  = () => { try { const s = localStorage.getItem(CACHE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
 
-  const applyData = useCallback(([w, t, c, g, inv, l, r, fx]) => {
+  const applyData = useCallback(([w, t, c, g, inv, l, r, fx, ins]) => {
     setWallets(w.wallets || []);
     setTxs((t.transactions || []).map(tx => ({
       ...tx,
@@ -809,6 +862,7 @@ export default function App() {
     setInvestments((inv.investments||[]).map(normaliseInv));
     setLoans((l.loans||[]).map(normaliseLoan));
     setRecurring((r.recurring||[]).map(normaliseRecurring));
+    setPolicies(ins?.policies||[]);
     if (fx.rates) {
       setCurrencies(prev => prev.map(c => fx.rates[c.code]
         ? { ...c, rate: 1/fx.rates[c.code] }
@@ -842,6 +896,7 @@ export default function App() {
       loansApi.list(),
       recurApi.list(),
       fxApi.rates(),
+      insuranceApi.list(),
     ])
     .then((results) => {
       applyData(results);
@@ -1012,7 +1067,8 @@ export default function App() {
   const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
-  const blankLoan  = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
+  const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
+  const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", beneficiary:"", walletId:"", currency:"KES", notes:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
@@ -1027,6 +1083,7 @@ export default function App() {
   const [fIncCat, setFIncCat]= useState(blankIncCat);
   const [fBudget, setFBudget]= useState(blankBudget);
   const [fLoan,   setFLoan]  = useState(blankLoan);
+  const [fPolicy, setFPolicy]= useState(blankPolicy);
   const [fRepay,  setFRepay] = useState(blankRepay);
   const [fInv,    setFInv]   = useState(blankInv);
   const [fRet,    setFRet]   = useState(blankRet);
@@ -1040,6 +1097,7 @@ export default function App() {
   const [editGoal,    setEditGoal]    = useState(null);
   const [editInv,     setEditInv]     = useState(null);
   const [editLoan,    setEditLoan]    = useState(null);
+  const [editPolicy,  setEditPolicy]  = useState(null);
   const [editRepay,   setEditRepay]   = useState(null); // { loan, repayment }
   const [editRefund,  setEditRefund]  = useState(null);
   const [catHistory,  setCatHistory]  = useState(null); // { cat, type } — category records modal
@@ -1558,6 +1616,68 @@ export default function App() {
     } else {
       addRepayment();
     }
+  };
+
+  // ── Insurance handlers ───────────────────────────────────────────────────────
+  const savePolicy = async () => {
+    if (!fPolicy.name || !fPolicy.provider) return showToast("Policy name and provider are required", C.coral);
+    const payload = {
+      name:              fPolicy.name,
+      provider:          fPolicy.provider,
+      policy_type:       fPolicy.policyType,
+      policy_number:     fPolicy.policyNumber||undefined,
+      premium_amount:    parseFloat(fPolicy.premiumAmount)||0,
+      premium_frequency: fPolicy.premiumFreq,
+      start_date:        fPolicy.startDate||undefined,
+      end_date:          fPolicy.endDate||undefined,
+      sum_assured:       fPolicy.sumAssured?parseFloat(fPolicy.sumAssured):undefined,
+      surrender_value:   fPolicy.surrenderValue?parseFloat(fPolicy.surrenderValue):undefined,
+      beneficiary:       fPolicy.beneficiary||undefined,
+      wallet_id:         fPolicy.walletId||undefined,
+      currency:          fPolicy.currency,
+      notes:             fPolicy.notes||undefined,
+    };
+    try {
+      if (editPolicy) {
+        const {policy} = await insuranceApi.update(editPolicy.id, payload);
+        setPolicies(p => p.map(x => x.id===editPolicy.id ? policy : x));
+        showToast("Policy updated");
+      } else {
+        const {policy} = await insuranceApi.create(payload);
+        setPolicies(p => [policy, ...p]);
+        showToast("Policy added");
+      }
+      setEditPolicy(null); setFPolicy(blankPolicy); closeM("policy");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const deletePolicy = async (id) => {
+    try {
+      await insuranceApi.remove(id);
+      setPolicies(p => p.filter(x => x.id!==id));
+      showToast("Policy deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const openEditPolicy = (p) => {
+    setEditPolicy(p);
+    setFPolicy({
+      name:           p.name,
+      provider:       p.provider,
+      policyType:     p.policy_type,
+      policyNumber:   p.policy_number||"",
+      premiumAmount:  String(parseFloat(p.premium_amount)||""),
+      premiumFreq:    p.premium_frequency,
+      startDate:      (p.start_date||"").slice(0,10),
+      endDate:        (p.end_date||"").slice(0,10),
+      sumAssured:     p.sum_assured?String(parseFloat(p.sum_assured)):"",
+      surrenderValue: p.surrender_value?String(parseFloat(p.surrender_value)):"",
+      beneficiary:    p.beneficiary||"",
+      walletId:       p.wallet_id||"",
+      currency:       p.currency||"KES",
+      notes:          p.notes||"",
+    });
+    openM("policy");
   };
 
   // ── Refund handlers ──────────────────────────────────────────────────────────
@@ -2801,6 +2921,141 @@ export default function App() {
           </div>
         )}
 
+        {/* INSURANCE  */}
+        {tab==="insurance"&&(()=>{
+          const POLICY_META = {
+            life:              {icon:"🛡️", label:"Life"},
+            education:         {icon:"📚", label:"Education"},
+            medical:           {icon:"🏥", label:"Medical / NHIF"},
+            motor:             {icon:"🚗", label:"Motor"},
+            property:          {icon:"🏠", label:"Property"},
+            last_expense:      {icon:"🕊️", label:"Last Expense"},
+            investment_linked: {icon:"📈", label:"Investment-linked"},
+          };
+          const toMonthly = (amt,freq) => freq==="monthly"?parseFloat(amt):freq==="quarterly"?parseFloat(amt)/3:parseFloat(amt)/12;
+          const nextDue = (startDate,freq) => {
+            if(!startDate) return null;
+            const start = new Date(startDate); const today = new Date();
+            if(today<start) return start;
+            const months = freq==="monthly"?1:freq==="quarterly"?3:12;
+            let d = new Date(start);
+            while(d<=today) d=new Date(d.getFullYear(),d.getMonth()+months,d.getDate());
+            return d;
+          };
+          const daysUntil = (d) => { if(!d) return null; return Math.ceil((d-new Date())/(1000*60*60*24)); };
+          const monthsPaid = (startDate,freq) => {
+            if(!startDate) return 0;
+            const start=new Date(startDate); const today=new Date();
+            if(today<start) return 0;
+            const elapsed=(today.getFullYear()-start.getFullYear())*12+(today.getMonth()-start.getMonth());
+            const freqMo=freq==="monthly"?1:freq==="quarterly"?3:12;
+            return Math.floor(elapsed/freqMo)+1;
+          };
+          const totalMonths = (startDate,endDate) => {
+            if(!startDate||!endDate) return null;
+            const s=new Date(startDate),e=new Date(endDate);
+            return Math.round((e-s)/(1000*60*60*24*30.44));
+          };
+          const active=policies.filter(p=>p.is_active!==false);
+          const totalMonthly=active.reduce((s,p)=>s+toMonthly(p.premium_amount,p.premium_frequency),0);
+          const totalAssured=active.reduce((s,p)=>s+(parseFloat(p.sum_assured)||0),0);
+          const nearest=active.map(p=>({p,d:nextDue(p.start_date,p.premium_frequency)})).filter(x=>x.d).sort((a,b)=>a.d-b.d)[0];
+          return(
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+                <div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Insurance & Protection</div>
+                  <div style={{color:C.textMuted,fontSize:12}}>{active.length} active {active.length===1?"policy":"policies"}</div>
+                </div>
+                <Btn onClick={()=>{setEditPolicy(null);setFPolicy({...blankPolicy,walletId:wallets[0]?.id||""});openM("policy");}}>+ Add Policy</Btn>
+              </div>
+
+              {/* Summary strip */}
+              {active.length>0&&<div className="grid-2" style={{gap:10}}>
+                <Card style={{background:`linear-gradient(135deg,${C.teal}18,${C.teal}05)`}}>
+                  <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Monthly Premiums</div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.teal}}>{disp(totalMonthly)}</div>
+                </Card>
+                <Card style={{background:`linear-gradient(135deg,${C.blue}18,${C.blue}05)`}}>
+                  <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Total Sum Assured</div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.blue}}>{disp(totalAssured)}</div>
+                </Card>
+                {nearest&&<Card style={{gridColumn:"1/-1",borderLeft:`3px solid ${daysUntil(nearest.d)<=7?C.coral:C.gold}`}}>
+                  <div style={{fontSize:10,color:C.textMuted,marginBottom:2}}>Nearest Premium Due</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontWeight:600,fontSize:13}}>{POLICY_META[nearest.p.policy_type]?.icon} {nearest.p.name} — {nearest.p.provider}</div>
+                    <Badge color={daysUntil(nearest.d)<=7?C.coral:C.gold}>{daysUntil(nearest.d)} day{daysUntil(nearest.d)!==1?"s":""}</Badge>
+                  </div>
+                </Card>}
+              </div>}
+
+              {/* Policy cards */}
+              {policies.length===0
+                ?<Card style={{textAlign:"center",padding:32}}>
+                  <div style={{fontSize:36,marginBottom:12}}>🛡️</div>
+                  <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No policies yet</div>
+                  <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>Track your life, education, medical and other insurance policies.</div>
+                  <Btn onClick={()=>{setEditPolicy(null);setFPolicy({...blankPolicy,walletId:wallets[0]?.id||""});openM("policy");}}>+ Add Your First Policy</Btn>
+                </Card>
+                :policies.map(p=>{
+                  const meta=POLICY_META[p.policy_type]||{icon:"🛡️",label:p.policy_type};
+                  const nd=nextDue(p.start_date,p.premium_frequency);
+                  const days=daysUntil(nd);
+                  const paid=monthsPaid(p.start_date,p.premium_frequency);
+                  const totMo=totalMonths(p.start_date,p.end_date);
+                  const paidAmt=paid*(parseFloat(p.premium_amount)||0);
+                  const pct=totMo?Math.min((paid/totMo)*100,100):0;
+                  const w=wallets.find(w=>w.id===p.wallet_id);
+                  const lapseRisk=w&&parseFloat(w.balance)<parseFloat(p.premium_amount);
+                  const freqLabel=p.premium_frequency==="monthly"?"/ mo":p.premium_frequency==="quarterly"?"/ qtr":"/ yr";
+                  return(
+                    <Card key={p.id} style={{borderLeft:lapseRisk?`3px solid ${C.coral}`:days!=null&&days<=7?`3px solid ${C.gold}`:"3px solid transparent"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:42,height:42,borderRadius:12,background:C.teal+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{meta.icon}</div>
+                          <div>
+                            <div style={{fontWeight:700,fontSize:14}}>{p.name}</div>
+                            <div style={{color:C.textMuted,fontSize:11,marginTop:1}}>{meta.label} · {p.provider}</div>
+                            {p.policy_number&&<div style={{color:C.textFaint,fontSize:10}}>#{p.policy_number}</div>}
+                          </div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontWeight:700,fontSize:15,color:C.coral}}>{disp(parseFloat(p.premium_amount)||0)}<span style={{fontSize:11,fontWeight:400,color:C.textMuted}}> {freqLabel}</span></div>
+                          {nd&&<div style={{fontSize:10,color:days<=7?C.coral:C.textMuted,marginTop:2}}>Due in {days}d · {nd.toLocaleDateString("en-KE",{day:"numeric",month:"short"})}</div>}
+                        </div>
+                      </div>
+
+                      {/* Stats row */}
+                      <div style={{display:"flex",gap:16,marginBottom:totMo?10:0,flexWrap:"wrap"}}>
+                        {p.sum_assured&&<div><div style={{fontSize:10,color:C.textMuted}}>Sum Assured</div><div style={{fontWeight:600,fontSize:12,color:C.blue}}>{disp(parseFloat(p.sum_assured))}</div></div>}
+                        {paid>0&&<div><div style={{fontSize:10,color:C.textMuted}}>Paid so far</div><div style={{fontWeight:600,fontSize:12,color:C.teal}}>{disp(paidAmt)}</div></div>}
+                        {p.surrender_value&&<div><div style={{fontSize:10,color:C.textMuted}}>Surrender Value</div><div style={{fontWeight:600,fontSize:12}}>{disp(parseFloat(p.surrender_value))}</div></div>}
+                        {p.beneficiary&&<div><div style={{fontSize:10,color:C.textMuted}}>Beneficiary</div><div style={{fontWeight:600,fontSize:12}}>{p.beneficiary}</div></div>}
+                      </div>
+
+                      {/* Progress bar if start + end date known */}
+                      {totMo>0&&<>
+                        <Bar value={paid} max={totMo} color={C.teal}/>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.textFaint,marginTop:4}}>
+                          <span>{paid} of {totMo} months paid · {pct.toFixed(0)}%</span>
+                          {p.end_date&&<span>Matures {new Date(p.end_date).toLocaleDateString("en-KE",{month:"short",year:"numeric"})}</span>}
+                        </div>
+                      </>}
+
+                      {lapseRisk&&<div style={{marginTop:8,padding:"6px 10px",background:C.coral+"18",borderRadius:8,fontSize:11,color:C.coral,fontWeight:600}}>⚠ Wallet balance below next premium — top up {w.name} to avoid lapse</div>}
+
+                      <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+                        <Btn onClick={()=>openEditPolicy(p)} outline color={C.blue} small>✏️ Edit</Btn>
+                        <Btn onClick={()=>askConfirm("Delete Policy",`Remove "${p.name}"? This cannot be undone.`,()=>deletePolicy(p.id))} outline color={C.coral} small>🗑 Delete</Btn>
+                      </div>
+                    </Card>
+                  );
+                })
+              }
+            </div>
+          );
+        })()}
+
         {/* MORE MENU (MOBILE ONLY)  */}
         {tab==="settings"&&<SettingsTab
           user={user} C={C} theme={theme} toggleTheme={toggleTheme}
@@ -2825,6 +3080,7 @@ export default function App() {
                 { id: "recurring",   label: "Recurring",     icon: "🔁", desc: "Bills & subscriptions" },
                 { id: "investments", label: "Investments",   icon: "📈", desc: "Asset portfolio" },
                 { id: "loans",       label: "Loans & Debt",  icon: "🏦", desc: "Track borrowing" },
+                { id: "insurance",   label: "Insurance",     icon: "🛡️", desc: "Policies & premiums" },
                 { id: "reconcile",   label: "Reconcile",     icon: "✅", desc: "Import bank statement" },
               ].map(item => (
                 <Card key={item.id} onClick={() => setTab(item.id)} style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -2857,7 +3113,7 @@ export default function App() {
       {/* Add / Edit Transaction */}
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
-        <Field label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} options={(fTx.type==="expense"?expCats:incCats).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
+        <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expCats:incCats}/>
         <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
         <div className="grid-2">
@@ -3025,6 +3281,38 @@ export default function App() {
         {(()=>{const cat=fBudget.catType==="expense"?expCats.find(c=>c.id===fBudget.catId):incCats.find(c=>c.id===fBudget.catId);return cat?<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>{cat.icon}</span><div><div style={{fontWeight:600,fontSize:13}}>{cat.name}</div><div style={{fontSize:11,color:C.textMuted}}>Current: {cat.budget>0?disp(cat.budget):"None"}</div></div></div>:null;})()}
         <Field label={`${fBudget.catType==="expense"?"Budget":"Target"} (${baseCurrency})`} type="number" value={fBudget.amount} onChange={v=>setFBudget({...fBudget,amount:v})} placeholder="0.00" note="Set to 0 to remove"/>
         <Btn onClick={saveBudget} style={{width:"100%",padding:13,fontSize:14}}>Save</Btn>
+      </Modal>
+
+      {/* Add / Edit Insurance Policy */}
+      <Modal open={isOpen("policy")} onClose={()=>{closeM("policy");setEditPolicy(null);}} title={editPolicy?"✏️ Edit Policy":"🛡️ Add Insurance Policy"}>
+        <Field label="Policy Name" value={fPolicy.name} onChange={v=>setFPolicy({...fPolicy,name:v})} placeholder="e.g. Britam Education Plan – Aisha"/>
+        <Field label="Provider" value={fPolicy.provider} onChange={v=>setFPolicy({...fPolicy,provider:v})} placeholder="e.g. Britam, Jubilee, CIC, NHIF"/>
+        <div className="grid-2">
+          <Field label="Policy Type" value={fPolicy.policyType} onChange={v=>setFPolicy({...fPolicy,policyType:v})} options={[
+            {value:"life",label:"🛡️ Life"},{value:"education",label:"📚 Education"},
+            {value:"medical",label:"🏥 Medical / NHIF"},{value:"motor",label:"🚗 Motor"},
+            {value:"property",label:"🏠 Property"},{value:"last_expense",label:"🕊️ Last Expense"},
+            {value:"investment_linked",label:"📈 Investment-linked"},
+          ]}/>
+          <Field label="Policy Number (optional)" value={fPolicy.policyNumber} onChange={v=>setFPolicy({...fPolicy,policyNumber:v})} placeholder="e.g. BL-2024-001"/>
+        </div>
+        <div className="grid-2">
+          <Field label={`Premium Amount (${fPolicy.currency})`} type="number" value={fPolicy.premiumAmount} onChange={v=>setFPolicy({...fPolicy,premiumAmount:v})} placeholder="0.00"/>
+          <Field label="Frequency" value={fPolicy.premiumFreq} onChange={v=>setFPolicy({...fPolicy,premiumFreq:v})} options={[{value:"monthly",label:"Monthly"},{value:"quarterly",label:"Quarterly"},{value:"annually",label:"Annually"}]}/>
+        </div>
+        <div className="grid-2">
+          <Field label="Start Date" type="date" value={fPolicy.startDate} onChange={v=>setFPolicy({...fPolicy,startDate:v})}/>
+          <Field label="Maturity / Expiry Date" type="date" value={fPolicy.endDate} onChange={v=>setFPolicy({...fPolicy,endDate:v})}/>
+        </div>
+        <div className="grid-2">
+          <Field label={`Sum Assured (${fPolicy.currency})`} type="number" value={fPolicy.sumAssured} onChange={v=>setFPolicy({...fPolicy,sumAssured:v})} placeholder="Payout on maturity/claim"/>
+          <Field label={`Surrender Value (${fPolicy.currency})`} type="number" value={fPolicy.surrenderValue} onChange={v=>setFPolicy({...fPolicy,surrenderValue:v})} placeholder="Current cash-out value"/>
+        </div>
+        <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
+        <Field label="Linked Wallet (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
+        <Field label="Currency" value={fPolicy.currency} onChange={v=>setFPolicy({...fPolicy,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
+        <Field label="Notes (optional)" value={fPolicy.notes} onChange={v=>setFPolicy({...fPolicy,notes:v})} placeholder="Any extra details"/>
+        <Btn onClick={savePolicy} style={{width:"100%",padding:13,fontSize:14}}>{editPolicy?"Save Changes":"Add Policy"}</Btn>
       </Modal>
 
       {/* Add / Edit Loan */}
@@ -3436,7 +3724,7 @@ export default function App() {
           { id: "budgets",      label: "Budgets", icon: "📊" },
           { id: "more",         label: "More",    icon: "☰" },
         ].map(item => {
-          const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "reconcile"].includes(tab));
+          const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "insurance", "reconcile"].includes(tab));
           return (
             <button
               key={item.id}

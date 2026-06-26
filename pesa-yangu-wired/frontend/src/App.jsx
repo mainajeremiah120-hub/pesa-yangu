@@ -2107,6 +2107,7 @@ export default function App() {
     {id:"recurring",    label:"Recurring",  icon:"🔁"},
     {id:"investments",  label:"Invest",     icon:"📈"},
     {id:"loans",        label:"Loans",      icon:"🏦"},
+    {id:"insurance",    label:"Insurance",  icon:"🛡️"},
     {id:"reconcile",    label:"Reconcile",  icon:"✅"},
     {id:"settings",     label:"Settings",   icon:"⚙️"},
     ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"🛡️"}] : []),

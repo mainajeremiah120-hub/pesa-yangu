@@ -1011,29 +1011,41 @@ export default function App() {
     subscribePush();
   }, [user?.id]); // eslint-disable-line
 
-  // ── Capture PWA install prompt (Android/Chrome) — must happen early
-  const [installPrompt,   setInstallPrompt]   = useState(null);
+  // ── PWA install banner — shows periodically, permanent opt-out available
+  const [installPrompt,     setInstallPrompt]     = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [showInstallModal,  setShowInstallModal]  = useState(false);
 
   useEffect(() => {
-    // Don't show if already running as installed PWA
+    // Never show if running as installed PWA
     if (window.matchMedia("(display-mode: standalone)").matches) return;
-    // Don't show if user already dismissed it
-    if (localStorage.getItem("py_install_dismissed")) return;
-    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); setShowInstallBanner(true); };
+    // Never show if user chose "Stop showing this"
+    if (localStorage.getItem("py_install_stopped")) return;
+    // Snooze: hide until the snoozed-until timestamp passes
+    const snoozeUntil = parseInt(localStorage.getItem("py_install_snooze") || "0", 10);
+    const shouldShow  = Date.now() > snoozeUntil;
+
+    const handler = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      if (shouldShow) setShowInstallBanner(true);
+    };
     window.addEventListener("beforeinstallprompt", handler);
-    // iOS/Desktop — no beforeinstallprompt, show manual instructions instead
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-    if ((isIOS || isMobile) && !localStorage.getItem("py_install_dismissed")) {
-      setShowInstallBanner(true);
-    }
+    // iOS / all browsers without beforeinstallprompt
+    if (shouldShow) setShowInstallBanner(true);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  const dismissInstallBanner = () => {
-    localStorage.setItem("py_install_dismissed", "1");
+  // "Not now" — snooze for 3 days, then show again
+  const snoozeInstallBanner = () => {
+    const threeDays = Date.now() + 3 * 24 * 60 * 60 * 1000;
+    localStorage.setItem("py_install_snooze", String(threeDays));
+    setShowInstallBanner(false);
+  };
+
+  // "Stop showing this" — permanent opt-out
+  const stopInstallBanner = () => {
+    localStorage.setItem("py_install_stopped", "1");
     setShowInstallBanner(false);
   };
 
@@ -1042,7 +1054,7 @@ export default function App() {
       installPrompt.prompt();
       const { outcome } = await installPrompt.userChoice;
       if (outcome === "accepted") {
-        localStorage.setItem("py_install_dismissed", "1");
+        localStorage.setItem("py_install_stopped", "1");
         setShowInstallBanner(false);
         setInstallPrompt(null);
       }
@@ -2457,18 +2469,21 @@ export default function App() {
         {tab==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
 
-            {/* ── Install App Banner (one-time, dismisses forever) ── */}
+            {/* ── Install App Banner (periodic, permanent opt-out) ── */}
             {showInstallBanner&&(
-              <div style={{background:"linear-gradient(135deg,#0D2137,#0A2744)",border:`1px solid ${C.teal}44`,borderRadius:16,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,position:"relative",overflow:"hidden"}}>
+              <div style={{background:"linear-gradient(135deg,#0D2137,#0A2744)",border:`1px solid ${C.teal}44`,borderRadius:16,padding:"16px 18px",position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",right:-20,top:-20,fontSize:80,opacity:0.07,pointerEvents:"none"}}>📱</div>
-                <div style={{width:46,height:46,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>📲</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:14,color:C.textPrimary,marginBottom:3}}>Get the Pesa Yangu App</div>
-                  <div style={{fontSize:12,color:C.textMuted,lineHeight:1.4}}>Install on your phone for faster access, offline support &amp; daily reminders — no app store needed.</div>
+                <div style={{display:"flex",alignItems:"center",gap:14}}>
+                  <div style={{width:46,height:46,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>📲</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14,color:C.textPrimary,marginBottom:3}}>Get the Pesa Yangu App</div>
+                    <div style={{fontSize:12,color:C.textMuted,lineHeight:1.4}}>Install on your phone for faster access, offline support &amp; daily reminders — no app store needed.</div>
+                  </div>
+                  <button onClick={triggerInstall} style={{background:C.teal,border:"none",borderRadius:10,color:C.navy,fontWeight:700,fontSize:12,padding:"9px 16px",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Install App</button>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-                  <button onClick={triggerInstall} style={{background:C.teal,border:"none",borderRadius:10,color:C.navy,fontWeight:700,fontSize:12,padding:"8px 14px",cursor:"pointer",whiteSpace:"nowrap"}}>Install App</button>
-                  <button onClick={dismissInstallBanner} style={{background:"none",border:"none",color:C.textMuted,fontSize:11,cursor:"pointer",padding:"2px 0",textAlign:"center"}}>Not now</button>
+                <div style={{display:"flex",justifyContent:"flex-end",gap:16,marginTop:12,paddingTop:10,borderTop:`1px solid ${C.teal}22`}}>
+                  <button onClick={snoozeInstallBanner} style={{background:"none",border:"none",color:C.textMuted,fontSize:12,cursor:"pointer",padding:"2px 0"}}>Not now</button>
+                  <button onClick={stopInstallBanner} style={{background:"none",border:"none",color:C.coral+"aa",fontSize:12,cursor:"pointer",padding:"2px 0"}}>Stop showing this</button>
                 </div>
               </div>
             )}
@@ -3443,7 +3458,7 @@ export default function App() {
           { icon:"4️⃣", text: "On Firefox: bookmark the page for quick access" },
         ];
         return(
-          <Modal open title="📲 Download Pesa Yangu" onClose={()=>{setShowInstallModal(false);dismissInstallBanner();}}>
+          <Modal open title="📲 Download Pesa Yangu" onClose={()=>{setShowInstallModal(false);snoozeInstallBanner();}}>
             <div style={{textAlign:"center",marginBottom:20}}>
               <div style={{width:64,height:64,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 12px"}}>◈</div>
               <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,marginBottom:6}}>Add to your Home Screen</div>
@@ -3460,7 +3475,7 @@ export default function App() {
             <div style={{background:C.teal+"18",border:`1px solid ${C.teal}33`,borderRadius:12,padding:"10px 14px",fontSize:12,color:C.textMuted,marginBottom:16}}>
               ✅ Once installed, you'll get daily reminders, faster load times, and the app icon on your home screen.
             </div>
-            <Btn onClick={()=>{setShowInstallModal(false);dismissInstallBanner();}} style={{width:"100%",padding:13}}>Got it — I'll install it</Btn>
+            <Btn onClick={()=>{setShowInstallModal(false);snoozeInstallBanner();}} style={{width:"100%",padding:13}}>Got it — I'll install it</Btn>
           </Modal>
         );
       })()}

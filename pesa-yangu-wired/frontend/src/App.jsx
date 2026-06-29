@@ -1026,6 +1026,10 @@ export default function App() {
   // ── Search (declared here so filteredTxs useMemo can reference it without TDZ)
   const [txSearch,       setTxSearch]       = useState("");
   const [txWalletFilter, setTxWalletFilter] = useState("");
+  const [txTypeFilter,   setTxTypeFilter]   = useState("all");   // "all"|"income"|"expense"
+  const [txPeriod,       setTxPeriod]       = useState("all");   // "all"|"today"|"week"|"month"|"quarter"|"custom"
+  const [txDateFrom,     setTxDateFrom]     = useState("");
+  const [txDateTo,       setTxDateTo]       = useState("");
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
   const [budgetSearch,   setBudgetSearch]   = useState("");
@@ -1035,6 +1039,43 @@ export default function App() {
     let result = txWalletFilter
       ? pool.filter(t => (t.wallet || t.wallet_id) === txWalletFilter)
       : pool;
+
+    // ── Type filter
+    if (txTypeFilter !== "all") {
+      result = result.filter(t => t.type === txTypeFilter);
+    }
+
+    // ── Period filter
+    if (txPeriod !== "all") {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      result = result.filter(t => {
+        const d = new Date(t.date || t.tx_date);
+        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        if (txPeriod === "today")   return day.getTime() === today.getTime();
+        if (txPeriod === "week") {
+          const dow = today.getDay(); // 0=Sun
+          const mon = new Date(today); mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+          const sun = new Date(mon);  sun.setDate(mon.getDate() + 6);
+          return day >= mon && day <= sun;
+        }
+        if (txPeriod === "month")   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+        if (txPeriod === "quarter") {
+          const q = Math.floor(now.getMonth() / 3);
+          return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth() / 3) === q;
+        }
+        if (txPeriod === "custom") {
+          const from = txDateFrom ? new Date(txDateFrom) : null;
+          const to   = txDateTo   ? new Date(txDateTo)   : null;
+          if (from && day < from) return false;
+          if (to   && day > to)   return false;
+          return true;
+        }
+        return true;
+      });
+    }
+
+    // ── Text search
     if (!txSearch.trim()) return result;
     const q = txSearch.trim().toLowerCase();
     return result.filter(t => {
@@ -1050,7 +1091,7 @@ export default function App() {
         (wallet?.name || "").toLowerCase().includes(q)
       );
     });
-  }, [txs, txSearch, txWalletFilter, expCats, incCats, wallets, limits.txHistory]);
+  }, [txs, txSearch, txWalletFilter, txTypeFilter, txPeriod, txDateFrom, txDateTo, expCats, incCats, wallets, limits.txHistory]);
 
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
@@ -2518,7 +2559,7 @@ export default function App() {
               <div>
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>All Records</div>
                 <div style={{color:C.textMuted,fontSize:12}}>
-                  {txSearch.trim() ? `${filteredTxs.length} of ${txs.length} transactions` : `${txs.length} transactions`}
+                  {(txSearch.trim()||txTypeFilter!=="all"||txPeriod!=="all") ? `${filteredTxs.length} of ${txs.length} records` : `${txs.length} records`}
                 </div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -2569,21 +2610,63 @@ export default function App() {
               )}
             </div>
 
-            <div className="grid-3">
-              <Chip label="In"  value={disp(totalIncome)}  color={C.teal}/>
-              <Chip label="Out" value={disp(totalExpense)} color={C.coral}/>
-              <Chip label="Net" value={disp(totalIncome-totalExpense)} color={totalIncome>totalExpense?C.teal:C.coral}/>
+            {/* ── Type filter pills ── */}
+            <div style={{display:"flex",gap:6}}>
+              {[["all","All"],["income","Income"],["expense","Expense"]].map(([v,label])=>{
+                const active = txTypeFilter===v;
+                const col = v==="income"?C.teal:v==="expense"?C.coral:C.blue;
+                return <button key={v} onClick={()=>setTxTypeFilter(v)} style={{padding:"7px 16px",borderRadius:20,border:`1.5px solid ${active?col:C.navyLight}`,background:active?col+"22":"none",color:active?col:C.textMuted,fontWeight:active?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>{v==="income"?"↑ ":v==="expense"?"↓ ":""}{label}</button>;
+              })}
             </div>
+
+            {/* ── Period filter ── */}
+            {(()=>{
+              const periods=[["all","All time"],["today","Today"],["week","This week"],["month","This month"],["quarter","This quarter"],["custom","Custom"]];
+              return(<>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {periods.map(([v,label])=>{
+                    const active=txPeriod===v;
+                    return <button key={v} onClick={()=>setTxPeriod(v)} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?C.teal:C.navyLight}`,background:active?C.teal+"22":"none",color:active?C.teal:C.textMuted,fontWeight:active?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>{label}</button>;
+                  })}
+                </div>
+                {txPeriod==="custom"&&(
+                  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:12,color:C.textMuted,whiteSpace:"nowrap"}}>From</span>
+                      <input type="date" value={txDateFrom} onChange={e=>setTxDateFrom(e.target.value)} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",cursor:"pointer"}}/>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:12,color:C.textMuted,whiteSpace:"nowrap"}}>To</span>
+                      <input type="date" value={txDateTo} onChange={e=>setTxDateTo(e.target.value)} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",cursor:"pointer"}}/>
+                    </div>
+                    {(txDateFrom||txDateTo)&&<button onClick={()=>{setTxDateFrom("");setTxDateTo("");}} style={{background:"none",border:"none",color:C.textMuted,fontSize:12,cursor:"pointer",padding:"4px 6px"}}>✕ Clear</button>}
+                  </div>
+                )}
+              </>);
+            })()}
+
+            {/* ── Summary chips (reflect active filters) ── */}
+            {(()=>{
+              const fIn=filteredTxs.filter(t=>t.type==="income").reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
+              const fOut=filteredTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
+              return(
+                <div className="grid-3">
+                  <Chip label="In"  value={disp(fIn)}      color={C.teal}/>
+                  <Chip label="Out" value={disp(fOut)}     color={C.coral}/>
+                  <Chip label="Net" value={disp(fIn-fOut)} color={fIn>=fOut?C.teal:C.coral}/>
+                </div>
+              );
+            })()}
 
             <Card style={{padding:0}}>
               {filteredTxs.length === 0 ? (
                 <div style={{padding:"40px 20px",textAlign:"center"}}>
                   <div style={{fontSize:32,marginBottom:10}}>🏆</div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.textPrimary,marginBottom:6}}>No results found</div>
+                  <div style={{fontWeight:600,fontSize:14,color:C.textPrimary,marginBottom:6}}>No records found</div>
                   <div style={{color:C.textMuted,fontSize:12,marginBottom:14}}>
-                    No transactions match <strong>"{txSearch}"</strong>
+                    {txSearch.trim()?<>No transactions match <strong>"{txSearch}"</strong></>:"No transactions match the current filters."}
                   </div>
-                  <Btn onClick={() => setTxSearch("")} outline color={C.textMuted} small>Clear search</Btn>
+                  <Btn onClick={()=>{setTxSearch("");setTxTypeFilter("all");setTxPeriod("all");setTxDateFrom("");setTxDateTo("");}} outline color={C.textMuted} small>Clear all filters</Btn>
                 </div>
               ) : filteredTxs.map((t,i,arr)=>{
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";

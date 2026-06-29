@@ -15,7 +15,7 @@ import AuthPage from "./pages/AuthPage.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
-  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi,
+  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
 } from "./lib/api.js";
 import { AdminApp, AdminPanel } from "./AdminDashboard.jsx";
 import { SupportTickets } from "./components/SupportTickets.jsx";
@@ -639,6 +639,31 @@ function NotifRow({ label, desc, id, C }) {
 function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, currencies, updateUser, showToast, logout, exportTransactions, openM, askConfirm, deactivateAccount, loadData }) {
   const [editName,   setEditName]   = useState(user?.full_name || "");
   const [savingName, setSavingName] = useState(false);
+  const [notifPerm,  setNotifPerm]  = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "default"));
+
+  const toggleNotifications = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      showToast("Push notifications not supported in this browser", C.coral); return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        await existing.unsubscribe();
+        await pushApi.unsubscribe(existing.endpoint).catch(() => {});
+        setNotifPerm("default");
+        showToast("Notifications turned off", C.textMuted);
+      } else {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { showToast("Permission denied — enable in browser settings", C.coral); return; }
+        const { publicKey } = await pushApi.getVapidKey();
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey });
+        await pushApi.subscribe(sub.toJSON());
+        setNotifPerm("granted");
+        showToast("Notifications enabled — you'll be reminded twice daily", C.teal, 4000);
+      }
+    } catch { showToast("Could not update notification settings", C.coral); }
+  };
 
   const saveName = async () => {
     if (!editName.trim()) return;
@@ -709,6 +734,24 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
       <Card>
         <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔔 Notification Preferences</div>
         <div style={{fontSize:11,color:C.textMuted,marginBottom:14}}>Controls which alerts you see in the app</div>
+
+        {/* Daily push reminder toggle */}
+        {"serviceWorker" in navigator && "PushManager" in window && (
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:`1px solid ${C.navyLight}`,marginBottom:10}}>
+            <div>
+              <div style={{fontWeight:600,fontSize:13}}>📱 Daily Transaction Reminders</div>
+              <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>Push notification at 8 AM & 8 PM to record your transactions</div>
+              {notifPerm==="denied"&&<div style={{fontSize:11,color:C.coral,marginTop:2}}>Blocked in browser — enable in site settings</div>}
+            </div>
+            <button onClick={toggleNotifications} style={{
+              padding:"7px 16px",borderRadius:20,border:`1.5px solid ${notifPerm==="granted"?C.teal:C.navyLight}`,
+              background:notifPerm==="granted"?C.teal+"22":"none",color:notifPerm==="granted"?C.teal:C.textMuted,
+              fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.2s",
+              opacity:notifPerm==="denied"?0.5:1,pointerEvents:notifPerm==="denied"?"none":"auto"
+            }}>{notifPerm==="granted"?"On ✓":"Off"}</button>
+          </div>
+        )}
+
         <NotifRow C={C} id="budget_alerts"  label="Budget Alerts"    desc="Notify when a category exceeds its budget"/>
         <NotifRow C={C} id="goal_reminders" label="Goal Reminders"   desc="Remind you of upcoming goal deadlines"/>
         <NotifRow C={C} id="loan_due"       label="Loan Due Dates"   desc="Alert when a loan repayment is approaching"/>
@@ -910,6 +953,40 @@ export default function App() {
   }, [user]); // eslint-disable-line
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Push notification subscription (after login, once)
+  useEffect(() => {
+    if (!user) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (Notification.permission === "denied") return;
+
+    const subscribePush = async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        // Check if already subscribed
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) {
+          // Re-register to keep server in sync
+          await pushApi.subscribe(existing.toJSON()).catch(() => {});
+          return;
+        }
+        // Ask permission only if not yet granted
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") return;
+        const { publicKey } = await pushApi.getVapidKey();
+        if (!publicKey) return;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: publicKey,
+        });
+        await pushApi.subscribe(sub.toJSON());
+      } catch {
+        // Silently ignore — push is non-critical
+      }
+    };
+
+    subscribePush();
+  }, [user?.id]); // eslint-disable-line
 
   // ── Pre-warm Render backend on app open so it's ready before login
   useEffect(() => {

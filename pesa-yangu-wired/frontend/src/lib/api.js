@@ -236,4 +236,11 @@ export const insuranceApi = {
   remove: (id)       => unwrap(client.delete(`/insurance/${id}`)),
 };
 
+// ── Push notifications ─────────────────────────────────────────────────────────
+export const pushApi = {
+  getVapidKey:  ()    => unwrap(client.get("/push/vapid-public-key")),
+  subscribe:    (sub) => unwrap(client.post("/push/subscribe", sub)),
+  unsubscribe:  (endpoint) => unwrap(client.delete("/push/subscribe", { data: { endpoint } })),
+};
+
 export default client;

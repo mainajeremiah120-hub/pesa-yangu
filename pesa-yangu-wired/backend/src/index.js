@@ -39,6 +39,8 @@ const adminRoutes       = require("./routes/admin");
 const ticketRoutes      = require("./routes/tickets");
 const walletRoutes      = require("./routes/wallets");
 const transactionRoutes = require("./routes/transactions");
+const pushRoutes        = require("./routes/push");
+const { scheduleReminders } = require("./push-scheduler");
 const { requireAuth, requireAdmin } = require("./middleware/auth");
 const {
   categoryRouter:   categoryRoutes,
@@ -175,6 +177,8 @@ v1.use("/ai",           requireAuth, aiRoutes);
 v1.use("/billing",      requireAuth, billingRoutes);
 v1.use("/reconcile",    requireAuth, reconcileRoutes);
 v1.use("/insurance",    requireAuth, insuranceRoutes);
+v1.get("/push/vapid-public-key", (_req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || "" }));
+v1.use("/push",         requireAuth, pushRoutes);
 
 app.use("/api/v1", v1);
 
@@ -194,9 +198,12 @@ app.use((err, _req, res, _next) => {
 });
 
 runMigrations()
-  .then(() => app.listen(PORT, () =>
-    logger.info(`Pesa Yangu API on :${PORT} [${process.env.NODE_ENV || "development"}]`)
-  ))
+  .then(() => {
+    scheduleReminders();
+    app.listen(PORT, () =>
+      logger.info(`Pesa Yangu API on :${PORT} [${process.env.NODE_ENV || "development"}]`)
+    );
+  })
   .catch(err => { logger.error(`Migration failed: ${err.message}`); process.exit(1); });
 
 module.exports = app;

@@ -1028,6 +1028,7 @@ export default function App() {
   const [txWalletFilter, setTxWalletFilter] = useState("");
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
+  const [budgetSearch,   setBudgetSearch]   = useState("");
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -2638,24 +2639,41 @@ export default function App() {
         )}
 
         {/* BUDGETS  */}
-        {tab==="budgets"&&(
+        {tab==="budgets"&&(()=>{
+          const bq = budgetSearch.trim().toLowerCase();
+          const filtExpCats = bq ? expCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : expCats;
+          const filtIncCats = bq ? incCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : incCats;
+          return(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
               <div>
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets & Categories</div>
                 <div style={{color:C.textMuted,fontSize:12}}>{overBudget.length} over budget this month</div>
               </div>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <Btn onClick={()=>{setFIncCat(blankIncCat);openM("incCat");}} outline color={C.teal} small>+ Income Cat.</Btn>
                 <Btn onClick={()=>{setFExpCat(blankExpCat);openM("expCat");}} small>+ Expense Cat.</Btn>
               </div>
             </div>
+
+            {/* Search bar */}
+            <div style={{position:"relative"}}>
+              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:14,pointerEvents:"none"}}>🔍</span>
+              <input
+                value={budgetSearch} onChange={e=>setBudgetSearch(e.target.value)}
+                placeholder="Search categories…"
+                style={{background:C.navyLight,border:`1px solid ${budgetSearch?C.teal:C.navyLight}`,borderRadius:10,padding:"10px 14px 10px 36px",color:C.textPrimary,width:"100%",fontSize:13,outline:"none",boxSizing:"border-box",transition:"border-color 0.2s"}}
+              />
+              {budgetSearch&&<button onClick={()=>setBudgetSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:16,lineHeight:1}}>✕</button>}
+            </div>
+            {bq&&<div style={{fontSize:12,color:C.textMuted}}>{filtExpCats.length+filtIncCats.length} categor{filtExpCats.length+filtIncCats.length===1?"y":"ies"} match "{budgetSearch}"</div>}
             {overBudget.length>0&&<Card style={{borderLeft:`3px solid ${C.coral}`}}>
               <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>⚠ Overspending Alerts</div>
               {overBudget.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(spendByCat[a.id])} vs {disp(a.budget)} — <span style={{color:C.coral}}>+{disp((spendByCat[a.id]||0)-a.budget)} over</span></div>)}
             </Card>}
-            <Divider label="Expense Categories"/>
-            {expCats.map(c=>{
+            <Divider label={`Expense Categories${bq&&filtExpCats.length!==expCats.length?` (${filtExpCats.length} of ${expCats.length})`:""}`}/>
+            {filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
+            {filtExpCats.map(c=>{
               const spent=spendByCat[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
               const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
@@ -2682,9 +2700,10 @@ export default function App() {
                 {c.budget>0&&<><Bar value={spent} max={c.budget} color={c.color}/><div style={{color:C.textFaint,fontSize:10,marginTop:4}}>{pct.toFixed(0)}% used</div></>}
               </Card>;
             })}
-            <Divider label="Income Categories"/>
+            <Divider label={`Income Categories${bq&&filtIncCats.length!==incCats.length?` (${filtIncCats.length} of ${incCats.length})`:""}`}/>
+            {filtIncCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No income categories match "{budgetSearch}"</div>}
             <div className="grid-2">
-              {incCats.map(c=>{
+              {filtIncCats.map(c=>{
                 const earned=earnByCat[c.id]||0;
                 const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
                 return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"income"})} style={{cursor:"pointer"}}>
@@ -2707,7 +2726,8 @@ export default function App() {
               })}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* GOALS  */}
         {tab==="goals"&&(
@@ -3220,10 +3240,22 @@ export default function App() {
         const total=records.reduce((s,t)=>s+(t.amount||parseFloat(t.amount_kes||0)),0);
         const walletName=(t)=>wallets.find(w=>w.id===(t.wallet||t.wallet_id))?.name||"";
         return(
-          <Modal open={!!catHistory} onClose={()=>setCatHistory(null)} title={`${cat.icon} ${cat.name} — Records`}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:cat.color+"18",borderRadius:10,marginBottom:14}}>
-              <div style={{fontSize:12,color:C.textMuted}}>{records.length} transaction{records.length!==1?"s":""}</div>
-              <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,color:cat.color}}>{type==="expense"?"-":""}{disp(total)}</div>
+          <Modal open={!!catHistory} onClose={()=>setCatHistory(null)} title={`${cat.icon} ${cat.name}`}>
+            <div style={{background:cat.color+"18",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Total {type==="expense"?"Spent":"Earned"}</div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:26,color:type==="expense"?C.coral:C.teal,lineHeight:1}}>{type==="expense"?"-":""}{disp(total)}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Transactions</div>
+                  <div style={{fontWeight:700,fontSize:20,color:cat.color}}>{records.length}</div>
+                </div>
+              </div>
+              {records.length>1&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${cat.color}33`,display:"flex",gap:16}}>
+                <div><div style={{fontSize:9,color:C.textMuted}}>AVERAGE</div><div style={{fontWeight:600,fontSize:12}}>{disp(total/records.length)}</div></div>
+                <div><div style={{fontSize:9,color:C.textMuted}}>LARGEST</div><div style={{fontWeight:600,fontSize:12}}>{disp(Math.max(...records.map(t=>t.amount||parseFloat(t.amount_kes||0))))}</div></div>
+              </div>}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:420,overflowY:"auto"}}>
               {records.map(t=>{

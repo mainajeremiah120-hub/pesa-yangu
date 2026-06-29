@@ -1068,7 +1068,7 @@ export default function App() {
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
-  const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", beneficiary:"", walletId:"", currency:"KES", notes:"" };
+  const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
@@ -1632,6 +1632,7 @@ export default function App() {
       end_date:          fPolicy.endDate||undefined,
       sum_assured:       fPolicy.sumAssured?parseFloat(fPolicy.sumAssured):undefined,
       surrender_value:   fPolicy.surrenderValue?parseFloat(fPolicy.surrenderValue):undefined,
+      amount_paid:       fPolicy.amountPaid?parseFloat(fPolicy.amountPaid):undefined,
       beneficiary:       fPolicy.beneficiary||undefined,
       wallet_id:         fPolicy.walletId||undefined,
       currency:          fPolicy.currency,
@@ -1672,6 +1673,7 @@ export default function App() {
       endDate:        (p.end_date||"").slice(0,10),
       sumAssured:     p.sum_assured?String(parseFloat(p.sum_assured)):"",
       surrenderValue: p.surrender_value?String(parseFloat(p.surrender_value)):"",
+      amountPaid:     p.amount_paid?String(parseFloat(p.amount_paid)):"",
       beneficiary:    p.beneficiary||"",
       walletId:       p.wallet_id||"",
       currency:       p.currency||"KES",
@@ -3004,7 +3006,7 @@ export default function App() {
                   const days=daysUntil(nd);
                   const paid=monthsPaid(p.start_date,p.premium_frequency);
                   const totMo=totalMonths(p.start_date,p.end_date);
-                  const paidAmt=paid*(parseFloat(p.premium_amount)||0);
+                  const paidAmt=p.amount_paid!=null?parseFloat(p.amount_paid):paid*(parseFloat(p.premium_amount)||0);
                   const pct=totMo?Math.min((paid/totMo)*100,100):0;
                   const w=wallets.find(w=>w.id===p.wallet_id);
                   const lapseRisk=w&&parseFloat(w.balance)<parseFloat(p.premium_amount);
@@ -3029,7 +3031,7 @@ export default function App() {
                       {/* Stats row */}
                       <div style={{display:"flex",gap:16,marginBottom:totMo?10:0,flexWrap:"wrap"}}>
                         {p.sum_assured&&<div><div style={{fontSize:10,color:C.textMuted}}>Sum Assured</div><div style={{fontWeight:600,fontSize:12,color:C.blue}}>{disp(parseFloat(p.sum_assured))}</div></div>}
-                        {paid>0&&<div><div style={{fontSize:10,color:C.textMuted}}>Paid so far</div><div style={{fontWeight:600,fontSize:12,color:C.teal}}>{disp(paidAmt)}</div></div>}
+                        {(paidAmt>0)&&<div><div style={{fontSize:10,color:C.textMuted}}>Paid so far</div><div style={{fontWeight:600,fontSize:12,color:C.teal}}>{disp(paidAmt)}</div></div>}
                         {p.surrender_value&&<div><div style={{fontSize:10,color:C.textMuted}}>Surrender Value</div><div style={{fontWeight:600,fontSize:12}}>{disp(parseFloat(p.surrender_value))}</div></div>}
                         {p.beneficiary&&<div><div style={{fontSize:10,color:C.textMuted}}>Beneficiary</div><div style={{fontWeight:600,fontSize:12}}>{p.beneficiary}</div></div>}
                       </div>
@@ -3309,6 +3311,7 @@ export default function App() {
           <Field label={`Sum Assured (${fPolicy.currency})`} type="number" value={fPolicy.sumAssured} onChange={v=>setFPolicy({...fPolicy,sumAssured:v})} placeholder="Payout on maturity/claim"/>
           <Field label={`Surrender Value (${fPolicy.currency})`} type="number" value={fPolicy.surrenderValue} onChange={v=>setFPolicy({...fPolicy,surrenderValue:v})} placeholder="Current cash-out value"/>
         </div>
+        <Field label={`Amount Paid So Far (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Total premiums paid to date" note="Enter the actual cumulative amount paid — overrides the auto-calculation"/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
         <Field label="Linked Wallet (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
         <Field label="Currency" value={fPolicy.currency} onChange={v=>setFPolicy({...fPolicy,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>

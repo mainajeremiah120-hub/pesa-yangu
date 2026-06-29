@@ -648,6 +648,7 @@ const insuranceSchema = z.object({
   end_date:           z.string().optional(),
   sum_assured:        z.number().min(0).max(1e12).optional(),
   surrender_value:    z.number().min(0).max(1e12).optional(),
+  amount_paid:        z.number().min(0).max(1e12).optional(),
   beneficiary:        z.string().max(200).optional(),
   wallet_id:          z.string().uuid().optional(),
   currency:           z.string().length(3).default("KES"),
@@ -666,9 +667,9 @@ insuranceRouter.post("/", async (req,res,next) => {
   try {
     const d = insuranceSchema.parse(req.body);
     const {rows} = await query(
-      `INSERT INTO insurance_policies (user_id,name,provider,policy_type,policy_number,premium_amount,premium_frequency,start_date,end_date,sum_assured,surrender_value,beneficiary,wallet_id,currency,notes,is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [req.user.id,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active]
+      `INSERT INTO insurance_policies (user_id,name,provider,policy_type,policy_number,premium_amount,premium_frequency,start_date,end_date,sum_assured,surrender_value,amount_paid,beneficiary,wallet_id,currency,notes,is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+      [req.user.id,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.amount_paid??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active]
     );
     res.status(201).json({policy:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -677,7 +678,7 @@ insuranceRouter.post("/", async (req,res,next) => {
 insuranceRouter.patch("/:id", async (req,res,next) => {
   try {
     const d = insuranceSchema.partial().parse(req.body);
-    const allowed=["name","provider","policy_type","policy_number","premium_amount","premium_frequency","start_date","end_date","sum_assured","surrender_value","beneficiary","wallet_id","currency","notes","is_active"];
+    const allowed=["name","provider","policy_type","policy_number","premium_amount","premium_frequency","start_date","end_date","sum_assured","surrender_value","amount_paid","beneficiary","wallet_id","currency","notes","is_active"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);

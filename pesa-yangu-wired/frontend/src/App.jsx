@@ -2256,6 +2256,7 @@ export default function App() {
           <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
           <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
           <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀️":"🌙"}</button>
+          <button onClick={logout} title="Sign out" style={{background:"none",border:`1px solid ${C.coral}55`,borderRadius:8,color:C.coral,padding:"6px 10px",cursor:"pointer",fontSize:13,fontWeight:600,lineHeight:1,transition:"background 0.2s,border-color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.background=C.coral+"22";e.currentTarget.style.borderColor=C.coral;}} onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.borderColor=C.coral+"55";}}>🚪</button>
         </div>
       </div>
 
@@ -2641,8 +2642,10 @@ export default function App() {
         {/* BUDGETS  */}
         {tab==="budgets"&&(()=>{
           const bq = budgetSearch.trim().toLowerCase();
-          const filtExpCats = bq ? expCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : expCats;
-          const filtIncCats = bq ? incCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : incCats;
+          const sortedExpCats = [...expCats].sort((a,b)=>a.name.localeCompare(b.name));
+          const sortedIncCats = [...incCats].sort((a,b)=>a.name.localeCompare(b.name));
+          const filtExpCats = bq ? sortedExpCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedExpCats;
+          const filtIncCats = bq ? sortedIncCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedIncCats;
           return(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>

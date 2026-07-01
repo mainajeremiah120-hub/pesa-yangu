@@ -18,16 +18,6 @@ export default defineConfig({
     sourcemap: false,
     // Warn if any single chunk exceeds 400 kB
     chunkSizeWarningLimit: 400,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // React runtime in its own tiny chunk — browser caches it across deploys
-          "vendor-react": ["react", "react-dom"],
-          // Axios + http utilities
-          "vendor-http":  ["axios"],
-        },
-      },
-    },
   },
   resolve: { alias: { "@": "/src" } },
 });

@@ -90,12 +90,11 @@ router.patch("/:id", async (req, res, next) => {
     const newDate       = d.tx_date     ?? old.tx_date;
 
     const tx = await withTransaction(async (client) => {
-      const oldDelta = (old.type === "income" || old.type === "transfer_in")
-        ? -parseFloat(old.amount_kes)
-        :  parseFloat(old.amount_kes);
+      const isCredit = (t) => t === "income" || t === "transfer_in" || t === "refund";
+      const oldDelta = isCredit(old.type) ? -parseFloat(old.amount_kes) : parseFloat(old.amount_kes);
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2", [oldDelta, old.wallet_id]);
 
-      const newDelta = (newType === "income" || newType === "transfer_in") ? newAmount : -newAmount;
+      const newDelta = isCredit(newType) ? newAmount : -newAmount;
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2", [newDelta, newWalletId]);
 
       const { rows } = await client.query(

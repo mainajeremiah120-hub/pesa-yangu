@@ -1146,55 +1146,25 @@ export default function App() {
     return nonZero.length ? nonZero.reduce((s,m)=>s+m.value,0)/nonZero.length : 0;
   }, [last6MonthsExpenses]);
 
-  // ── Monthly budget amounts fetched from API (map: cat_id → effective_budget_kes)
-  const [monthlyBudgetAmounts, setMonthlyBudgetAmounts] = useState({});
-  useEffect(() => {
-    if (!user) return;
-    budgetsApi.list(budgetYear, budgetMonth)
-      .then(data => {
-        const m = {};
-        (data.budgets || []).forEach(b => { m[b.id] = parseFloat(b.effective_budget || b.budget_kes || 0); });
-        setMonthlyBudgetAmounts(m);
-      })
-      .catch(() => {});
-  }, [user, budgetYear, budgetMonth]); // eslint-disable-line
-
-  // ── Fetch trend data when trend panel opens
-  useEffect(() => {
-    if (!user || !showBudgetTrend) return;
-    budgetsApi.trend(6).then(data => setBudgetTrend(data.trend || [])).catch(() => {});
-  }, [user, showBudgetTrend]); // eslint-disable-line
-
   const spendByCat = useMemo(()=>{
     const m={};
     expCats.forEach(c=>m[c.id]=0);
-    txs.filter(t=>t.type==="expense"
-      && new Date(t.date||t.tx_date).getFullYear()===budgetYear
-      && new Date(t.date||t.tx_date).getMonth()+1===budgetMonth
-    ).forEach(t=>{ const key=t.category||t.category_id; m[key]=(m[key]||0)+t.amount; });
-    txs.filter(t=>t.type==="refund"
-      && new Date(t.date||t.tx_date).getFullYear()===budgetYear
-      && new Date(t.date||t.tx_date).getMonth()+1===budgetMonth
-    ).forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) m[key]=Math.max(0,(m[key]||0)-t.amount); });
+    txs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; m[key]=(m[key]||0)+t.amount; });
+    txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) m[key]=Math.max(0,(m[key]||0)-t.amount); });
     return m;
-  }, [txs, expCats, budgetYear, budgetMonth]);
+  }, [txs, expCats]);
 
   const earnByCat = useMemo(()=>{
     const m={};
     incCats.forEach(c=>m[c.id]=0);
-    txs.filter(t=>t.type==="income"
-      && new Date(t.date||t.tx_date).getFullYear()===budgetYear
-      && new Date(t.date||t.tx_date).getMonth()+1===budgetMonth
-    ).forEach(t=>{
+    txs.filter(t=>t.type==="income").forEach(t=>{
       const key = t.category || t.category_id;
       m[key] = (m[key]||0)+t.amount;
     });
     return m;
-  }, [txs, incCats, budgetYear, budgetMonth]);
+  }, [txs, incCats]);
 
-  // Use monthly budget amounts (from API) if loaded, else fall back to category default
-  const effectiveBudget = (cat) => monthlyBudgetAmounts[cat.id] ?? (cat.budget||0);
-  const overBudget = expCats.filter(c=>effectiveBudget(c)>0 && (spendByCat[c.id]||0)>effectiveBudget(c));
+  const overBudget = expCats.filter(c=>c.budget>0 && (spendByCat[c.id]||0)>c.budget);
   const watched    = expCats.filter(c=>c.watch);
   // 0 when no activity; otherwise built from real behaviour
   const hasActivity = txs.length > 0 || wallets.some(w=>parseFloat(w.balance||0)!==0);
@@ -1218,10 +1188,6 @@ export default function App() {
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
   const [budgetSearch,   setBudgetSearch]   = useState("");
-  const [budgetYear,     setBudgetYear]     = useState(() => new Date().getFullYear());
-  const [budgetMonth,    setBudgetMonth]    = useState(() => new Date().getMonth() + 1);
-  const [budgetTrend,    setBudgetTrend]    = useState([]);
-  const [showBudgetTrend, setShowBudgetTrend] = useState(false);
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -1297,7 +1263,7 @@ export default function App() {
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
   const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
-  const blankBudget= { catId:"", catType:"expense", amount:"", year:new Date().getFullYear(), month:new Date().getMonth()+1 };
+  const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
   const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
@@ -1454,16 +1420,11 @@ export default function App() {
   const saveBudget = async () => {
     const amt = parseFloat(fBudget.amount)||0;
     try {
-      // Save as a monthly budget for the selected month
-      await budgetsApi.setMonthly({ category_id:fBudget.catId, year:fBudget.year, month:fBudget.month, budget_kes:amt });
-      // Also update the category default so it shows on other views
       await catsApi.update(fBudget.catId, { budget_kes:amt });
       if(fBudget.catType==="expense") setExpCats(p=>p.map(c=>c.id===fBudget.catId?{...c,budget:amt}:c));
       else setIncCats(p=>p.map(c=>c.id===fBudget.catId?{...c,budget:amt}:c));
-      // Refresh monthly amounts for the current view
-      setMonthlyBudgetAmounts(prev=>({...prev,[fBudget.catId]:amt}));
       setFBudget(blankBudget); closeM("budget");
-      showToast("Budget saved for "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][fBudget.month-1]+" "+fBudget.year);
+      showToast("Budget updated");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
@@ -2920,7 +2881,7 @@ export default function App() {
                       <span>{highlight(w?.name||"—")}</span><span>·</span>
                       <span>{fmtDate(t.date||t.tx_date)}{txTime(t)?" · "+txTime(t):""}</span>
                       {t.loanId&&<Badge color={C.coral}>Loan</Badge>}
-                      {t.recurring&&<Badge color={C.purple}>🔁</Badge>}
+                      {t.recurring&&<Badge color={C.purple}>🔁</Badge>}}
                       {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>↩ {origTx.merchant||origTx.note||"expense"}</span>}
                     </div>
                   </div>
@@ -2944,83 +2905,18 @@ export default function App() {
           const sortedIncCats = [...incCats].sort((a,b)=>a.name.localeCompare(b.name));
           const filtExpCats = bq ? sortedExpCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedExpCats;
           const filtIncCats = bq ? sortedIncCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedIncCats;
-          const MONTH_NAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-          const prevMonth=()=>{if(budgetMonth===1){setBudgetMonth(12);setBudgetYear(y=>y-1);}else setBudgetMonth(m=>m-1);};
-          const nextMonth=()=>{const now=new Date();if(budgetYear>now.getFullYear()||(budgetYear===now.getFullYear()&&budgetMonth>=now.getMonth()+1))return;if(budgetMonth===12){setBudgetMonth(1);setBudgetYear(y=>y+1);}else setBudgetMonth(m=>m+1);};
-          const isCurrentMonth=budgetYear===new Date().getFullYear()&&budgetMonth===new Date().getMonth()+1;
-          const totalBudgeted=expCats.reduce((s,c)=>s+effectiveBudget(c),0);
-          const totalSpent=expCats.reduce((s,c)=>s+(spendByCat[c.id]||0),0);
           return(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {/* Header */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
               <div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets</div>
-                <div style={{color:C.textMuted,fontSize:12}}>{overBudget.length} over budget · {MONTH_NAMES[budgetMonth-1]} {budgetYear}</div>
+                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets & Categories</div>
+                <div style={{color:C.textMuted,fontSize:12}}>{overBudget.length} over budget this month</div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <Btn onClick={()=>{setFIncCat(blankIncCat);openM("incCat");}} outline color={C.teal} small>+ Income Cat.</Btn>
                 <Btn onClick={()=>{setFExpCat(blankExpCat);openM("expCat");}} small>+ Expense Cat.</Btn>
               </div>
             </div>
-
-            {/* Month navigator */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.navyLight,borderRadius:14,padding:"10px 16px"}}>
-              <button onClick={prevMonth} style={{background:"none",border:"none",color:C.teal,fontSize:20,cursor:"pointer",padding:"0 8px",lineHeight:1}}>‹</button>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontWeight:700,fontSize:16,color:C.textPrimary}}>{MONTH_NAMES[budgetMonth-1]} {budgetYear}</div>
-                {isCurrentMonth&&<div style={{fontSize:10,color:C.teal}}>Current month</div>}
-              </div>
-              <button onClick={nextMonth} style={{background:"none",border:"none",color:isCurrentMonth?C.textFaint:C.teal,fontSize:20,cursor:"pointer",padding:"0 8px",lineHeight:1}}>›</button>
-            </div>
-
-            {/* Monthly summary strip */}
-            {totalBudgeted>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              <div style={{background:C.navyLight,borderRadius:12,padding:"10px 14px",textAlign:"center"}}>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>BUDGETED</div>
-                <div style={{fontWeight:700,fontSize:14,color:C.blue}}>{disp(totalBudgeted)}</div>
-              </div>
-              <div style={{background:C.navyLight,borderRadius:12,padding:"10px 14px",textAlign:"center"}}>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>SPENT</div>
-                <div style={{fontWeight:700,fontSize:14,color:totalSpent>totalBudgeted?C.coral:C.textPrimary}}>{disp(totalSpent)}</div>
-              </div>
-              <div style={{background:C.navyLight,borderRadius:12,padding:"10px 14px",textAlign:"center"}}>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{totalSpent>totalBudgeted?"OVER":"LEFT"}</div>
-                <div style={{fontWeight:700,fontSize:14,color:totalSpent>totalBudgeted?C.coral:C.teal}}>{disp(Math.abs(totalBudgeted-totalSpent))}</div>
-              </div>
-            </div>}
-
-            {/* Trend toggle */}
-            <button onClick={()=>setShowBudgetTrend(v=>!v)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:10,color:C.textMuted,padding:"8px 14px",cursor:"pointer",fontSize:12,textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span>📊 Monthly comparison (last 6 months)</span>
-              <span>{showBudgetTrend?"▲":"▼"}</span>
-            </button>
-
-            {/* Trend chart */}
-            {showBudgetTrend&&budgetTrend.length>0&&(
-              <Card style={{padding:14,overflowX:"auto"}}>
-                <div style={{minWidth:400,display:"flex",flexDirection:"column",gap:10}}>
-                  {budgetTrend.map(row=>{
-                    const budget=parseFloat(row.total_budget)||0;
-                    const spent=parseFloat(row.total_spent)||0;
-                    const pct=budget>0?Math.min((spent/budget)*100,100):0;
-                    const over=budget>0&&spent>budget;
-                    return(
-                      <div key={`${row.year}-${row.month}`}>
-                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                          <span style={{fontSize:12,fontWeight:600,color:C.textPrimary}}>{row.label}</span>
-                          <span style={{fontSize:12,color:over?C.coral:C.teal}}>{disp(spent)} / {disp(budget)}</span>
-                        </div>
-                        <div style={{height:8,background:C.navyLight,borderRadius:4,overflow:"hidden"}}>
-                          <div style={{width:`${pct}%`,height:"100%",background:over?C.coral:C.teal,borderRadius:4,transition:"width 0.4s"}}/>
-                        </div>
-                        {over&&<div style={{fontSize:10,color:C.coral,marginTop:2}}>+{disp(spent-budget)} over budget</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
 
             {/* Search bar */}
             <div style={{position:"relative"}}>
@@ -3040,26 +2936,24 @@ export default function App() {
             <Divider label={`Expense Categories${bq&&filtExpCats.length!==expCats.length?` (${filtExpCats.length} of ${expCats.length})`:""}`}/>
             {filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
             {filtExpCats.map(c=>{
-              const eBudget=effectiveBudget(c);
-              const spent=spendByCat[c.id]||0,pct=eBudget>0?Math.min((spent/eBudget)*100,100):0,over=eBudget>0&&spent>eBudget;
-              const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id&&new Date(t.date||t.tx_date).getFullYear()===budgetYear&&new Date(t.date||t.tx_date).getMonth()+1===budgetMonth).length;
-              const hasMonthly=monthlyBudgetAmounts[c.id]!=null;
+              const spent=spendByCat[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
+              const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:eBudget>0?10:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:c.budget>0?10:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:18}}>{c.icon}</span>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}{hasMonthly&&<Badge color={C.blue}>monthly</Badge>}</div>
-                      <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{eBudget>0?`Budget: ${disp(eBudget)}`:"No budget set"}</div>
+                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{c.budget>0?`Budget: ${disp(c.budget)}`:"No budget set"}</div>
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontWeight:700,fontSize:13,color:over?C.coral:C.textPrimary}}>{disp(spent)}</div>
-                      {eBudget>0&&<div style={{fontSize:10,color:over?C.coral:C.teal}}>{over?`+${disp(spent-eBudget)} over`:`${disp(eBudget-spent)} left`}</div>}
+                      {c.budget>0&&<div style={{fontSize:10,color:over?C.coral:C.teal}}>{over?`+${disp(spent-c.budget)} over`:`${disp(c.budget-spent)} left`}</div>}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(eBudget||""),year:budgetYear,month:budgetMonth});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{eBudget>0?"Edit":"Set Budget"}</button>
+                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
                       <button onClick={e=>{e.stopPropagation();toggleWatch(c.id);}} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:6,color:c.watch?C.gold:C.textMuted,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.watch?"Watching":"Watch"}</button>
                       <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
                     </div>
@@ -3723,25 +3617,10 @@ export default function App() {
       </Modal>
 
       {/* Set Budget */}
-      <Modal open={isOpen("budget")} onClose={()=>closeM("budget")} title={fBudget.catType==="expense"?"🎯 Set Monthly Budget":"🎯 Set Monthly Target"}>
-        {(()=>{
-          const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-          const cat=fBudget.catType==="expense"?expCats.find(c=>c.id===fBudget.catId):incCats.find(c=>c.id===fBudget.catId);
-          return(<>
-            {cat&&<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:22}}>{cat.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:600,fontSize:13}}>{cat.name}</div>
-                <div style={{fontSize:11,color:C.textMuted}}>Current default: {cat.budget>0?disp(cat.budget):"None"}</div>
-              </div>
-            </div>}
-            <div style={{background:C.teal+"18",border:`1px solid ${C.teal}33`,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:C.teal,fontWeight:600}}>
-              📅 Setting budget for {MNAMES[fBudget.month-1]} {fBudget.year}
-            </div>
-            <Field label={`${fBudget.catType==="expense"?"Budget":"Target"} (${baseCurrency})`} type="number" value={fBudget.amount} onChange={v=>setFBudget({...fBudget,amount:v})} placeholder="0.00" note="Set to 0 to remove"/>
-            <Btn onClick={saveBudget} style={{width:"100%",padding:13,fontSize:14}}>Save for {MNAMES[fBudget.month-1]} {fBudget.year}</Btn>
-          </>);
-        })()}
+      <Modal open={isOpen("budget")} onClose={()=>closeM("budget")} title={fBudget.catType==="expense"?"🎯 Set Budget":"🎯 Set Income Target"}>
+        {(()=>{const cat=fBudget.catType==="expense"?expCats.find(c=>c.id===fBudget.catId):incCats.find(c=>c.id===fBudget.catId);return cat?<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>{cat.icon}</span><div><div style={{fontWeight:600,fontSize:13}}>{cat.name}</div><div style={{fontSize:11,color:C.textMuted}}>Current: {cat.budget>0?disp(cat.budget):"None"}</div></div></div>:null;})()}
+        <Field label={`${fBudget.catType==="expense"?"Budget":"Target"} (${baseCurrency})`} type="number" value={fBudget.amount} onChange={v=>setFBudget({...fBudget,amount:v})} placeholder="0.00" note="Set to 0 to remove"/>
+        <Btn onClick={saveBudget} style={{width:"100%",padding:13,fontSize:14}}>Save</Btn>
       </Modal>
 
       {/* Add / Edit Insurance Policy */}

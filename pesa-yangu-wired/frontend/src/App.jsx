@@ -2923,7 +2923,7 @@ export default function App() {
           const bmTotalExpense = Math.max(0, bmTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0) - bmTxs.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount,0));
           const isCurrentBM = budgetYear===new Date().getFullYear() && budgetMonth===new Date().getMonth()+1;
           const bq = budgetSearch.trim().toLowerCase();
-          const sortedExpCats = [...expCats].sort((a,b)=>a.name.localeCompare(b.name));
+          const sortedExpCats = [...expCats].sort((a,b)=>{ const sa=bmSpend[a.id]||0,sb=bmSpend[b.id]||0; return sb!==sa?sb-sa:a.name.localeCompare(b.name); });
           const sortedIncCats = [...incCats].sort((a,b)=>a.name.localeCompare(b.name));
           const filtExpCats = bq ? sortedExpCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedExpCats;
           const filtIncCats = bq ? sortedIncCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedIncCats;

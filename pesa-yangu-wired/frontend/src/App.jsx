@@ -1200,6 +1200,7 @@ export default function App() {
   const [budgetSearch,   setBudgetSearch]   = useState("");
   const [budgetYear,     setBudgetYear]     = useState(new Date().getFullYear());
   const [budgetMonth,    setBudgetMonth]    = useState(new Date().getMonth() + 1);
+  const [budgetView,     setBudgetView]     = useState("all"); // "all"|"expense"|"income"
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -2946,20 +2947,19 @@ export default function App() {
               </div>
             </div>
 
-            {/* Month summary */}
+            {/* Month summary — clickable to filter sections */}
             <div style={{display:"flex",gap:10}}>
-              <div style={{flex:1,background:C.navyLight,borderRadius:12,padding:"12px 16px",borderTop:`3px solid ${C.teal}`}}>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>INCOME</div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:C.teal}}>{disp(bmTotalIncome)}</div>
-              </div>
-              <div style={{flex:1,background:C.navyLight,borderRadius:12,padding:"12px 16px",borderTop:`3px solid ${C.coral}`}}>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>EXPENSES</div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:bmTotalExpense>0?C.coral:C.textPrimary}}>{disp(bmTotalExpense)}</div>
-              </div>
-              <div style={{flex:1,background:C.navyLight,borderRadius:12,padding:"12px 16px",borderTop:`3px solid ${bmTotalIncome>=bmTotalExpense?C.teal:C.coral}`}}>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>NET</div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:bmTotalIncome>=bmTotalExpense?C.teal:C.coral}}>{disp(bmTotalIncome-bmTotalExpense)}</div>
-              </div>
+              {[
+                {key:"income",  label:"INCOME",   value:bmTotalIncome,              color:C.teal,  activeColor:C.teal},
+                {key:"expense", label:"EXPENSES",  value:bmTotalExpense,             color:C.coral, activeColor:C.coral},
+                {key:"all",     label:"NET",       value:bmTotalIncome-bmTotalExpense, color:bmTotalIncome>=bmTotalExpense?C.teal:C.coral, activeColor:bmTotalIncome>=bmTotalExpense?C.teal:C.coral},
+              ].map(({key,label,value,color,activeColor})=>{
+                const active = budgetView===key;
+                return <button key={key} onClick={()=>setBudgetView(active&&key!=="all"?"all":key)} style={{flex:1,background:active?activeColor+"22":C.navyLight,borderRadius:12,padding:"12px 16px",borderTop:`3px solid ${active?activeColor:C.navyLight}`,border:`2px solid ${active?activeColor:"transparent"}`,cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}>
+                  <div style={{fontSize:10,color:active?activeColor:C.textMuted,marginBottom:4,fontWeight:active?700:400}}>{label}</div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color}}>{disp(value)}</div>
+                </button>;
+              })}
             </div>
 
             {/* Search bar */}
@@ -2977,9 +2977,9 @@ export default function App() {
               <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>⚠ Overspending Alerts</div>
               {bmOver.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(bmSpend[a.id])} vs {disp(a.budget)} — <span style={{color:C.coral}}>+{disp((bmSpend[a.id]||0)-a.budget)} over</span></div>)}
             </Card>}
-            <Divider label={`Expense Categories${bq&&filtExpCats.length!==expCats.length?` (${filtExpCats.length} of ${expCats.length})`:""}`}/>
-            {filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
-            {filtExpCats.map(c=>{
+            {budgetView!=="income"&&<Divider label={`Expense Categories${bq&&filtExpCats.length!==expCats.length?` (${filtExpCats.length} of ${expCats.length})`:""}`}/>}
+            {budgetView!=="income"&&filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
+            {budgetView!=="income"&&filtExpCats.map(c=>{
               const spent=bmSpend[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
               const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
@@ -3006,9 +3006,9 @@ export default function App() {
                 {c.budget>0&&<><Bar value={spent} max={c.budget} color={c.color}/><div style={{color:C.textFaint,fontSize:10,marginTop:4}}>{pct.toFixed(0)}% used</div></>}
               </Card>;
             })}
-            <Divider label={`Income Categories${bq&&filtIncCats.length!==incCats.length?` (${filtIncCats.length} of ${incCats.length})`:""}`}/>
-            {filtIncCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No income categories match "{budgetSearch}"</div>}
-            <div className="grid-2">
+            {budgetView!=="expense"&&<Divider label={`Income Categories${bq&&filtIncCats.length!==incCats.length?` (${filtIncCats.length} of ${incCats.length})`:""}`}/>}
+            {budgetView!=="expense"&&filtIncCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No income categories match "{budgetSearch}"</div>}
+            {budgetView!=="expense"&&<div className="grid-2">
               {filtIncCats.map(c=>{
                 const earned=bmEarn[c.id]||0;
                 const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
@@ -3030,7 +3030,7 @@ export default function App() {
                   {c.budget>0&&<div style={{marginTop:8}}><Bar value={earned} max={c.budget} color={c.color}/><div style={{color:C.textFaint,fontSize:10,marginTop:4}}>{Math.min((earned/c.budget)*100,100).toFixed(0)}% of target</div></div>}
                 </Card>;
               })}
-            </div>
+            </div>}
           </div>
           );
         })()}

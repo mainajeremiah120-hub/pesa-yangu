@@ -37,23 +37,24 @@ router.post("/", async (req, res, next) => {
   try {
     const d = z.object({
       wallet_id:z.string().uuid(), category_id:z.string().uuid().optional(),
-      type:z.enum(["expense","income","transfer_in","transfer_out"]),
+      type:z.enum(["expense","income","transfer_in","transfer_out","refund"]),
       amount_kes:z.number().positive().max(1e10),
       merchant:z.string().max(200).optional(),
       note:z.string().max(1000).optional(),
       tx_date:z.string().max(30).optional(), loan_id:z.string().uuid().optional(),
       principal_paid:z.number().max(1e10).optional(), interest_paid:z.number().max(1e10).optional(),
       transfer_pair_id:z.string().uuid().optional(),
+      refund_of:z.string().uuid().optional(),
     }).parse(req.body);
 
     const tx = await withTransaction(async(client)=>{
       const {rows}=await client.query(
-        `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,transfer_pair_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,transfer_pair_id,refund_of)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [req.user.id,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,
-         d.tx_date||new Date(),d.loan_id||null,d.principal_paid||null,d.interest_paid||null,d.transfer_pair_id||null]
+         d.tx_date||new Date(),d.loan_id||null,d.principal_paid||null,d.interest_paid||null,d.transfer_pair_id||null,d.refund_of||null]
       );
-      const delta=(d.type==="income"||d.type==="transfer_in")?d.amount_kes:-d.amount_kes;
+      const delta=(d.type==="income"||d.type==="transfer_in"||d.type==="refund")?d.amount_kes:-d.amount_kes;
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,d.wallet_id,req.user.id]);
       return rows[0];
     });
@@ -73,7 +74,7 @@ router.patch("/:id", async (req, res, next) => {
     const d = z.object({
       wallet_id:   z.string().uuid().optional(),
       category_id: z.string().uuid().nullable().optional(),
-      type:        z.enum(["expense","income","transfer_in","transfer_out"]).optional(),
+      type:        z.enum(["expense","income","transfer_in","transfer_out","refund"]).optional(),
       amount_kes:  z.number().positive().optional(),
       merchant:    z.string().optional(),
       note:        z.string().nullable().optional(),

@@ -1116,14 +1116,9 @@ export default function App() {
 
   // ── Derived values
   const totalBalance   = wallets.reduce((s,w)=>s+parseFloat(w.balance||0), 0);
-  const [totalIncome, totalRefunds, totalExpense] = useMemo(() => {
-    const now = new Date(), cy = now.getFullYear(), cm = now.getMonth();
-    const m = txs.filter(t => { const d = new Date(t.date||t.tx_date); return d.getFullYear()===cy && d.getMonth()===cm; });
-    const inc = m.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount, 0);
-    const ref = m.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount, 0);
-    const exp = Math.max(0, m.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount, 0) - ref);
-    return [inc, ref, exp];
-  }, [txs]);
+  const totalIncome    = txs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount, 0);
+  const totalRefunds   = txs.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount, 0);
+  const totalExpense   = Math.max(0, txs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount, 0) - totalRefunds);
   const portfolioValue = investments.reduce((s,i)=>s+i.units*i.currentPrice, 0);
   const totalDebt      = loans.reduce((s,l)=>s+l.remaining, 0);
   const totalGoalSaved = goals.reduce((s,g)=>s+g.saved, 0);
@@ -1151,10 +1146,9 @@ export default function App() {
     return nonZero.length ? nonZero.reduce((s,m)=>s+m.value,0)/nonZero.length : 0;
   }, [last6MonthsExpenses]);
 
-  // ── Budget month/year navigation (must be declared before the useEffects that use them)
-  const [budgetYear,     setBudgetYear]     = useState(() => new Date().getFullYear());
-  const [budgetMonth,    setBudgetMonth]    = useState(() => new Date().getMonth() + 1);
-  const [budgetTrend,    setBudgetTrend]    = useState([]);
+  const [budgetYear,      setBudgetYear]      = useState(() => new Date().getFullYear());
+  const [budgetMonth,     setBudgetMonth]     = useState(() => new Date().getMonth() + 1);
+  const [budgetTrend,     setBudgetTrend]     = useState([]);
   const [showBudgetTrend, setShowBudgetTrend] = useState(false);
 
   // ── Monthly budget amounts fetched from API (map: cat_id → effective_budget_kes)

@@ -853,6 +853,9 @@ export default function App() {
   const goToWalletTxs = (walletId) => {
     setTxWalletFilter(walletId);
     setTxSearch("");
+    // Always push Wallets into history first so back ALWAYS returns to Wallets,
+    // regardless of which tab the user was on when they clicked a wallet card.
+    window.history.pushState({ tab: "accounts" }, "", "#accounts");
     _setTab("transactions");
     window.history.pushState({ tab: "transactions" }, "", "#transactions");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2744,9 +2747,10 @@ export default function App() {
             {/* ── Wallet filter banner ── */}
             {txWalletFilter&&(()=>{
               const fw=wallets.find(w=>w.id===txWalletFilter);
-              return fw?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:fw.color+"22",border:`1px solid ${fw.color}44`,borderRadius:12,padding:"10px 14px",marginBottom:10}}>
-                <span style={{fontSize:13,color:fw.color,fontWeight:600}}>{fw.icon} {fw.name} — showing account transactions only</span>
-                <button onClick={()=>setTxWalletFilter("")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px"}}>✕ Show all</button>
+              return fw?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:fw.color+"22",border:`1px solid ${fw.color}44`,borderRadius:12,padding:"10px 14px",marginBottom:10,gap:8}}>
+                <button onClick={()=>setTab("accounts")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px",flexShrink:0}}>← Wallets</button>
+                <span style={{fontSize:13,color:fw.color,fontWeight:600,flex:1,textAlign:"center"}}>{fw.icon} {fw.name}</span>
+                <button onClick={()=>setTxWalletFilter("")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px",flexShrink:0}}>✕ All</button>
               </div>:null;
             })()}
 

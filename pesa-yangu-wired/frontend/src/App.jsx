@@ -2925,7 +2925,7 @@ export default function App() {
                       <span>{highlight(w?.name||"—")}</span><span>·</span>
                       <span>{fmtDate(t.date||t.tx_date)}{txTime(t)?" · "+txTime(t):""}</span>
                       {t.loanId&&<Badge color={C.coral}>Loan</Badge>}
-                      {t.recurring&&<Badge color={C.purple}>🔁</Badge>}}
+                      {t.recurring&&<Badge color={C.purple}>🔁</Badge>}
                       {isRefund&&origTx&&<span style={{color:"#9B59B6"}}>↩ {origTx.merchant||origTx.note||"expense"}</span>}
                     </div>
                   </div>

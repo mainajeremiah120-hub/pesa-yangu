@@ -796,6 +796,10 @@ function isCurrentMonth(t) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function prevBudgetMonth(y,m){ return m===1?[y-1,12]:[y,m-1]; }
+function nextBudgetMonth(y,m){ return m===12?[y+1,1]:[y,m+1]; }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1194,6 +1198,8 @@ export default function App() {
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
   const [budgetSearch,   setBudgetSearch]   = useState("");
+  const [budgetYear,     setBudgetYear]     = useState(new Date().getFullYear());
+  const [budgetMonth,    setBudgetMonth]    = useState(new Date().getMonth() + 1);
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -2906,6 +2912,14 @@ export default function App() {
 
         {/* BUDGETS  */}
         {tab==="budgets"&&(()=>{
+          const bmTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===budgetYear && d.getMonth()+1===budgetMonth; });
+          const bmSpend = {}; expCats.forEach(c=>bmSpend[c.id]=0);
+          bmTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; bmSpend[key]=(bmSpend[key]||0)+t.amount; });
+          bmTxs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) bmSpend[key]=Math.max(0,(bmSpend[key]||0)-t.amount); });
+          const bmEarn = {}; incCats.forEach(c=>bmEarn[c.id]=0);
+          bmTxs.filter(t=>t.type==="income").forEach(t=>{ const key=t.category||t.category_id; bmEarn[key]=(bmEarn[key]||0)+t.amount; });
+          const bmOver = expCats.filter(c=>c.budget>0 && (bmSpend[c.id]||0)>c.budget);
+          const isCurrentBM = budgetYear===new Date().getFullYear() && budgetMonth===new Date().getMonth()+1;
           const bq = budgetSearch.trim().toLowerCase();
           const sortedExpCats = [...expCats].sort((a,b)=>a.name.localeCompare(b.name));
           const sortedIncCats = [...incCats].sort((a,b)=>a.name.localeCompare(b.name));
@@ -2916,7 +2930,13 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
               <div>
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets & Categories</div>
-                <div style={{color:C.textMuted,fontSize:12}}>{overBudget.length} over budget this month</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                  <button onClick={()=>{const[y,m]=prevBudgetMonth(budgetYear,budgetMonth);setBudgetYear(y);setBudgetMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.textPrimary,padding:"3px 10px",cursor:"pointer",fontSize:18,lineHeight:1}}>‹</button>
+                  <div style={{fontWeight:700,fontSize:13,minWidth:76,textAlign:"center"}}>{MONTH_NAMES[budgetMonth-1]} {budgetYear}</div>
+                  <button onClick={()=>{const[y,m]=nextBudgetMonth(budgetYear,budgetMonth);setBudgetYear(y);setBudgetMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.textPrimary,padding:"3px 10px",cursor:"pointer",fontSize:18,lineHeight:1}}>›</button>
+                  {!isCurrentBM&&<button onClick={()=>{setBudgetYear(new Date().getFullYear());setBudgetMonth(new Date().getMonth()+1);}} style={{background:C.teal+"22",border:"none",borderRadius:6,color:C.teal,padding:"3px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>Today</button>}
+                </div>
+                <div style={{color:C.textMuted,fontSize:12,marginTop:2}}>{bmOver.length} over budget in {MONTH_NAMES[budgetMonth-1]}</div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <Btn onClick={()=>{setFIncCat(blankIncCat);openM("incCat");}} outline color={C.teal} small>+ Income Cat.</Btn>
@@ -2935,15 +2955,15 @@ export default function App() {
               {budgetSearch&&<button onClick={()=>setBudgetSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:16,lineHeight:1}}>✕</button>}
             </div>
             {bq&&<div style={{fontSize:12,color:C.textMuted}}>{filtExpCats.length+filtIncCats.length} categor{filtExpCats.length+filtIncCats.length===1?"y":"ies"} match "{budgetSearch}"</div>}
-            {overBudget.length>0&&<Card style={{borderLeft:`3px solid ${C.coral}`}}>
+            {bmOver.length>0&&<Card style={{borderLeft:`3px solid ${C.coral}`}}>
               <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>⚠ Overspending Alerts</div>
-              {overBudget.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(spendByCat[a.id])} vs {disp(a.budget)} — <span style={{color:C.coral}}>+{disp((spendByCat[a.id]||0)-a.budget)} over</span></div>)}
+              {bmOver.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(bmSpend[a.id])} vs {disp(a.budget)} — <span style={{color:C.coral}}>+{disp((bmSpend[a.id]||0)-a.budget)} over</span></div>)}
             </Card>}
             <Divider label={`Expense Categories${bq&&filtExpCats.length!==expCats.length?` (${filtExpCats.length} of ${expCats.length})`:""}`}/>
             {filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
             {filtExpCats.map(c=>{
-              const spent=spendByCat[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
-              const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
+              const spent=bmSpend[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
+              const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:c.budget>0?10:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2972,8 +2992,8 @@ export default function App() {
             {filtIncCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No income categories match "{budgetSearch}"</div>}
             <div className="grid-2">
               {filtIncCats.map(c=>{
-                const earned=earnByCat[c.id]||0;
-                const txCnt=txs.filter(t=>(t.category||t.category_id)===c.id).length;
+                const earned=bmEarn[c.id]||0;
+                const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
                 return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"income"})} style={{cursor:"pointer"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>

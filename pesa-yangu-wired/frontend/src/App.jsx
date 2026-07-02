@@ -87,6 +87,28 @@ const fmtDate = (d) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MIDNIGHT TICK — forces "today"-based state/memos to refresh on day change
+// without needing a page reload or user interaction.
+// ─────────────────────────────────────────────────────────────────────────────
+function useMidnightTick() {
+  const [tick, setTick] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    let timeoutId;
+    const scheduleNext = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      timeoutId = setTimeout(() => {
+        setTick(new Date().toDateString());
+        scheduleNext();
+      }, nextMidnight.getTime() - now.getTime());
+    };
+    scheduleNext();
+    return () => clearTimeout(timeoutId);
+  }, []);
+  return tick;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CSV UTILITIES
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── CSV / Export helpers ───────────────────────────────────────────────────
@@ -1159,8 +1181,8 @@ export default function App() {
   const spendByCat = useMemo(()=>{
     const m={};
     expCats.forEach(c=>m[c.id]=0);
-    txs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; m[key]=(m[key]||0)+t.amount; });
-    txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) m[key]=Math.max(0,(m[key]||0)-t.amount); });
+    txs.filter(t=>t.type==="expense" && isCurrentMonth(t)).forEach(t=>{ const key=t.category||t.category_id; m[key]=(m[key]||0)+t.amount; });
+    txs.filter(t=>t.type==="refund" && isCurrentMonth(t)).forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) m[key]=Math.max(0,(m[key]||0)-t.amount); });
     return m;
   }, [txs, expCats]);
 
@@ -1176,14 +1198,28 @@ export default function App() {
 
   const overBudget = expCats.filter(c=>c.budget>0 && (spendByCat[c.id]||0)>c.budget);
   const watched    = expCats.filter(c=>c.watch);
-  // 0 when no activity; otherwise built from real behaviour
+  // 0 when no activity; otherwise built from real behaviour across net worth, savings, budgets & goals
   const hasActivity = txs.length > 0 || wallets.some(w=>parseFloat(w.balance||0)!==0);
+  const totalAssets = totalBalance + portfolioValue;
+  // 1. Net worth — assets vs liabilities (0 = fully leveraged, 100 = debt-free)
+  const netWorthFactor = totalAssets > 0
+    ? Math.max(0, Math.min(100, ((totalAssets - totalDebt) / totalAssets) * 100))
+    : (totalDebt > 0 ? 0 : 50);
+  // 2. Savings rate this month, mapped from -50%..+50% onto 0..100
+  const savingsFactor = Math.max(0, Math.min(100, 50 + savingsRate));
+  // 3. Spending — share of budgeted categories still within budget this month
+  const budgetedCats = expCats.filter(c => c.budget > 0);
+  const budgetFactor = budgetedCats.length
+    ? 100 * (budgetedCats.length - overBudget.length) / budgetedCats.length
+    : 70; // neutral when no budgets are set yet
+  // 4. Goals — average progress toward goals that still have a target
+  const activeGoals = goals.filter(g => g.target > 0);
+  const goalsFactor = activeGoals.length
+    ? activeGoals.reduce((s,g) => s + Math.min(100, (g.saved / g.target) * 100), 0) / activeGoals.length
+    : 60; // neutral when no goals set yet
   const score = (() => {
     if (!hasActivity) return 0;
-    let s = 50;                                                     // neutral baseline
-    s += Math.min(35, Math.max(-25, savingsRate * 0.35));           // savings rate ±35
-    s -= overBudget.length * 7;                                     // -7 per over-budget category
-    s += Math.min(10, goals.length * 2);                            // +2 per goal (max +10)
+    const s = netWorthFactor*0.30 + savingsFactor*0.30 + budgetFactor*0.20 + goalsFactor*0.20;
     return Math.max(1, Math.min(99, Math.round(s)));
   })();
 
@@ -1201,6 +1237,24 @@ export default function App() {
   const [budgetYear,     setBudgetYear]     = useState(new Date().getFullYear());
   const [budgetMonth,    setBudgetMonth]    = useState(new Date().getMonth() + 1);
   const [budgetView,     setBudgetView]     = useState("all"); // "all"|"expense"|"income"
+
+  // ── Keep "today"-derived state in sync across a midnight rollover, without
+  // clobbering a month/period the user deliberately navigated to.
+  const todayTick = useMidnightTick();
+  const prevTodayYM  = useRef({ y: new Date().getFullYear(), m: new Date().getMonth() + 1 });
+  const budgetYMRef  = useRef({ y: budgetYear, m: budgetMonth });
+  budgetYMRef.current = { y: budgetYear, m: budgetMonth };
+  useEffect(() => {
+    const now = new Date();
+    const newY = now.getFullYear(), newM = now.getMonth() + 1;
+    const { y: prevY, m: prevM } = prevTodayYM.current;
+    const { y: curY, m: curM }   = budgetYMRef.current;
+    if (curY === prevY && curM === prevM && (curY !== newY || curM !== newM)) {
+      setBudgetYear(newY);
+      setBudgetMonth(newM);
+    }
+    prevTodayYM.current = { y: newY, m: newM };
+  }, [todayTick]);
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -1259,7 +1313,7 @@ export default function App() {
         (wallet?.name || "").toLowerCase().includes(q)
       );
     });
-  }, [txs, txSearch, txWalletFilter, txTypeFilter, txPeriod, txDateFrom, txDateTo, expCats, incCats, wallets, limits.txHistory]);
+  }, [txs, txSearch, txWalletFilter, txTypeFilter, txPeriod, txDateFrom, txDateTo, expCats, incCats, wallets, limits.txHistory, todayTick]);
 
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
@@ -2513,7 +2567,7 @@ export default function App() {
                     <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24,color:score>=75?C.teal:score>=50?C.gold:C.coral,lineHeight:1.1,marginBottom:6}}>
                       {score>=75?"Looking Good":score>=50?"Room to Improve":"Needs Attention"}
                     </div>
-                    <div style={{color:C.textMuted,fontSize:12}}>Savings rate <strong style={{color:C.teal}}>{savingsRate.toFixed(0)}%</strong> · {overBudget.length} budget{overBudget.length!==1?"s":""} over</div>
+                    <div style={{color:C.textMuted,fontSize:12}}>Savings rate <strong style={{color:C.teal}}>{savingsRate.toFixed(0)}%</strong> · {overBudget.length} budget{overBudget.length!==1?"s":""} over{activeGoals.length>0&&<> · Goals <strong style={{color:C.teal}}>{goalsFactor.toFixed(0)}%</strong></>}</div>
                     {overBudget.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>{overBudget.map(a=><Badge key={a.id} color={C.coral}>⚠ {a.name}</Badge>)}</div>}
                   </div>
                 </div>
@@ -2934,21 +2988,23 @@ export default function App() {
           const filtIncCats = bq ? sortedIncCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedIncCats;
           return(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
-              <div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets & Categories</div>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
-                  <button onClick={()=>{const[y,m]=prevBudgetMonth(budgetYear,budgetMonth);setBudgetYear(y);setBudgetMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.textPrimary,padding:"3px 10px",cursor:"pointer",fontSize:18,lineHeight:1}}>‹</button>
-                  <div style={{fontWeight:700,fontSize:13,minWidth:76,textAlign:"center"}}>{MONTH_NAMES[budgetMonth-1]} {budgetYear}</div>
-                  <button onClick={()=>{const[y,m]=nextBudgetMonth(budgetYear,budgetMonth);setBudgetYear(y);setBudgetMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.textPrimary,padding:"3px 10px",cursor:"pointer",fontSize:18,lineHeight:1}}>›</button>
-                  {!isCurrentBM&&<button onClick={()=>{setBudgetYear(new Date().getFullYear());setBudgetMonth(new Date().getMonth()+1);}} style={{background:C.teal+"22",border:"none",borderRadius:6,color:C.teal,padding:"3px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>Today</button>}
-                </div>
-                <div style={{color:C.textMuted,fontSize:12,marginTop:2}}>{bmOver.length} over budget in {MONTH_NAMES[budgetMonth-1]}</div>
-              </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+              <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets & Categories</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <Btn onClick={()=>{setFIncCat(blankIncCat);openM("incCat");}} outline color={C.teal} small>+ Income Cat.</Btn>
                 <Btn onClick={()=>{setFExpCat(blankExpCat);openM("expCat");}} small>+ Expense Cat.</Btn>
               </div>
+            </div>
+
+            {/* Month navigator — centered, larger */}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <button onClick={()=>{const[y,m]=prevBudgetMonth(budgetYear,budgetMonth);setBudgetYear(y);setBudgetMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"6px 14px",cursor:"pointer",fontSize:22,lineHeight:1}}>‹</button>
+                <div style={{fontWeight:700,fontSize:19,minWidth:120,textAlign:"center"}}>{MONTH_NAMES[budgetMonth-1]} {budgetYear}</div>
+                <button onClick={()=>{const[y,m]=nextBudgetMonth(budgetYear,budgetMonth);setBudgetYear(y);setBudgetMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"6px 14px",cursor:"pointer",fontSize:22,lineHeight:1}}>›</button>
+                {!isCurrentBM&&<button onClick={()=>{setBudgetYear(new Date().getFullYear());setBudgetMonth(new Date().getMonth()+1);}} style={{background:C.teal+"22",border:"none",borderRadius:6,color:C.teal,padding:"3px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>Today</button>}
+              </div>
+              <div style={{color:C.textMuted,fontSize:12}}>{bmOver.length} over budget in {MONTH_NAMES[budgetMonth-1]}</div>
             </div>
 
             {/* Month summary — clickable to filter sections */}
@@ -2961,7 +3017,7 @@ export default function App() {
                 const active = budgetView===key;
                 return <button key={key} onClick={()=>setBudgetView(active&&key!=="all"?"all":key)} style={{flex:1,background:active?activeColor+"22":C.navyLight,borderRadius:12,padding:"12px 16px",borderTop:`3px solid ${active?activeColor:C.navyLight}`,border:`2px solid ${active?activeColor:"transparent"}`,cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}>
                   <div style={{fontSize:10,color:active?activeColor:C.textMuted,marginBottom:4,fontWeight:active?700:400}}>{label}</div>
-                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color}}>{disp(value)}</div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:15,color}}>{disp(value)}</div>
                 </button>;
               })}
             </div>

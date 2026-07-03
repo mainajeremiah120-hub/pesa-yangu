@@ -3056,10 +3056,10 @@ export default function App() {
                       <div style={{fontWeight:700,fontSize:13,color:over?C.coral:C.textPrimary}}>{disp(spent)}</div>
                       {c.budget>0&&<div style={{fontSize:10,color:over?C.coral:C.teal}}>{over?`+${disp(spent-c.budget)} over`:`${disp(c.budget-spent)} left`}</div>}
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
-                      <button onClick={e=>{e.stopPropagation();toggleWatch(c.id);}} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:6,color:c.watch?C.gold:C.textMuted,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.watch?"Watching":"Watch"}</button>
-                      <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
+                      <button onClick={e=>{e.stopPropagation();toggleWatch(c.id);}} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:8,color:c.watch?C.gold:C.textMuted,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.watch?"Watching":"Watch"}</button>
+                      <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:8,color:C.coral,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>🗑 Delete</button>
                     </div>
                   </div>
                 </div>
@@ -3081,9 +3081,9 @@ export default function App() {
                         <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{c.budget>0?`Target: ${disp(c.budget)}`:"No target"}</div>
                       </div>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"income",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:6,color:C.teal,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>{c.budget>0?"Edit":"Set Target"}</button>
-                      <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"income"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"4px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗑 Delete</button>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"income",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.budget>0?"Edit":"Set Target"}</button>
+                      <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"income"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:8,color:C.coral,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>🗑 Delete</button>
                     </div>
                   </div>
                   <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:c.color}}>{disp(earned)}</div>

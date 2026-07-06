@@ -16,6 +16,7 @@ import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
+  incomePlansApi,
 } from "./lib/api.js";
 import { AdminApp, AdminPanel } from "./AdminDashboard.jsx";
 import { SupportTickets } from "./components/SupportTickets.jsx";
@@ -420,13 +421,23 @@ const Btn = ({ children, onClick, color, outline=false, style={}, disabled=false
 };
 
 // Searchable category picker — replaces plain <select> for categories
-const CatPicker = ({ value, onChange, categories, label }) => {
+const CatPicker = ({ value, onChange, categories, label, groupByParent=false }) => {
   const C = useC();
   const [query,  setQuery]  = useState("");
   const [open,   setOpen]   = useState(false);
   const ref = useRef(null);
   const selected = categories.find(c => c.id === value);
-  const sorted = [...categories].sort((a,b) => a.name.localeCompare(b.name));
+  const sorted = useMemo(() => {
+    if (!groupByParent) return [...categories].sort((a,b) => a.name.localeCompare(b.name));
+    const byId = {}; categories.forEach(c => byId[c.id] = c);
+    const out = [];
+    const addWithChildren = (c, depth) => {
+      out.push({ ...c, __depth: depth });
+      categories.filter(k => k.parentId === c.id).sort((a,b)=>a.name.localeCompare(b.name)).forEach(k => addWithChildren(k, depth+1));
+    };
+    categories.filter(c => !c.parentId || !byId[c.parentId]).sort((a,b)=>a.name.localeCompare(b.name)).forEach(c => addWithChildren(c, 0));
+    return out;
+  }, [categories, groupByParent]);
   const filtered = query.trim() ? sorted.filter(c => c.name.toLowerCase().includes(query.toLowerCase()) || c.icon.includes(query)) : sorted;
 
   useEffect(() => {
@@ -458,7 +469,7 @@ const CatPicker = ({ value, onChange, categories, label }) => {
               <div key={c.id} onClick={()=>{onChange(c.id);setOpen(false);setQuery("");}}
                 onMouseEnter={e=>e.currentTarget.style.background=c.id===value?c.color+"33":C.navyMid}
                 onMouseLeave={e=>e.currentTarget.style.background=c.id===value?c.color+"22":"transparent"}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",background:c.id===value?c.color+"22":"transparent",borderLeft:`3px solid ${c.id===value?c.color:"transparent"}`}}>
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px 9px "+(14+(c.__depth||0)*16)+"px",cursor:"pointer",background:c.id===value?c.color+"22":"transparent",borderLeft:`3px solid ${c.id===value?c.color:"transparent"}`}}>
                 <span style={{fontSize:16,width:22,textAlign:"center",flexShrink:0}}>{c.icon}</span>
                 <span style={{fontSize:13,fontWeight:c.id===value?700:500,color:c.id===value?c.color:C.textPrimary}}>{c.name}</span>
                 {c.id===value&&<span style={{marginLeft:"auto",color:c.color,fontWeight:800,fontSize:12}}>✓</span>}
@@ -478,6 +489,64 @@ const Divider = ({ label }) => {
       <div style={{ flex:1, height:1, background:C.navyLight }}/>
       <span style={{ color:C.textFaint, fontSize:10, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</span>
       <div style={{ flex:1, height:1, background:C.navyLight }}/>
+    </div>
+  );
+};
+
+// Recursive node for percentage-mode budgeting: shows this category's cascaded
+// Cap (top-down from Gross Income), actual Used (bottom-up from transactions),
+// and Remaining, then recurses into its children — grouping them into Fixed /
+// Variable sections when the children carry that tag.
+const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild }) => {
+  const C = useC();
+  const [expanded, setExpanded] = useState(true);
+  const kids = childrenByParent[node.id] || [];
+  const cap = capById[node.id]||0, used = usedById[node.id]||0, remaining = cap-used;
+  const over = cap>0 && used>cap;
+  const fixedKids    = [...kids.filter(k=>k.spendKind==="fixed")].sort((a,b)=>a.name.localeCompare(b.name));
+  const variableKids = [...kids.filter(k=>k.spendKind==="variable")].sort((a,b)=>a.name.localeCompare(b.name));
+  const otherKids     = [...kids.filter(k=>!k.spendKind)].sort((a,b)=>a.name.localeCompare(b.name));
+  const btnStyle = (color) => ({background:"none",border:`1px solid ${color}44`,borderRadius:7,color,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:600,minWidth:64,textAlign:"center"});
+
+  const renderKids = (list) => list.map(k=>(
+    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild}/>
+  ));
+
+  return (
+    <div style={{marginLeft: depth*14, marginBottom:8}}>
+      <Card style={{borderLeft:over?`3px solid ${C.coral}`:node.watch?`3px solid ${C.gold}`:"3px solid transparent"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1,cursor:kids.length?"pointer":"default"}} onClick={()=>kids.length && setExpanded(e=>!e)}>
+            {kids.length>0 && <span style={{color:C.textMuted,fontSize:11,width:12,flexShrink:0}}>{expanded?"▾":"▸"}</span>}
+            <span style={{fontSize:18,flexShrink:0}}>{node.icon}</span>
+            <div style={{minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span>{node.name}</span>
+                {node.allocationType==="percent" && <Badge color={C.blue}>{node.percentOfParent}%</Badge>}
+                {node.watch && <Badge color={C.gold}>👁</Badge>}
+              </div>
+              <div style={{fontSize:10,color:C.textMuted}}>
+                Cap: {disp(cap)} · Used: {disp(used)} · {over ? <span style={{color:C.coral}}>Over by {disp(used-cap)}</span> : <span>Remaining: {disp(remaining)}</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            <button onClick={()=>onAddChild(node.id)} style={btnStyle(C.teal)}>+ Sub</button>
+            <button onClick={()=>onEdit(node)} style={btnStyle(C.textMuted)}>✏️ Edit</button>
+            <button onClick={()=>onDelete(node)} style={btnStyle(C.coral)}>🗑</button>
+          </div>
+        </div>
+        {cap>0 && <div style={{marginTop:10}}><Bar value={used} max={cap} color={node.color}/></div>}
+      </Card>
+      {expanded && kids.length>0 && (
+        <div style={{marginTop:6}}>
+          {renderKids(otherKids)}
+          {fixedKids.length>0 && <Divider label="Fixed"/>}
+          {renderKids(fixedKids)}
+          {variableKids.length>0 && <Divider label="Variable"/>}
+          {renderKids(variableKids)}
+        </div>
+      )}
     </div>
   );
 };
@@ -691,7 +760,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
     if (!editName.trim()) return;
     setSavingName(true);
     try {
-      const { user: u } = await authApi.updateProfile(editName.trim());
+      const { user: u } = await authApi.updateProfile({ full_name: editName.trim() });
       updateUser({ full_name: u.full_name });
       showToast("Name updated", C.teal);
     } catch { showToast("Failed to update name", C.coral); }
@@ -749,6 +818,28 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
           <button onClick={toggleTheme} style={{background:C.navyLight,border:"none",borderRadius:10,padding:"8px 16px",color:C.textPrimary,cursor:"pointer",fontWeight:600,fontSize:12}}>
             {theme==="dark"?"☀️ Light Mode":"🌙 Dark Mode"}
           </button>
+        </div>
+      </Card>
+
+      {/* Budgeting Style */}
+      <Card>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🧮 Budgeting Style</div>
+        <div style={{fontSize:11,color:C.textMuted,marginBottom:14}}>Choose how the Budgets tab works for your account</div>
+        <div style={{display:"flex",gap:8}}>
+          {[
+            {key:"manual",     label:"Manual",     desc:"Set a flat budget per category, like today"},
+            {key:"percentage", label:"Percentage", desc:"Define % rules once; caps recalc from your monthly income"},
+          ].map(m=>{
+            const active = (user.budget_mode||"manual")===m.key;
+            return <button key={m.key} onClick={async()=>{
+              if(active) return;
+              try { const {user:u}=await authApi.updateProfile({budget_mode:m.key}); updateUser({budget_mode:u.budget_mode}); showToast(`Switched to ${m.label} budgeting`, C.teal); }
+              catch { showToast("Could not update budgeting style", C.coral); }
+            }} style={{flex:1,textAlign:"left",background:active?C.teal+"22":C.navyLight,border:`2px solid ${active?C.teal:"transparent"}`,borderRadius:10,padding:"10px 12px",cursor:active?"default":"pointer"}}>
+              <div style={{fontSize:12,fontWeight:700,color:active?C.teal:C.textPrimary,marginBottom:3}}>{m.label}</div>
+              <div style={{fontSize:10,color:C.textMuted,lineHeight:1.4}}>{m.desc}</div>
+            </button>;
+          })}
         </div>
       </Card>
 
@@ -1107,6 +1198,10 @@ export default function App() {
   // ── Field normalisers (backend snake_case → UI expectations)
   const normaliseCategory = (c) => ({
     ...c, budget: parseFloat(c.budget_kes||0), watch: !!c.watch,
+    parentId:        c.parent_id || null,
+    allocationType:  c.allocation_type || "fixed",
+    percentOfParent: c.percent_of_parent!=null ? parseFloat(c.percent_of_parent) : null,
+    spendKind:       c.spend_kind || null,
   });
   const normaliseGoal = (g) => ({
     ...g,
@@ -1196,7 +1291,70 @@ export default function App() {
     return m;
   }, [txs, incCats]);
 
-  const overBudget = expCats.filter(c=>c.budget>0 && (spendByCat[c.id]||0)>c.budget);
+  // ── Category hierarchy (percentage-mode budgeting). A category is either a
+  // flat 'fixed' leaf (today's existing behaviour, budget_kes as-is) or a
+  // 'percent' rule/bucket whose Cap cascades top-down from Gross Income
+  // through its parent chain. Transactions only ever post against leaves;
+  // parent Cap/Used are rolled up bottom-up from descendant leaves.
+  const catsById = useMemo(() => {
+    const m = {}; expCats.forEach(c => m[c.id] = c); return m;
+  }, [expCats]);
+  const childrenByParent = useMemo(() => {
+    const m = {};
+    expCats.forEach(c => { const key = c.parentId || "__root__"; (m[key] = m[key] || []).push(c); });
+    return m;
+  }, [expCats]);
+  // All descendant ids of `id` (used to stop a category becoming its own descendant's child)
+  const getDescendantIds = (id) => {
+    const out = [];
+    const walk = (pid) => (childrenByParent[pid]||[]).forEach(k => { out.push(k.id); walk(k.id); });
+    walk(id);
+    return out;
+  };
+  const capById = useMemo(() => {
+    const memo = {};
+    const resolve = (id) => {
+      if (memo[id] != null) return memo[id];
+      const c = catsById[id];
+      if (!c) return 0;
+      const val = c.allocationType === "percent"
+        ? (c.parentId ? resolve(c.parentId) : grossIncome) * ((c.percentOfParent||0) / 100)
+        : c.budget;
+      memo[id] = val;
+      return val;
+    };
+    Object.keys(catsById).forEach(resolve);
+    return memo;
+  }, [catsById, grossIncome]);
+  const usedById = useMemo(() => {
+    const memo = {};
+    const resolve = (id) => {
+      if (memo[id] != null) return memo[id];
+      const kids = childrenByParent[id] || [];
+      const val = kids.length ? kids.reduce((s,k) => s + resolve(k.id), 0) : (spendByCat[id] || 0);
+      memo[id] = val;
+      return val;
+    };
+    Object.keys(catsById).forEach(resolve);
+    return memo;
+  }, [catsById, childrenByParent, spendByCat]);
+  // Sum of children's Cap — advisory only ("you've earmarked X against a Y allocation"),
+  // never the enforced Cap itself (see capById).
+  const earmarkedById = useMemo(() => {
+    const memo = {};
+    const resolve = (id) => {
+      if (memo[id] != null) return memo[id];
+      const kids = childrenByParent[id] || [];
+      const val = kids.reduce((s,k) => s + (capById[k.id]||0), 0);
+      memo[id] = val;
+      return val;
+    };
+    Object.keys(catsById).forEach(resolve);
+    return memo;
+  }, [catsById, childrenByParent, capById]);
+  const remainingById = (id) => (capById[id]||0) - (usedById[id]||0);
+
+  const overBudget = expCats.filter(c=>(capById[c.id]||0)>0 && (usedById[c.id]||0)>(capById[c.id]||0));
   const watched    = expCats.filter(c=>c.watch);
   // 0 when no activity; otherwise built from real behaviour across net worth, savings, budgets & goals
   const hasActivity = txs.length > 0 || wallets.some(w=>parseFloat(w.balance||0)!==0);
@@ -1208,7 +1366,7 @@ export default function App() {
   // 2. Savings rate this month, mapped from -50%..+50% onto 0..100
   const savingsFactor = Math.max(0, Math.min(100, 50 + savingsRate));
   // 3. Spending — share of budgeted categories still within budget this month
-  const budgetedCats = expCats.filter(c => c.budget > 0);
+  const budgetedCats = expCats.filter(c => (capById[c.id]||0) > 0);
   const budgetFactor = budgetedCats.length
     ? 100 * (budgetedCats.length - overBudget.length) / budgetedCats.length
     : 70; // neutral when no budgets are set yet
@@ -1255,6 +1413,30 @@ export default function App() {
     }
     prevTodayYM.current = { y: newY, m: newM };
   }, [todayTick]);
+
+  // ── Gross Income for the selected budget month (percentage-mode budgeting).
+  // Carries forward the most recent prior month's value until explicitly changed.
+  const [grossIncome, setGrossIncomeState] = useState(0);
+  const [grossIncomeInput, setGrossIncomeInput] = useState("");
+  const [incomeCarriedForward, setIncomeCarriedForward] = useState(false);
+  useEffect(() => { setGrossIncomeInput(grossIncome ? String(grossIncome) : ""); }, [grossIncome]);
+  useEffect(() => {
+    if (user?.budget_mode !== "percentage") return;
+    let cancelled = false;
+    incomePlansApi.get(budgetYear, budgetMonth).then(({income}) => {
+      if (cancelled) return;
+      setGrossIncomeState(income ? parseFloat(income.gross_income_kes) : 0);
+      setIncomeCarriedForward(!!income?.is_carried_forward);
+    }).catch(()=>{});
+    return () => { cancelled = true; };
+  }, [user?.budget_mode, budgetYear, budgetMonth]);
+  const saveGrossIncome = async (amount) => {
+    const amt = parseFloat(amount) || 0;
+    setGrossIncomeState(amt);
+    setIncomeCarriedForward(false);
+    try { await incomePlansApi.set(budgetYear, budgetMonth, amt); }
+    catch(err) { showToast(err?.response?.data?.error||"Failed to save income", C.coral); }
+  };
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -1328,7 +1510,7 @@ export default function App() {
   const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly", time:"" };
   const blankXfer  = { from:"", to:"", amount:"", note:"" };
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
-  const blankExpCat= { name:"", icon:"🏷️", color:C.blue, budget:"", watch:false };
+  const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
@@ -1464,13 +1646,35 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
+  const openEditExpCat = (c) => {
+    setFExpCat({
+      id:c.id, name:c.name, icon:c.icon, color:c.color, watch:c.watch,
+      budget:String(c.budget||""), parentId:c.parentId||null,
+      allocationType:c.allocationType||"fixed",
+      percentOfParent:c.percentOfParent!=null?String(c.percentOfParent):"",
+      spendKind:c.spendKind||null,
+    });
+    openM("expCat");
+  };
+
   const addExpCat = async () => {
     if(!fExpCat.name) return;
+    const payload = { name:fExpCat.name, type:"expense", icon:fExpCat.icon, color:fExpCat.color, watch:fExpCat.watch, allocation_type:fExpCat.allocationType };
+    if (fExpCat.allocationType==="percent") { payload.percent_of_parent = parseFloat(fExpCat.percentOfParent)||0; payload.budget_kes = 0; }
+    else { payload.budget_kes = parseFloat(fExpCat.budget)||0; payload.percent_of_parent = null; }
+    payload.parent_id = fExpCat.parentId || null;
+    payload.spend_kind = fExpCat.parentId ? fExpCat.spendKind : null;
     try {
-      const { category } = await catsApi.create({ name:fExpCat.name, type:"expense", icon:fExpCat.icon, color:fExpCat.color, budget_kes:parseFloat(fExpCat.budget)||0, watch:fExpCat.watch });
-      setExpCats(p=>[...p, normaliseCategory(category)]);
+      if (fExpCat.id) {
+        const { category } = await catsApi.update(fExpCat.id, payload);
+        setExpCats(p=>p.map(c=>c.id===fExpCat.id?normaliseCategory(category):c));
+        showToast("Category updated");
+      } else {
+        const { category } = await catsApi.create(payload);
+        setExpCats(p=>[...p, normaliseCategory(category)]);
+        showToast("Category added");
+      }
       setFExpCat(blankExpCat); closeM("expCat");
-      showToast("Category added");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
@@ -2971,21 +3175,43 @@ export default function App() {
 
         {/* BUDGETS  */}
         {tab==="budgets"&&(()=>{
+          const isPercentMode = user.budget_mode==="percentage";
           const bmTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===budgetYear && d.getMonth()+1===budgetMonth; });
           const bmSpend = {}; expCats.forEach(c=>bmSpend[c.id]=0);
           bmTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; bmSpend[key]=(bmSpend[key]||0)+t.amount; });
           bmTxs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) bmSpend[key]=Math.max(0,(bmSpend[key]||0)-t.amount); });
           const bmEarn = {}; incCats.forEach(c=>bmEarn[c.id]=0);
           bmTxs.filter(t=>t.type==="income").forEach(t=>{ const key=t.category||t.category_id; bmEarn[key]=(bmEarn[key]||0)+t.amount; });
-          const bmOver = expCats.filter(c=>c.budget>0 && (bmSpend[c.id]||0)>c.budget);
+          // Bottom-up actual spend for the SELECTED month (mirrors usedById, but scoped to bmSpend
+          // instead of the always-current-month spendByCat, so month navigation works correctly here).
+          const bmUsedById = (() => {
+            const memo = {};
+            const resolve = (id) => {
+              if (memo[id] != null) return memo[id];
+              const kids = childrenByParent[id] || [];
+              const val = kids.length ? kids.reduce((s,k)=>s+resolve(k.id),0) : (bmSpend[id]||0);
+              memo[id] = val;
+              return val;
+            };
+            Object.keys(catsById).forEach(resolve);
+            return memo;
+          })();
+          const bmOver = expCats.filter(c=>(capById[c.id]||0)>0 && (bmUsedById[c.id]||0)>(capById[c.id]||0));
           const bmTotalIncome  = bmTxs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
           const bmTotalExpense = Math.max(0, bmTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0) - bmTxs.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount,0));
           const isCurrentBM = budgetYear===new Date().getFullYear() && budgetMonth===new Date().getMonth()+1;
           const bq = budgetSearch.trim().toLowerCase();
-          const sortedExpCats = [...expCats].sort((a,b)=>{ const sa=bmSpend[a.id]||0,sb=bmSpend[b.id]||0; return sb!==sa?sb-sa:a.name.localeCompare(b.name); });
+          const manualExpCats = expCats.filter(c=>c.allocationType!=="percent");
+          const sortedExpCats = [...manualExpCats].sort((a,b)=>{ const sa=bmSpend[a.id]||0,sb=bmSpend[b.id]||0; return sb!==sa?sb-sa:a.name.localeCompare(b.name); });
           const sortedIncCats = [...incCats].sort((a,b)=>a.name.localeCompare(b.name));
           const filtExpCats = bq ? sortedExpCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedExpCats;
           const filtIncCats = bq ? sortedIncCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)) : sortedIncCats;
+          // Percentage mode: root-level allocation tree, with a deep search match
+          // (a root shows if it or any of its descendants match the query).
+          const rootExpCats = childrenByParent["__root__"] || [];
+          const matchesDeep = (c) => c.name.toLowerCase().includes(bq) || c.icon.includes(bq) ||
+            getDescendantIds(c.id).some(id => { const d=catsById[id]; return d && (d.name.toLowerCase().includes(bq)||d.icon.includes(bq)); });
+          const filtRootExpCats = [...rootExpCats].sort((a,b)=>a.name.localeCompare(b.name)).filter(c => !bq || matchesDeep(c));
           return(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
@@ -3035,11 +3261,37 @@ export default function App() {
             {bq&&<div style={{fontSize:12,color:C.textMuted}}>{filtExpCats.length+filtIncCats.length} categor{filtExpCats.length+filtIncCats.length===1?"y":"ies"} match "{budgetSearch}"</div>}
             {bmOver.length>0&&<Card style={{borderLeft:`3px solid ${C.coral}`}}>
               <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>⚠ Overspending Alerts</div>
-              {bmOver.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(bmSpend[a.id])} vs {disp(a.budget)} — <span style={{color:C.coral}}>+{disp((bmSpend[a.id]||0)-a.budget)} over</span></div>)}
+              {bmOver.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(bmUsedById[a.id])} vs {disp(capById[a.id])} — <span style={{color:C.coral}}>+{disp((bmUsedById[a.id]||0)-(capById[a.id]||0))} over</span></div>)}
             </Card>}
-            {budgetView!=="income"&&<Divider label={`Expense Categories${bq&&filtExpCats.length!==expCats.length?` (${filtExpCats.length} of ${expCats.length})`:""}`}/>}
-            {budgetView!=="income"&&filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
-            {budgetView!=="income"&&filtExpCats.map(c=>{
+
+            {isPercentMode && budgetView!=="income" && <>
+              <Divider label="Gross Income"/>
+              <Card>
+                <div style={{display:"flex",alignItems:"flex-end",gap:12,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:160,marginBottom:0}}>
+                    <div style={{color:C.textMuted,fontSize:11,marginBottom:5,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>Gross Income for {MONTH_NAMES[budgetMonth-1]} ({baseCurrency})</div>
+                    <input type="number" value={grossIncomeInput} onChange={e=>setGrossIncomeInput(e.target.value)}
+                      onBlur={()=>saveGrossIncome(grossIncomeInput)} onKeyDown={e=>e.key==="Enter"&&e.currentTarget.blur()}
+                      placeholder="e.g. 230000"
+                      style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,padding:"10px 14px",color:C.textPrimary,width:"100%",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                  {incomeCarriedForward && grossIncome>0 && <Badge color={C.gold}>Carried forward</Badge>}
+                </div>
+              </Card>
+              <Divider label={`Allocation Rules${bq&&filtRootExpCats.length!==rootExpCats.length?` (${filtRootExpCats.length} of ${rootExpCats.length})`:""}`}/>
+              {filtRootExpCats.length===0 && bq && <div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No categories match "{budgetSearch}"</div>}
+              {filtRootExpCats.length===0 && !bq && <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"16px 0"}}>No allocation rules yet. Tap "+ Expense Cat." to define your first rule (e.g. Tithe, Tax Reserve).</div>}
+              {filtRootExpCats.map(c=>(
+                <CategoryTree key={c.id} node={c} childrenByParent={childrenByParent} capById={capById} usedById={bmUsedById} disp={disp}
+                  onEdit={openEditExpCat}
+                  onDelete={(node)=>askConfirm("Delete Category",`Delete category "${node.name}"? Existing transactions won't be affected.`,()=>deleteCategory(node.id,"expense"))}
+                  onAddChild={(parentId)=>{setFExpCat({...blankExpCat,parentId});openM("expCat");}}/>
+              ))}
+            </>}
+
+            {!isPercentMode && budgetView!=="income"&&<Divider label={`Expense Categories${bq&&filtExpCats.length!==manualExpCats.length?` (${filtExpCats.length} of ${manualExpCats.length})`:""}`}/>}
+            {!isPercentMode && budgetView!=="income"&&filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
+            {!isPercentMode && budgetView!=="income"&&filtExpCats.map(c=>{
               const spent=bmSpend[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
               const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
@@ -3502,7 +3754,7 @@ export default function App() {
       {/* Add / Edit Transaction */}
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
-        <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expCats:incCats}/>
+        <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expCats.filter(c=>c.allocationType!=="percent"):incCats} groupByParent={fTx.type==="expense"}/>
         <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
         <div className="grid-2">
@@ -3694,19 +3946,38 @@ export default function App() {
         );
       })()}
 
-      {/* Add Expense Category */}
-      <Modal open={isOpen("expCat")} onClose={()=>closeM("expCat")} title="🏷️ New Expense Category">
+      {/* Add / Edit Expense Category */}
+      <Modal open={isOpen("expCat")} onClose={()=>{closeM("expCat");setFExpCat(blankExpCat);}} title={fExpCat.id?"✏️ Edit Category":"🏷️ New Expense Category"}>
         <Field label="Category Name" value={fExpCat.name} onChange={v=>setFExpCat({...fExpCat,name:v})} placeholder="e.g. Pet Care"/>
         <div className="grid-2">
           <Field label="Icon"   value={fExpCat.icon}  onChange={v=>setFExpCat({...fExpCat,icon:v})}  options={ICONS.map(i=>({value:i,label:i}))}/>
           <ColorPicker label="Colour" value={fExpCat.color} onChange={v=>setFExpCat({...fExpCat,color:v})} colors={CAT_COLORS}/>
         </div>
-        <Field label={`Monthly Budget (${baseCurrency})`} type="number" value={fExpCat.budget} onChange={v=>setFExpCat({...fExpCat,budget:v})} placeholder="0 = no budget"/>
+        {user.budget_mode==="percentage" && <>
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            {[{key:"fixed",label:"Spending (fixed cap)"},{key:"percent",label:"Rule (% of parent)"}].map(k=>(
+              <button key={k.key} onClick={()=>setFExpCat({...fExpCat,allocationType:k.key})} style={{flex:1,background:fExpCat.allocationType===k.key?C.teal+"22":C.navyLight,border:`2px solid ${fExpCat.allocationType===k.key?C.teal:"transparent"}`,borderRadius:10,padding:"8px 10px",cursor:"pointer",color:fExpCat.allocationType===k.key?C.teal:C.textMuted,fontSize:11,fontWeight:600}}>{k.label}</button>
+            ))}
+          </div>
+          <CatPicker label="Parent Category (optional)" value={fExpCat.parentId||""} onChange={v=>setFExpCat({...fExpCat,parentId:v||null})}
+            categories={[{id:"",name:"— None (top level) —",icon:"—",color:C.textMuted,parentId:null}, ...expCats.filter(c=>c.id!==fExpCat.id && !getDescendantIds(fExpCat.id||"__none__").includes(c.id))]}
+            groupByParent/>
+        </>}
+        {fExpCat.allocationType==="percent"
+          ? <Field label={`Percent of ${fExpCat.parentId ? (catsById[fExpCat.parentId]?.name||"parent") : "Gross Income"} (%)`} type="number" value={fExpCat.percentOfParent} onChange={v=>setFExpCat({...fExpCat,percentOfParent:v})} placeholder="e.g. 10"/>
+          : <Field label={`Monthly Budget (${baseCurrency})`} type="number" value={fExpCat.budget} onChange={v=>setFExpCat({...fExpCat,budget:v})} placeholder="0 = no budget"/>}
+        {user.budget_mode==="percentage" && fExpCat.parentId && fExpCat.allocationType==="fixed" && (
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            {[{key:"fixed",label:"Fixed cost"},{key:"variable",label:"Variable cost"}].map(k=>(
+              <button key={k.key} onClick={()=>setFExpCat({...fExpCat,spendKind:k.key})} style={{flex:1,background:fExpCat.spendKind===k.key?C.gold+"22":C.navyLight,border:`2px solid ${fExpCat.spendKind===k.key?C.gold:"transparent"}`,borderRadius:10,padding:"8px 10px",cursor:"pointer",color:fExpCat.spendKind===k.key?C.gold:C.textMuted,fontSize:11,fontWeight:600}}>{k.label}</button>
+            ))}
+          </div>
+        )}
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
           <input type="checkbox" id="watchChk" checked={!!fExpCat.watch} onChange={e=>setFExpCat({...fExpCat,watch:e.target.checked})} style={{accentColor:C.gold,width:16,height:16}}/>
           <label htmlFor="watchChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>👁 Watch on Dashboard</label>
         </div>
-        <Btn onClick={addExpCat} style={{width:"100%",padding:13,fontSize:14}}>Add Category</Btn>
+        <Btn onClick={addExpCat} style={{width:"100%",padding:13,fontSize:14}}>{fExpCat.id?"Save Changes":"Add Category"}</Btn>
       </Modal>
 
       {/* Add Income Category */}

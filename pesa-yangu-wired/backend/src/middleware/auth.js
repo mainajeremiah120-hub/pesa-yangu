@@ -11,7 +11,7 @@ const requireAuth = async (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const { rows } = await query(
-      "SELECT id, email, full_name, plan, role FROM users WHERE id = $1",
+      "SELECT id, email, full_name, plan, role, budget_mode FROM users WHERE id = $1",
       [payload.sub]
     );
     if (!rows.length) return res.status(401).json({ error: "User not found" });

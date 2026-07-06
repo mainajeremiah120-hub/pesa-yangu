@@ -45,6 +45,7 @@ const { requireAuth, requireAdmin } = require("./middleware/auth");
 const {
   categoryRouter:   categoryRoutes,
   budgetRouter:     budgetRoutes,
+  incomePlanRouter: incomePlanRoutes,
   goalRouter:       goalRoutes,
   investmentRouter: investmentRoutes,
   loanRouter:       loanRoutes,
@@ -169,6 +170,7 @@ v1.use("/wallets",      requireAuth, walletRoutes);
 v1.use("/transactions", requireAuth, transactionRoutes);
 v1.use("/categories",   requireAuth, categoryRoutes);
 v1.use("/budgets",      requireAuth, budgetRoutes);
+v1.use("/income-plans", requireAuth, incomePlanRoutes);
 v1.use("/goals",        requireAuth, goalRoutes);
 v1.use("/investments",  requireAuth, investmentRoutes);
 v1.use("/loans",        requireAuth, loanRoutes);

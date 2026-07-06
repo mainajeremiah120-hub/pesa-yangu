@@ -33,13 +33,42 @@ categoryRouter.get("/", async (req,res,next)=>{
   try { const {rows}=await query("SELECT * FROM categories WHERE user_id=$1 ORDER BY type,sort_order",[req.user.id]); res.json({categories:rows}); } catch(e){next(e);}
 });
 
+// Walks parent_id ancestors of `startId` and returns true if `targetId` is among them
+// (i.e. making startId's parent = targetId would create a cycle).
+async function wouldCreateCycle(userId, startId, targetId) {
+  if (!targetId) return false;
+  if (targetId === startId) return true;
+  const {rows}=await query(`
+    WITH RECURSIVE ancestors AS (
+      SELECT id, parent_id FROM categories WHERE id=$1 AND user_id=$2
+      UNION ALL
+      SELECT c.id, c.parent_id FROM categories c JOIN ancestors a ON c.id=a.parent_id
+    )
+    SELECT 1 FROM ancestors WHERE id=$3`, [targetId, userId, startId]);
+  return rows.length>0;
+}
+
+const allocationFields = z.object({
+  parent_id:         z.string().uuid().nullable().optional(),
+  allocation_type:   z.enum(["fixed","percent"]).default("fixed"),
+  percent_of_parent: z.number().min(0).max(100).nullable().optional(),
+  spend_kind:        z.enum(["fixed","variable"]).nullable().optional(),
+}).refine(d => d.allocation_type!=="percent" || d.percent_of_parent!=null, {message:"percent_of_parent is required when allocation_type is 'percent'"});
+
 categoryRouter.post("/", async (req,res,next)=>{
   try {
-    const d=z.object({name:z.string().min(1).max(60).trim(),type:z.enum(["expense","income"]),icon:z.string().max(10).default("🏷️"),color:z.string().max(20).default("#4A90E2"),budget_kes:z.number().min(0).max(1e9).default(0),watch:z.boolean().default(false)}).parse(req.body);
+    const base=z.object({name:z.string().min(1).max(60).trim(),type:z.enum(["expense","income"]),icon:z.string().max(10).default("🏷️"),color:z.string().max(20).default("#4A90E2"),budget_kes:z.number().min(0).max(1e9).default(0),watch:z.boolean().default(false)}).parse(req.body);
+    const alloc=allocationFields.parse(req.body);
+    const percentOfParent = alloc.allocation_type==="percent" ? alloc.percent_of_parent : null;
+    if (alloc.parent_id) {
+      const {rows:pr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2 AND type=$3",[alloc.parent_id,req.user.id,base.type]);
+      if(!pr.length) return res.status(400).json({error:"Parent category not found"});
+    }
     const {rows}=await query(
-      `INSERT INTO categories (user_id,name,type,icon,color,budget_kes,watch) VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (user_id,name,type) DO UPDATE SET icon=$4,color=$5,budget_kes=$6,watch=$7 RETURNING *`,
-      [req.user.id,d.name,d.type,d.icon,d.color,d.budget_kes,d.watch]
+      `INSERT INTO categories (user_id,name,type,icon,color,budget_kes,watch,parent_id,allocation_type,percent_of_parent,spend_kind)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (user_id,name,type) DO UPDATE SET icon=$4,color=$5,budget_kes=$6,watch=$7,parent_id=$8,allocation_type=$9,percent_of_parent=$10,spend_kind=$11 RETURNING *`,
+      [req.user.id,base.name,base.type,base.icon,base.color,base.budget_kes,base.watch,alloc.parent_id||null,alloc.allocation_type,percentOfParent,alloc.spend_kind||null]
     );
     res.status(201).json({category:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -47,9 +76,14 @@ categoryRouter.post("/", async (req,res,next)=>{
 
 categoryRouter.patch("/:id", async (req,res,next)=>{
   try {
-    const allowed=["name","icon","color","budget_kes","watch","sort_order"];
+    const allowed=["name","icon","color","budget_kes","watch","sort_order","parent_id","allocation_type","percent_of_parent","spend_kind"];
     const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
+    if("allocation_type" in u && !["fixed","percent"].includes(u.allocation_type)) return res.status(400).json({error:"Invalid allocation_type"});
+    if(u.allocation_type==="percent" && u.percent_of_parent==null) return res.status(400).json({error:"percent_of_parent is required when allocation_type is 'percent'"});
+    if("parent_id" in u && u.parent_id) {
+      if(await wouldCreateCycle(req.user.id, req.params.id, u.parent_id)) return res.status(400).json({error:"That would create a circular category hierarchy"});
+    }
     const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE categories SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
@@ -62,6 +96,8 @@ categoryRouter.delete("/:id", async (req,res,next)=>{
     const {rows}=await query("SELECT is_system FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     if(rows[0].is_system) return res.status(403).json({error:"System categories cannot be deleted"});
+    const {rows:kids}=await query("SELECT COUNT(*)::int AS n FROM categories WHERE parent_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    if(kids[0].n>0) return res.status(409).json({error:`Category has ${kids[0].n} sub-categor${kids[0].n===1?"y":"ies"} — reparent or delete them first`});
     // Null out category_id on transactions referencing this category
     await query("UPDATE transactions SET category_id=NULL WHERE category_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     await query("DELETE FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
@@ -176,6 +212,39 @@ budgetRouter.get("/trend", async (req,res,next)=>{
     );
     res.json({trend:rows});
   } catch(e){next(e);}
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INCOME PLANS  — monthly Gross Income input for percentage-based budgeting.
+// A month with no row carries forward the most recent prior month's value.
+// ══════════════════════════════════════════════════════════════════════════════
+const incomePlanRouter = express.Router();
+
+incomePlanRouter.get("/", async (req,res,next)=>{
+  try {
+    const now = new Date();
+    const year  = parseInt(req.query.year)  || now.getFullYear();
+    const month = parseInt(req.query.month) || now.getMonth()+1;
+    const {rows}=await query(
+      `SELECT * FROM income_plans WHERE user_id=$1 AND (year,month) <= ($2,$3) ORDER BY year DESC, month DESC LIMIT 1`,
+      [req.user.id, year, month]
+    );
+    if(!rows.length) return res.json({income:null});
+    const row = rows[0];
+    res.json({income:{...row, is_carried_forward: row.year!==year || row.month!==month}});
+  } catch(e){next(e);}
+});
+
+incomePlanRouter.post("/", async (req,res,next)=>{
+  try {
+    const d=z.object({year:z.number().int(),month:z.number().int().min(1).max(12),gross_income_kes:z.number().min(0).max(1e9)}).parse(req.body);
+    const {rows}=await query(
+      `INSERT INTO income_plans (user_id,year,month,gross_income_kes) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (user_id,year,month) DO UPDATE SET gross_income_kes=$4,updated_at=NOW() RETURNING *`,
+      [req.user.id,d.year,d.month,d.gross_income_kes]
+    );
+    res.status(201).json({income:rows[0]});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -788,6 +857,7 @@ insuranceRouter.delete("/:id", async (req,res,next) => {
 module.exports = {
   categoryRouter,
   budgetRouter,
+  incomePlanRouter,
   goalRouter,
   investmentRouter,
   loanRouter,

@@ -75,7 +75,7 @@ export const authApi = {
   deactivate:     ()            => unwrap(client.delete("/auth/account")),
   forgotPassword: (email)            => unwrap(client.post("/auth/forgot-password", { email })),
   resetPassword:  (token, password)  => unwrap(client.post("/auth/reset-password", { token, password })),
-  updateProfile:  (full_name)        => unwrap(client.patch("/auth/profile", { full_name })),
+  updateProfile:  (patch)            => unwrap(client.patch("/auth/profile", patch)),
   resetData:      ()                 => unwrap(client.post("/auth/reset-data")),
   logout: () => {
     const rt = localStorage.getItem("py_refresh_token");
@@ -126,6 +126,12 @@ export const budgetsApi = {
   set:         (p)           => unwrap(client.post("/budgets", p)),
   setMonthly:  (p)           => unwrap(client.post("/budgets/monthly", p)),
   trend:       (months)      => unwrap(client.get("/budgets/trend", { params: { months } })),
+};
+
+// ── Income Plans (percentage-based budgeting) ────────────────────────────────
+export const incomePlansApi = {
+  get: (year, month)               => unwrap(client.get("/income-plans", { params: { year, month } })),
+  set: (year, month, gross_income_kes) => unwrap(client.post("/income-plans", { year, month, gross_income_kes })),
 };
 
 // ── Goals ─────────────────────────────────────────────────────────────────────

@@ -1311,6 +1311,10 @@ export default function App() {
     walk(id);
     return out;
   };
+  // Declared here (ahead of budgetYear/budgetMonth below) because capById needs the
+  // value immediately; the effect that actually fetches/updates it is further down,
+  // once budgetYear/budgetMonth exist.
+  const [grossIncome, setGrossIncomeState] = useState(0);
   const capById = useMemo(() => {
     const memo = {};
     const resolve = (id) => {
@@ -1416,7 +1420,7 @@ export default function App() {
 
   // ── Gross Income for the selected budget month (percentage-mode budgeting).
   // Carries forward the most recent prior month's value until explicitly changed.
-  const [grossIncome, setGrossIncomeState] = useState(0);
+  // (grossIncome/setGrossIncomeState declared earlier, near capById.)
   const [grossIncomeInput, setGrossIncomeInput] = useState("");
   const [incomeCarriedForward, setIncomeCarriedForward] = useState(false);
   useEffect(() => { setGrossIncomeInput(grossIncome ? String(grossIncome) : ""); }, [grossIncome]);

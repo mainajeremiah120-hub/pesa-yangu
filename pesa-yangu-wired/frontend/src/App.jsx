@@ -72,6 +72,15 @@ const fmtC = (amtKES, dispCode, currencies, compact=false) => {
 const fmtPct = (n) => `${n>=0?"+":""}${n.toFixed(1)}%`;
 const todayStr  = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const nowTimeStr = () => { const d = new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+// Builds an unambiguous UTC instant from a local "YYYY-MM-DD" + "HH:mm" pair,
+// instead of sending a naive/offset-less string to the backend — a
+// timezone-less timestamp is interpreted using the DB session's timezone,
+// which can silently shift the stored time by hours from what was intended.
+const localDateTimeToISO = (dateStr, timeStr) => {
+  const [y, mo, da] = (dateStr || todayStr()).split("-").map(Number);
+  const [h, mi] = (timeStr || nowTimeStr()).split(":").map(Number);
+  return new Date(y, mo - 1, da, h, mi, 0).toISOString();
+};
 const txTime = (tx) => {
   const ts = tx.tx_date;
   if (!ts || !String(ts).includes("T")) return "";
@@ -1591,7 +1600,7 @@ export default function App() {
       amount_kes:  amtKES,
       merchant:    fTx.merchant||undefined,
       note:        fTx.note||undefined,
-      tx_date:     `${fTx.date||todayStr()}T${fTx.time||nowTimeStr()}:00`,
+      tx_date:     localDateTimeToISO(fTx.date, fTx.time),
     };
     try {
       const { transaction: tx } = await txApi.create(payload);
@@ -1944,7 +1953,7 @@ export default function App() {
           amount_kes:  amtKES,
           merchant:    fTx.merchant || undefined,
           note:        fTx.note || undefined,
-          tx_date:     `${fTx.date||todayStr()}T${fTx.time||nowTimeStr()}:00`,
+          tx_date:     localDateTimeToISO(fTx.date, fTx.time),
         });
         const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
         setTxs(p => p.map(t => t.id === editTx.id ? norm : t));
@@ -2172,7 +2181,7 @@ export default function App() {
     const amtKES = toKES(amt, walletCur(fRefund.wallet), currencies);
     if (editRefund) {
       try {
-        const { transaction: tx } = await txApi.update(editRefund.id, { wallet_id:fRefund.wallet, amount_kes:amtKES, note:fRefund.note||undefined, tx_date:fRefund.date, refund_of:fRefund.refundOf });
+        const { transaction: tx } = await txApi.update(editRefund.id, { wallet_id:fRefund.wallet, amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
         const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
         setTxs(p=>p.map(t=>t.id===editRefund.id?norm:t));
         const oldAmt=editRefund.amount||parseFloat(editRefund.amount_kes||0), oldWid=editRefund.wallet||editRefund.wallet_id;
@@ -2182,7 +2191,7 @@ export default function App() {
       } catch(err) { showToast(err?.response?.data?.error||"Failed to update refund", C.coral); }
     } else {
       try {
-        const { transaction: tx } = await txApi.create({ wallet_id:fRefund.wallet, type:"refund", amount_kes:amtKES, note:fRefund.note||undefined, tx_date:fRefund.date, refund_of:fRefund.refundOf });
+        const { transaction: tx } = await txApi.create({ wallet_id:fRefund.wallet, type:"refund", amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
         const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
         setTxs(p=>[norm,...p]);
         setWallets(p=>p.map(w=>w.id===fRefund.wallet?{...w,balance:parseFloat(w.balance)+amtKES}:w));

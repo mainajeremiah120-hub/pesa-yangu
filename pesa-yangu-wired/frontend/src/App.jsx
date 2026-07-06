@@ -70,7 +70,7 @@ const fmtC = (amtKES, dispCode, currencies, compact=false) => {
   return cur.symbol + new Intl.NumberFormat("en-KE", opts).format(val);
 };
 const fmtPct = (n) => `${n>=0?"+":""}${n.toFixed(1)}%`;
-const todayStr  = () => new Date().toISOString().slice(0,10);
+const todayStr  = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const nowTimeStr = () => { const d = new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
 const txTime = (tx) => {
   const ts = tx.tx_date;

@@ -53,6 +53,7 @@ const allocationFields = z.object({
   allocation_type:   z.enum(["fixed","percent"]).default("fixed"),
   percent_of_parent: z.number().min(0).max(100).nullable().optional(),
   spend_kind:        z.enum(["fixed","variable"]).nullable().optional(),
+  linked_wallet_id:  z.string().uuid().nullable().optional(),
 }).refine(d => d.allocation_type!=="percent" || d.percent_of_parent!=null, {message:"percent_of_parent is required when allocation_type is 'percent'"});
 
 categoryRouter.post("/", async (req,res,next)=>{
@@ -64,11 +65,15 @@ categoryRouter.post("/", async (req,res,next)=>{
       const {rows:pr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2 AND type=$3",[alloc.parent_id,req.user.id,base.type]);
       if(!pr.length) return res.status(400).json({error:"Parent category not found"});
     }
+    if (alloc.linked_wallet_id) {
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[alloc.linked_wallet_id,req.user.id]);
+      if(!wr.length) return res.status(400).json({error:"Linked wallet not found"});
+    }
     const {rows}=await query(
-      `INSERT INTO categories (user_id,name,type,icon,color,budget_kes,watch,parent_id,allocation_type,percent_of_parent,spend_kind)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT (user_id,name,type) DO UPDATE SET icon=$4,color=$5,budget_kes=$6,watch=$7,parent_id=$8,allocation_type=$9,percent_of_parent=$10,spend_kind=$11 RETURNING *`,
-      [req.user.id,base.name,base.type,base.icon,base.color,base.budget_kes,base.watch,alloc.parent_id||null,alloc.allocation_type,percentOfParent,alloc.spend_kind||null]
+      `INSERT INTO categories (user_id,name,type,icon,color,budget_kes,watch,parent_id,allocation_type,percent_of_parent,spend_kind,linked_wallet_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (user_id,name,type) DO UPDATE SET icon=$4,color=$5,budget_kes=$6,watch=$7,parent_id=$8,allocation_type=$9,percent_of_parent=$10,spend_kind=$11,linked_wallet_id=$12 RETURNING *`,
+      [req.user.id,base.name,base.type,base.icon,base.color,base.budget_kes,base.watch,alloc.parent_id||null,alloc.allocation_type,percentOfParent,alloc.spend_kind||null,alloc.linked_wallet_id||null]
     );
     res.status(201).json({category:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -76,13 +81,17 @@ categoryRouter.post("/", async (req,res,next)=>{
 
 categoryRouter.patch("/:id", async (req,res,next)=>{
   try {
-    const allowed=["name","icon","color","budget_kes","watch","sort_order","parent_id","allocation_type","percent_of_parent","spend_kind"];
+    const allowed=["name","icon","color","budget_kes","watch","sort_order","parent_id","allocation_type","percent_of_parent","spend_kind","linked_wallet_id"];
     const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
     if("allocation_type" in u && !["fixed","percent"].includes(u.allocation_type)) return res.status(400).json({error:"Invalid allocation_type"});
     if(u.allocation_type==="percent" && u.percent_of_parent==null) return res.status(400).json({error:"percent_of_parent is required when allocation_type is 'percent'"});
     if("parent_id" in u && u.parent_id) {
       if(await wouldCreateCycle(req.user.id, req.params.id, u.parent_id)) return res.status(400).json({error:"That would create a circular category hierarchy"});
+    }
+    if("linked_wallet_id" in u && u.linked_wallet_id) {
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[u.linked_wallet_id,req.user.id]);
+      if(!wr.length) return res.status(400).json({error:"Linked wallet not found"});
     }
     const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE categories SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);

@@ -379,6 +379,8 @@ investmentRouter.get("/", async (req,res,next)=>{
 investmentRouter.post("/", async (req,res,next)=>{
   try {
     const d=z.object({wallet_id:z.string().uuid(),name:z.string().min(1).max(100).trim(),ticker:z.string().max(20).optional(),type:z.string().max(50).default("Stock"),currency:z.string().length(3).default("KES"),units:z.number().positive().max(1e9),buy_price_kes:z.number().positive().max(1e12),current_price_kes:z.number().positive().max(1e12).optional()}).parse(req.body);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     const {rows}=await query("INSERT INTO investments (user_id,wallet_id,name,ticker,type,currency,units,buy_price_kes,current_price_kes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
       [req.user.id,d.wallet_id,d.name,d.ticker||null,d.type,d.currency,d.units,d.buy_price_kes,d.current_price_kes||d.buy_price_kes]);
     res.status(201).json({investment:{...rows[0],returns:[]}});
@@ -400,6 +402,10 @@ investmentRouter.patch("/:id", async (req,res,next)=>{
     const allowed=["name","ticker","type","currency","units","buy_price_kes","current_price_kes","wallet_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
+    if(updates.wallet_id) {
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[updates.wallet_id,req.user.id]);
+      if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+    }
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE investments SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
@@ -432,7 +438,7 @@ investmentRouter.delete("/:id", async (req,res,next)=>{
     const {rows:rets}=await query("SELECT * FROM investment_returns WHERE investment_id=$1",[req.params.id]);
     await withTransaction(async(client)=>{
       for(const r of rets) {
-        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(r.amount_kes),r.wallet_id]);
+        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[parseFloat(r.amount_kes),r.wallet_id,req.user.id]);
       }
       await client.query("DELETE FROM investment_returns WHERE investment_id=$1",[req.params.id]);
       await client.query("DELETE FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
@@ -447,10 +453,12 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
     if(!ir.length) return res.status(404).json({error:"Investment not found"});
     const inv=ir[0];
     const d=z.object({wallet_id:z.string().uuid(),return_type:z.enum(["interest","dividend","capital_gain","coupon","other"]),amount_kes:z.number().positive(),return_date:z.string().optional(),note:z.string().optional()}).parse(req.body);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     const ret=await withTransaction(async(client)=>{
       const {rows}=await client.query("INSERT INTO investment_returns (investment_id,user_id,wallet_id,return_type,amount_kes,return_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
         [inv.id,req.user.id,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[d.amount_kes,d.wallet_id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[d.amount_kes,d.wallet_id,req.user.id]);
       const catMap={interest:"Interest",dividend:"Dividend",capital_gain:"Investment Return",coupon:"Interest",other:"Other Income"};
       const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name=$2 AND type='income' LIMIT 1",[req.user.id,catMap[d.return_type]||"Investment Return"]);
       await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date) VALUES ($1,$2,$3,'income',$4,$5,$6,$7)",
@@ -571,14 +579,19 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
     const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
     const isSimple    = old.interest_type === "simple";
 
+    if (d.wallet_id) {
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+      if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+    }
+
     const repayment = await withTransaction(async(client)=>{
       // Reverse old wallet debit and loan remaining effect
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(old.total_kes),old.wallet_id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(old.total_kes),old.wallet_id,req.user.id]);
       const oldReduction = isSimple ? parseFloat(old.total_kes) : parseFloat(old.principal_kes);
       await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[oldReduction,req.params.id]);
 
       // Apply new
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[newTotal,newWallet]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[newTotal,newWallet,req.user.id]);
       const newReduction = isSimple ? newTotal : newPrincipal;
       await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1) WHERE id=$2",[newReduction,req.params.id]);
 
@@ -644,6 +657,16 @@ recurringRouter.get("/", async (req,res,next)=>{
 recurringRouter.post("/", async (req,res,next)=>{
   try {
     const d=z.object({wallet_id:z.string().uuid(),category_id:z.string().uuid().optional(),type:z.enum(["expense","income"]),amount_kes:z.number().positive(),merchant:z.string().optional(),note:z.string().optional(),freq:z.enum(["daily","weekly","monthly","yearly"]).default("monthly"),next_date:z.string(),loan_id:z.string().uuid().optional()}).parse(req.body);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+    if(d.category_id) {
+      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.user.id]);
+      if(!cr.length) return res.status(400).json({error:"Category not found"});
+    }
+    if(d.loan_id) {
+      const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.user.id]);
+      if(!lr.length) return res.status(400).json({error:"Loan not found"});
+    }
     const {rows}=await query("INSERT INTO recurring_transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,freq,next_date,loan_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
       [req.user.id,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,d.freq,d.next_date,d.loan_id||null]);
     res.status(201).json({recurring:rows[0]});
@@ -775,7 +798,17 @@ reconcileRouter.post("/parse", upload.single("file"), async (req,res,next)=>{
 
 reconcileRouter.post("/confirm", async (req,res,next)=>{
   try {
-    const {rows:inputRows,walletId}=z.object({rows:z.array(z.any()),walletId:z.string().uuid()}).parse(req.body);
+    const {rows:inputRows,walletId}=z.object({
+      rows: z.array(z.object({
+        amount: z.number(),
+        desc: z.string().max(200).optional(),
+        description: z.string().max(200).optional(),
+        date: z.string().max(30),
+      })).max(5000),
+      walletId: z.string().uuid(),
+    }).parse(req.body);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.user.id]);
+    if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     const toImport=inputRows.filter(r=>r.amount!==0);
     let imported=0;
     await withTransaction(async(client)=>{
@@ -785,7 +818,7 @@ reconcileRouter.post("/confirm", async (req,res,next)=>{
         await client.query("INSERT INTO transactions (user_id,wallet_id,type,amount_kes,merchant,tx_date) VALUES ($1,$2,$3,$4,$5,$6)",
           [req.user.id,walletId,type,amount,row.desc||row.description,row.date]);
         const delta=type==="income"?amount:-amount;
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,walletId]);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.user.id]);
         imported++;
       }
     });

@@ -43,16 +43,33 @@ router.post("/", async (req, res, next) => {
       note:z.string().max(1000).optional(),
       tx_date:z.string().max(30).optional(), loan_id:z.string().uuid().optional(),
       principal_paid:z.number().max(1e10).optional(), interest_paid:z.number().max(1e10).optional(),
-      transfer_pair_id:z.string().uuid().optional(),
       refund_of:z.string().uuid().optional(),
     }).parse(req.body);
+    // transfer_pair_id is intentionally not accepted from the client — it must
+    // always be server-generated (see wallets.js POST /transfer), otherwise a
+    // client could tag an unrelated transaction with another user's pair id.
+
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+    if(d.category_id) {
+      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.user.id]);
+      if(!cr.length) return res.status(400).json({error:"Category not found"});
+    }
+    if(d.loan_id) {
+      const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.user.id]);
+      if(!lr.length) return res.status(400).json({error:"Loan not found"});
+    }
+    if(d.refund_of) {
+      const {rows:rr}=await query("SELECT id FROM transactions WHERE id=$1 AND user_id=$2",[d.refund_of,req.user.id]);
+      if(!rr.length) return res.status(400).json({error:"Original transaction not found"});
+    }
 
     const tx = await withTransaction(async(client)=>{
       const {rows}=await client.query(
-        `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,transfer_pair_id,refund_of)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,refund_of)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
         [req.user.id,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,
-         d.tx_date||new Date(),d.loan_id||null,d.principal_paid||null,d.interest_paid||null,d.transfer_pair_id||null,d.refund_of||null]
+         d.tx_date||new Date(),d.loan_id||null,d.principal_paid||null,d.interest_paid||null,d.refund_of||null]
       );
       const delta=(d.type==="income"||d.type==="transfer_in"||d.type==="refund")?d.amount_kes:-d.amount_kes;
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,d.wallet_id,req.user.id]);
@@ -89,13 +106,22 @@ router.patch("/:id", async (req, res, next) => {
     const newNote       = Object.prototype.hasOwnProperty.call(d, "note") ? d.note : old.note;
     const newDate       = d.tx_date     ?? old.tx_date;
 
+    if (d.wallet_id) {
+      const { rows: wr } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [d.wallet_id, req.user.id]);
+      if (!wr.length) return res.status(400).json({ error: "Wallet not found" });
+    }
+    if (newCategoryId) {
+      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [newCategoryId, req.user.id]);
+      if (!cr.length) return res.status(400).json({ error: "Category not found" });
+    }
+
     const tx = await withTransaction(async (client) => {
       const isCredit = (t) => t === "income" || t === "transfer_in" || t === "refund";
       const oldDelta = isCredit(old.type) ? -parseFloat(old.amount_kes) : parseFloat(old.amount_kes);
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2", [oldDelta, old.wallet_id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [oldDelta, old.wallet_id, req.user.id]);
 
       const newDelta = isCredit(newType) ? newAmount : -newAmount;
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2", [newDelta, newWalletId]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [newDelta, newWalletId, req.user.id]);
 
       const { rows } = await client.query(
         `UPDATE transactions SET
@@ -117,17 +143,20 @@ router.delete("/:id", async (req, res, next) => {
     const tx=rows[0];
     await withTransaction(async(client)=>{
       if(tx.transfer_pair_id) {
-        // Delete both legs of the transfer and reverse both wallet balances
-        const {rows:pair}=await client.query("SELECT * FROM transactions WHERE transfer_pair_id=$1",[tx.transfer_pair_id]);
+        // Delete both legs of the transfer and reverse both wallet balances.
+        // Scoped to this user — a transfer's two legs always belong to the
+        // same user (see wallets.js POST /transfer), so this also guards
+        // against a crafted transfer_pair_id collision touching someone else's rows.
+        const {rows:pair}=await client.query("SELECT * FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",[tx.transfer_pair_id,req.user.id]);
         for(const leg of pair) {
           const delta=(leg.type==="income"||leg.type==="transfer_in")?-parseFloat(leg.amount_kes):parseFloat(leg.amount_kes);
-          await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,leg.wallet_id]);
+          await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,leg.wallet_id,req.user.id]);
         }
-        await client.query("DELETE FROM transactions WHERE transfer_pair_id=$1",[tx.transfer_pair_id]);
+        await client.query("DELETE FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",[tx.transfer_pair_id,req.user.id]);
       } else {
-        await client.query("DELETE FROM transactions WHERE id=$1",[tx.id]);
+        await client.query("DELETE FROM transactions WHERE id=$1 AND user_id=$2",[tx.id,req.user.id]);
         const delta=(tx.type==="income"||tx.type==="transfer_in"||tx.type==="refund")?-parseFloat(tx.amount_kes):parseFloat(tx.amount_kes);
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,tx.wallet_id]);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,tx.wallet_id,req.user.id]);
       }
     });
     res.json({ok:true});

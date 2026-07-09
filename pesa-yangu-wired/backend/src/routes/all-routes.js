@@ -143,8 +143,8 @@ budgetRouter.get("/", async (req,res,next)=>{
              AND mb.year=$2 AND mb.month=$3
        LEFT JOIN transactions t
               ON t.category_id=c.id AND t.user_id=c.user_id
-             AND EXTRACT(YEAR  FROM t.tx_date)=$2
-             AND EXTRACT(MONTH FROM t.tx_date)=$3
+             AND t.tx_date >= make_date($2::int,$3::int,1)
+             AND t.tx_date <  (make_date($2::int,$3::int,1) + INTERVAL '1 month')
              AND t.type IN ('expense','income')
        WHERE c.user_id=$1
        GROUP BY c.id, mb.budget_kes
@@ -213,7 +213,7 @@ budgetRouter.get("/trend", async (req,res,next)=>{
              AND mb.month=EXTRACT(MONTH FROM mo.m)
        LEFT JOIN transactions t
               ON t.category_id=c.id AND t.user_id=$1
-             AND date_trunc('month',t.tx_date)=mo.m
+             AND t.tx_date >= mo.m AND t.tx_date < mo.m + INTERVAL '1 month'
              AND t.type IN ('expense','income')
        GROUP BY mo.m
        ORDER BY mo.m`,
@@ -368,9 +368,14 @@ const investmentRouter = express.Router();
 investmentRouter.get("/", async (req,res,next)=>{
   try {
     const {rows:invs}=await query("SELECT * FROM investments WHERE user_id=$1 ORDER BY created_at",[req.user.id]);
-    for(const inv of invs){
-      const {rows}=await query("SELECT * FROM investment_returns WHERE investment_id=$1 ORDER BY return_date DESC",[inv.id]);
-      inv.returns=rows;
+    if(invs.length) {
+      const {rows:allReturns}=await query(
+        "SELECT * FROM investment_returns WHERE investment_id = ANY($1) ORDER BY return_date DESC",
+        [invs.map(i=>i.id)]
+      );
+      const returnsByInv={};
+      allReturns.forEach(r=>{ (returnsByInv[r.investment_id]=returnsByInv[r.investment_id]||[]).push(r); });
+      invs.forEach(inv=>{ inv.returns = returnsByInv[inv.id]||[]; });
     }
     res.json({investments:invs});
   } catch(e){next(e);}
@@ -477,9 +482,14 @@ const loanRouter = express.Router();
 loanRouter.get("/", async (req,res,next)=>{
   try {
     const {rows:loans}=await query("SELECT * FROM loans WHERE user_id=$1 ORDER BY created_at",[req.user.id]);
-    for(const l of loans){
-      const {rows}=await query("SELECT r.*,array_agg(a.filename) FILTER(WHERE a.id IS NOT NULL) AS attachments FROM loan_repayments r LEFT JOIN loan_attachments a ON a.repayment_id=r.id WHERE r.loan_id=$1 GROUP BY r.id ORDER BY r.payment_date DESC",[l.id]);
-      l.repayments=rows;
+    if(loans.length) {
+      const {rows:allRepayments}=await query(
+        "SELECT r.*,array_agg(a.filename) FILTER(WHERE a.id IS NOT NULL) AS attachments FROM loan_repayments r LEFT JOIN loan_attachments a ON a.repayment_id=r.id WHERE r.loan_id = ANY($1) GROUP BY r.id ORDER BY r.payment_date DESC",
+        [loans.map(l=>l.id)]
+      );
+      const repaymentsByLoan={};
+      allRepayments.forEach(r=>{ (repaymentsByLoan[r.loan_id]=repaymentsByLoan[r.loan_id]||[]).push(r); });
+      loans.forEach(l=>{ l.repayments = repaymentsByLoan[l.id]||[]; });
     }
     res.json({loans});
   } catch(e){next(e);}
@@ -810,16 +820,26 @@ reconcileRouter.post("/confirm", async (req,res,next)=>{
     const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.user.id]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     const toImport=inputRows.filter(r=>r.amount!==0);
+    // Single multi-row INSERT + one aggregated wallet UPDATE, instead of a
+    // round trip per row (every row targets the same wallet here).
     let imported=0;
     await withTransaction(async(client)=>{
-      for(const row of toImport){
-        const type=row.amount>0?"income":"expense";
-        const amount=Math.abs(row.amount);
-        await client.query("INSERT INTO transactions (user_id,wallet_id,type,amount_kes,merchant,tx_date) VALUES ($1,$2,$3,$4,$5,$6)",
-          [req.user.id,walletId,type,amount,row.desc||row.description,row.date]);
-        const delta=type==="income"?amount:-amount;
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.user.id]);
-        imported++;
+      if(toImport.length) {
+        const values=[];
+        const placeholders=toImport.map((row,i)=>{
+          const type=row.amount>0?"income":"expense";
+          const amount=Math.abs(row.amount);
+          const b=i*6;
+          values.push(req.user.id,walletId,type,amount,row.desc||row.description,row.date);
+          return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6})`;
+        });
+        await client.query(
+          `INSERT INTO transactions (user_id,wallet_id,type,amount_kes,merchant,tx_date) VALUES ${placeholders.join(",")}`,
+          values
+        );
+        const totalDelta=toImport.reduce((s,row)=>s+(row.amount>0?Math.abs(row.amount):-Math.abs(row.amount)),0);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[totalDelta,walletId,req.user.id]);
+        imported=toImport.length;
       }
     });
     res.json({ok:true,imported});

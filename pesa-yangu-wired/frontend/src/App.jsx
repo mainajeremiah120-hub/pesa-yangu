@@ -10,7 +10,7 @@
  * Auth:  JWT (stored in localStorage, auto-refreshed by api.js interceptor)
  */
 
-import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext, lazy, Suspense } from "react";
 import AuthPage from "./pages/AuthPage.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import {
@@ -18,9 +18,14 @@ import {
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
   incomePlansApi,
 } from "./lib/api.js";
-import { AdminApp, AdminPanel } from "./AdminDashboard.jsx";
-import { SupportTickets } from "./components/SupportTickets.jsx";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
+
+// Lazy-loaded: only admins ever render AdminApp/AdminPanel, and Support
+// Tickets is a rarely-visited screen — no reason every regular user
+// downloads this code in their initial bundle.
+const AdminApp   = lazy(() => import("./AdminDashboard.jsx").then(m => ({ default: m.AdminApp })));
+const AdminPanel = lazy(() => import("./AdminDashboard.jsx").then(m => ({ default: m.AdminPanel })));
+const SupportTickets = lazy(() => import("./components/SupportTickets.jsx").then(m => ({ default: m.SupportTickets })));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS  — resolved dynamically from theme; see App() for C usage
@@ -748,9 +753,7 @@ function NotifRow({ label, desc, id, C }) {
   );
 }
 
-// AdminApp and AdminPanel are imported from AdminDashboard.jsx
-
-// SupportTickets is imported from ./components/SupportTickets.jsx
+// AdminApp, AdminPanel, and SupportTickets are lazy-loaded near the top of this file.
 
 function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, currencies, updateUser, showToast, logout, exportTransactions, openM, askConfirm, deactivateAccount, loadData }) {
   const [editName,   setEditName]   = useState(user?.full_name || "");
@@ -910,7 +913,9 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
       </Card>
 
       {/* Support */}
-      <SupportTickets user={user} C={C} showToast={showToast}/>
+      <Suspense fallback={<Card><div style={{textAlign:"center",color:C.textMuted,padding:20,fontSize:13}}>Loading…</div></Card>}>
+        <SupportTickets user={user} C={C} showToast={showToast}/>
+      </Suspense>
 
       {/* Account */}
       <Card>
@@ -2618,7 +2623,7 @@ export default function App() {
 
   if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yangu…"/></ThemeCtx.Provider>;
   if (!user)       return <AuthPage onLogin={login} onRegister={register}/>;
-  if (user.role === "admin") return <AdminApp user={user} logout={logout} C={C} theme={theme} toggleTheme={toggleTheme}/>;
+  if (user.role === "admin") return <Suspense fallback={<LoadingScreen message="Loading admin dashboard…"/>}><AdminApp user={user} logout={logout} C={C} theme={theme} toggleTheme={toggleTheme}/></Suspense>;
   if (dataLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Loading your data…"/></ThemeCtx.Provider>;
   if (dataError)   return (
     <ThemeCtx.Provider value={C}>
@@ -3778,7 +3783,7 @@ export default function App() {
           loadData={loadData}
         />}
 
-        {tab==="admin"&&user?.role==="admin"&&<AdminPanel C={C} showToast={showToast}/>}
+        {tab==="admin"&&user?.role==="admin"&&<Suspense fallback={<div style={{textAlign:"center",color:C.textMuted,padding:20,fontSize:13}}>Loading…</div>}><AdminPanel C={C} showToast={showToast}/></Suspense>}
 
         {tab==="more"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>

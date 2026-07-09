@@ -23,11 +23,12 @@ router.get("/", async (req, res, next) => {
     if(type){cond.push(`t.type=$${n++}`);p.push(type);}
     if(from){cond.push(`t.tx_date>=$${n++}`);p.push(from);}
     if(to){cond.push(`t.tx_date<=$${n++}`);p.push(to);}
+    const cappedLimit = Math.min(parseInt(limit)||500, 1000);
     const {rows}=await query(
       `SELECT t.*,c.name AS category_name,c.icon AS category_icon,c.color AS category_color,w.name AS wallet_name,w.currency AS wallet_currency
        FROM transactions t LEFT JOIN categories c ON c.id=t.category_id LEFT JOIN wallets w ON w.id=t.wallet_id
        WHERE ${cond.join(" AND ")} ORDER BY t.tx_date DESC,t.created_at DESC LIMIT $${n++} OFFSET $${n}`,
-      [...p,parseInt(limit),parseInt(offset)]
+      [...p,cappedLimit,parseInt(offset)||0]
     );
     res.json({transactions:rows});
   } catch(e){next(e);}
@@ -220,17 +221,29 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
 
     if(!toInsert.length) return res.status(400).json({error:"No valid rows found. Check the column names match the template."});
 
+    // Single multi-row INSERT instead of one round trip per row (up to 5000
+    // rows), plus one UPDATE per distinct wallet instead of per row.
     let imported=0;
     await withTransaction(async(client)=>{
+      const values=[];
+      const placeholders=toInsert.map((r,i)=>{
+        const b=i*8;
+        values.push(req.user.id,r.wallet_id,r.cat_id,r.type,r.amount,r.merchant,r.note,r.tx_date);
+        return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8})`;
+      });
+      await client.query(
+        `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date) VALUES ${placeholders.join(",")}`,
+        values
+      );
+      const deltaByWallet={};
       for(const r of toInsert){
-        await client.query(
-          "INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-          [req.user.id,r.wallet_id,r.cat_id,r.type,r.amount,r.merchant,r.note,r.tx_date]
-        );
         const delta=(r.type==="income"||r.type==="transfer_in")?r.amount:-r.amount;
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[delta,r.wallet_id]);
-        imported++;
+        deltaByWallet[r.wallet_id]=(deltaByWallet[r.wallet_id]||0)+delta;
       }
+      for(const [walletId,delta] of Object.entries(deltaByWallet)){
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.user.id]);
+      }
+      imported=toInsert.length;
     });
     res.json({ok:true,imported});
   } catch(e){next(e);}

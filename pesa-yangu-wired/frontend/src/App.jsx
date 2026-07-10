@@ -1820,6 +1820,7 @@ export default function App() {
         const reduction = l.interest_type==="simple" ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
         return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
+      setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
       setFRepay(blankRepay); closeM("repay");
       showToast("Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -1857,6 +1858,7 @@ export default function App() {
         note:        fRet.note||undefined,
       });
       setInvestments(p=>p.map(i=>i.id===inv.id?{...i,returns:[...i.returns,{type:ret.return_type,amount:parseFloat(ret.amount_kes),date:ret.return_date,note:ret.note}]}:i));
+      setWallets(p=>p.map(w=>w.id===fRet.wallet?{...w,balance:parseFloat(w.balance)+parseFloat(ret.amount_kes||0)}:w));
       setFRet(blankRet); closeM("ret");
       showToast("Return recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -2151,6 +2153,13 @@ export default function App() {
           const paidPrincipal = reps.reduce((s, r) => s + (r.principal || 0), 0);
           return { ...l, repayments: reps, remaining: Math.max(0, l.principal - paidPrincipal) };
         }));
+        // Reverse the old debit (possibly on a different wallet) and apply the new one
+        setWallets(p=>p.map(w=>{
+          let b = parseFloat(w.balance);
+          if (w.id === editRepay.repayment.wallet) b += editRepay.repayment.total;
+          if (w.id === fRepay.wallet) b -= parseFloat(repayment.total_kes||0);
+          return (w.id === editRepay.repayment.wallet || w.id === fRepay.wallet) ? {...w, balance:b} : w;
+        }));
         setEditRepay(null); setFRepay(blankRepay); closeM("repay");
         showToast("Repayment updated");
       } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
@@ -2321,8 +2330,15 @@ export default function App() {
 
   const deleteInvestment = async (id) => {
     try {
+      const inv = investments.find(i=>i.id===id);
       await invsApi.remove(id);
       setInvestments(p=>p.filter(i=>i.id!==id));
+      // Mirrors the backend, which reverses every return's wallet credit when the investment is deleted.
+      if (inv?.returns?.length) {
+        const reverseByWallet = {};
+        inv.returns.forEach(r=>{ if(r.wallet_id) reverseByWallet[r.wallet_id]=(reverseByWallet[r.wallet_id]||0)+(r.amount||0); });
+        setWallets(p=>p.map(w=>reverseByWallet[w.id]?{...w,balance:parseFloat(w.balance)-reverseByWallet[w.id]}:w));
+      }
       showToast("Investment deleted");
     } catch(err) { showToast("Failed to delete", C.coral); }
   };
@@ -2352,7 +2368,7 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete", C.coral); }
   };
 
-  const deleteRepayment = async (loanId, repaymentId, repaymentTotal) => {
+  const deleteRepayment = async (loanId, repaymentId, repaymentTotal, walletId) => {
     try {
       await loansApi.removeRepayment(loanId, repaymentId);
       setLoans(p=>p.map(l=>{
@@ -2361,21 +2377,19 @@ export default function App() {
         const paidPrincipal = reps.reduce((s,r)=>s+(r.principal||0),0);
         return {...l, repayments:reps, remaining:Math.max(0,l.principal-paidPrincipal)};
       }));
-      setWallets(p=>p.map(w=>{
-        // We don't know which wallet without looking it up, so reload
-        return w;
-      }));
+      if (walletId) setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)+parseFloat(repaymentTotal||0)}:w));
       showToast("Repayment deleted");
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete repayment", C.coral); }
   };
 
-  const deleteReturn = async (investmentId, returnId) => {
+  const deleteReturn = async (investmentId, returnId, returnAmount, walletId) => {
     try {
       await invsApi.removeReturn(investmentId, returnId);
       setInvestments(p=>p.map(i=>{
         if(i.id!==investmentId) return i;
         return {...i, returns: i.returns.filter(r=>r.id!==returnId)};
       }));
+      if (walletId) setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)-parseFloat(returnAmount||0)}:w));
       showToast("Return deleted");
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete return", C.coral); }
   };
@@ -2560,6 +2574,7 @@ export default function App() {
     try {
       await reconcileApi.confirm([row], recoWallet);
       setRecoRows(p=>p.map((r,i)=>i===idx?{...r,status:"matched"}:r));
+      if (row.amount) setWallets(p=>p.map(w=>w.id===recoWallet?{...w,balance:parseFloat(w.balance)+row.amount}:w));
       showToast("Row imported");
     } catch(err) { showToast("Failed", C.coral); }
   };
@@ -2570,6 +2585,8 @@ export default function App() {
     try {
       await reconcileApi.confirm(unmatched, recoWallet);
       setRecoRows(p=>p.map(r=>({...r,status:"matched"})));
+      const totalDelta = unmatched.reduce((s,r)=>s+(r.amount||0),0);
+      if (totalDelta) setWallets(p=>p.map(w=>w.id===recoWallet?{...w,balance:parseFloat(w.balance)+totalDelta}:w));
       showToast(`Imported ${unmatched.length} rows`);
     } catch(err) { showToast("Import failed", C.coral); }
   };
@@ -3525,7 +3542,7 @@ export default function App() {
                         <span style={{color:C.textMuted}}>{fmtDate(r.date||r.return_date)} · <span style={{color:C.green,textTransform:"capitalize"}}>{r.type||r.return_type}</span>{r.note&&` · ${r.note}`}</span>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontWeight:600,color:C.teal}}>+{disp(r.amount||parseFloat(r.amount_kes||0))}</span>
-                          {r.id&&<button onClick={()=>askConfirm("Delete Return",`Delete this ${r.type||r.return_type} of ${disp(r.amount||parseFloat(r.amount_kes||0))}? The amount will be reversed from the wallet.`,()=>deleteReturn(inv.id,r.id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete return">🗑</button>}
+                          {r.id&&<button onClick={()=>askConfirm("Delete Return",`Delete this ${r.type||r.return_type} of ${disp(r.amount||parseFloat(r.amount_kes||0))}? The amount will be reversed from the wallet.`,()=>deleteReturn(inv.id,r.id,r.amount||parseFloat(r.amount_kes||0),r.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete return">🗑</button>}
                         </div>
                       </div>)}
                     </div>}
@@ -3596,7 +3613,7 @@ export default function App() {
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <Badge color={C.teal}>Paid</Badge>
                       <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
-                      <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
+                      <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0,r.wallet||r.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
                     </div>
                   </div>)}
                 </div>}

@@ -1555,7 +1555,7 @@ export default function App() {
   const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly", time:"" };
   const blankXfer  = { from:"", to:"", amount:"", note:"" };
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
-  const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null };
+  const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null, kind:"spending" };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
@@ -1724,6 +1724,7 @@ export default function App() {
       percentOfParent:c.percentOfParent!=null?String(c.percentOfParent):"",
       spendKind:c.spendKind||null,
       linkedWalletId:c.linkedWalletId||null,
+      kind: c.allocationType==="fixed" ? "spending" : (c.linkedWalletId ? "primary" : "parent"),
     });
     openM("expCat");
   };
@@ -4030,9 +4031,15 @@ export default function App() {
           <ColorPicker label="Colour" value={fExpCat.color} onChange={v=>setFExpCat({...fExpCat,color:v})} colors={CAT_COLORS}/>
         </div>
         {user.budget_mode==="percentage" && (()=>{
-          const catKind = fExpCat.allocationType==="fixed" ? "spending" : (fExpCat.linkedWalletId ? "primary" : "parent");
+          // catKind is its own tracked field (not derived from allocationType/linkedWalletId) —
+          // deriving it from linkedWalletId meant "Primary Allocation" could never be selected,
+          // since no wallet is linked yet the moment you pick it, so it always snapped back to
+          // "Parent Category". The wallet link is optional for Primary, so it must be possible
+          // to be in the "primary" kind with no wallet chosen yet.
+          const catKind = fExpCat.kind || "spending";
           const setKind = (kind) => setFExpCat({
             ...fExpCat,
+            kind,
             allocationType: kind==="spending" ? "fixed" : "percent",
             linkedWalletId: kind==="primary" ? fExpCat.linkedWalletId : null,
           });

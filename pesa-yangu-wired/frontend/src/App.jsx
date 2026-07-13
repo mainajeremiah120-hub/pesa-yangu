@@ -2816,7 +2816,6 @@ export default function App() {
           <Btn onClick={()=>openM("share")} outline color={C.purple} small className="desktop-only-btn">📤 Share</Btn>
           <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">⬆⬇ Data</Btn>
           <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
-          <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
           <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀️":"🌙"}</button>
           <button onClick={logout} style={{background:"none",border:`1px solid ${C.coral}55`,borderRadius:8,color:C.coral,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,lineHeight:1,transition:"background 0.2s,border-color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.background=C.coral+"22";e.currentTarget.style.borderColor=C.coral;}} onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.borderColor=C.coral+"55";}}>Sign Out</button>
         </div>
@@ -2986,7 +2985,8 @@ export default function App() {
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Accounts & Wallets</div>
                 <div style={{color:C.textMuted,fontSize:12}}>Total: {disp(totalBalance)}</div>
               </div>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
                 <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small>⇄ Transfer</Btn>
                 <Btn onClick={()=>{setFWal(blankWal);openM("wallet");}} small>+ Add Account</Btn>
               </div>

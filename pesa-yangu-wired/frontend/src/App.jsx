@@ -2641,7 +2641,12 @@ export default function App() {
 
   if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yangu…"/></ThemeCtx.Provider>;
   if (!user)       return <AuthPage onLogin={login} onRegister={register}/>;
-  if (user.role === "admin") return <Suspense fallback={<LoadingScreen message="Loading admin dashboard…"/>}><AdminApp user={user} logout={logout} C={C} theme={theme} toggleTheme={toggleTheme}/></Suspense>;
+  // LoadingScreen (used as the Suspense fallback below) reads the theme via
+  // useC()/ThemeCtx, not a prop — this branch must be wrapped in the
+  // Provider itself (matching the authLoading/dataLoading branches above),
+  // otherwise the fallback crashes on C.navy being read off a null context
+  // while the AdminDashboard.jsx chunk is still downloading.
+  if (user.role === "admin") return <ThemeCtx.Provider value={C}><Suspense fallback={<LoadingScreen message="Loading admin dashboard…"/>}><AdminApp user={user} logout={logout} C={C} theme={theme} toggleTheme={toggleTheme}/></Suspense></ThemeCtx.Provider>;
   if (dataLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Loading your data…"/></ThemeCtx.Provider>;
   if (dataError)   return (
     <ThemeCtx.Provider value={C}>

@@ -511,7 +511,7 @@ const Divider = ({ label }) => {
 // Cap (top-down from Gross Income), actual Used (bottom-up from transactions),
 // and Remaining, then recurses into its children — grouping them into Fixed /
 // Variable sections when the children carry that tag.
-const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onAllocate }) => {
+const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onAllocate, onViewHistory }) => {
   const C = useC();
   const [expanded, setExpanded] = useState(true);
   const [allocFrom, setAllocFrom] = useState("");
@@ -526,14 +526,14 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
   const linkedWallet = node.linkedWalletId ? wallets.find(w=>w.id===node.linkedWalletId) : null;
 
   const renderKids = (list) => list.map(k=>(
-    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onAllocate={onAllocate}/>
+    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onAllocate={onAllocate} onViewHistory={onViewHistory}/>
   ));
 
   return (
     <div style={{marginLeft: depth*14, marginBottom:8}}>
       <Card style={{borderLeft:over?`3px solid ${C.coral}`:node.watch?`3px solid ${C.gold}`:"3px solid transparent"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1,cursor:kids.length?"pointer":"default"}} onClick={()=>kids.length && setExpanded(e=>!e)}>
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1,cursor:"pointer"}} onClick={()=>kids.length ? setExpanded(e=>!e) : onViewHistory?.(node)} title={kids.length?undefined:"View transactions in this category"}>
             {kids.length>0 && <span style={{color:C.textMuted,fontSize:11,width:12,flexShrink:0}}>{expanded?"▾":"▸"}</span>}
             <span style={{fontSize:18,flexShrink:0}}>{node.icon}</span>
             <div style={{minWidth:0}}>
@@ -3384,7 +3384,8 @@ export default function App() {
                   onEdit={openEditExpCat}
                   onDelete={(node)=>askConfirm("Delete Category",`Delete category "${node.name}"? Existing transactions won't be affected.`,()=>deleteCategory(node.id,"expense"))}
                   onAddChild={(parentId)=>{setFExpCat({...blankExpCat,parentId});openM("expCat");}}
-                  wallets={wallets} onAllocate={allocateToCategory}/>
+                  wallets={wallets} onAllocate={allocateToCategory}
+                  onViewHistory={(node)=>setCatHistory({cat:node,type:"expense"})}/>
               ))}
             </>}
 

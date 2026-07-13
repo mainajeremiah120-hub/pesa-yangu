@@ -2986,7 +2986,7 @@ export default function App() {
                 <div style={{color:C.textMuted,fontSize:12}}>Total: {disp(totalBalance)}</div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add</Btn>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add Transaction</Btn>
                 <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small>⇄ Transfer</Btn>
                 <Btn onClick={()=>{setFWal(blankWal);openM("wallet");}} small>+ Add Account</Btn>
               </div>

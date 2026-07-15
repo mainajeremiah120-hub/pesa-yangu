@@ -11,7 +11,7 @@ import { ticketsApi } from "../lib/api.js";
 const LIST_POLL_MS   = 25000; // refresh ticket list (cheap) while mounted
 const THREAD_POLL_MS = 12000; // refresh open thread while panel is open
 const SEEN_KEY = "py_chat_last_seen";
-const ACTIVE_STATUSES = ["open", "in_progress"];
+const ACTIVE_STATUSES = ["open", "in_progress"]; // statuses a follow-up message can be added to
 
 function relTime(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -26,32 +26,25 @@ function relTime(dateStr) {
 export function ChatWidget({ user, C, showToast }) {
   const [open,        setOpen]        = useState(false);
   const [tickets,     setTickets]     = useState([]);
-  const [activeId,    setActiveId]    = useState(null);
   const [messages,    setMessages]    = useState([]);
   const [input,       setInput]       = useState("");
   const [sending,     setSending]     = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
   const [lastSeenAt,  setLastSeenAt]  = useState(() => localStorage.getItem(SEEN_KEY) || "");
   const scrollRef = useRef(null);
+  const seenAdminReplyRef = useRef(new Map()); // ticketId -> last admin_reply text we've already reacted to
+  const hasPolledOnceRef = useRef(false); // avoid toasting for a reply that arrived before this tab was open
 
-  const active = tickets.find(t => t.id === activeId) || null;
+  // Server already orders GET /tickets by updated_at DESC — the most
+  // recently active conversation (of ANY status) is what the widget shows.
+  // A ticket being "resolved" must not make its reply disappear from view.
+  const active = tickets[0] || null;
 
   const markSeen = useCallback(() => {
     const now = new Date().toISOString();
     localStorage.setItem(SEEN_KEY, now);
     setLastSeenAt(now);
   }, []);
-
-  const refreshList = useCallback(async () => {
-    try {
-      const { tickets: rows } = await ticketsApi.list();
-      setTickets(rows || []);
-      if (!activeId) {
-        const mostRecentActive = rows?.find(t => ACTIVE_STATUSES.includes(t.status));
-        if (mostRecentActive) setActiveId(mostRecentActive.id);
-      }
-    } catch { /* silent — this is a background poll */ }
-  }, [activeId]);
 
   const loadThread = useCallback(async (id) => {
     if (!id) return;
@@ -63,6 +56,24 @@ export function ChatWidget({ user, C, showToast }) {
     finally { setLoadingThread(false); }
   }, []);
 
+  const refreshList = useCallback(async () => {
+    try {
+      const { tickets: rows } = await ticketsApi.list();
+      setTickets(rows || []);
+      // Best-effort live nudge: only for a reply that changes *during this
+      // tab's session* (not one that already existed when it was opened) —
+      // the persistent unread dot (driven by lastSeenAt) covers the rest.
+      (rows || []).forEach(t => {
+        const seen = seenAdminReplyRef.current.get(t.id);
+        if (hasPolledOnceRef.current && t.admin_reply && t.admin_reply !== seen && !open) {
+          showToast?.("💬 Support replied to your message", C.teal);
+        }
+        if (t.admin_reply) seenAdminReplyRef.current.set(t.id, t.admin_reply);
+      });
+      hasPolledOnceRef.current = true;
+    } catch { /* silent — this is a background poll */ }
+  }, [open, showToast, C.teal]);
+
   useEffect(() => { refreshList(); }, []); // eslint-disable-line
   useEffect(() => {
     const id = setInterval(refreshList, LIST_POLL_MS);
@@ -70,13 +81,13 @@ export function ChatWidget({ user, C, showToast }) {
   }, [refreshList]);
 
   useEffect(() => {
-    if (open && activeId) {
-      loadThread(activeId);
+    if (open && active) {
+      loadThread(active.id);
       markSeen();
-      const id = setInterval(() => loadThread(activeId), THREAD_POLL_MS);
+      const id = setInterval(() => loadThread(active.id), THREAD_POLL_MS);
       return () => clearInterval(id);
     }
-  }, [open, activeId, loadThread, markSeen]);
+  }, [open, active?.id, loadThread, markSeen]); // eslint-disable-line
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -92,11 +103,11 @@ export function ChatWidget({ user, C, showToast }) {
       if (active && ACTIVE_STATUSES.includes(active.status)) {
         const { message } = await ticketsApi.addMessage(active.id, text);
         setMessages(m => [...m, message]);
-        setTickets(ts => ts.map(t => t.id === active.id ? { ...t, updated_at: new Date().toISOString() } : t));
+        setTickets(ts => ts.map(t => t.id === active.id ? { ...t, updated_at: new Date().toISOString() } : t)
+          .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at)));
       } else {
         const { ticket } = await ticketsApi.create({ subject: "Live chat", message: text, category: "general", priority: "normal" });
         setTickets(ts => [ticket, ...ts]);
-        setActiveId(ticket.id);
         setMessages([{ id: `${ticket.id}_init`, message: text, sender_role: "user", created_at: ticket.created_at, full_name: user?.full_name }]);
       }
       setInput("");
@@ -182,12 +193,12 @@ export function ChatWidget({ user, C, showToast }) {
             })}
             {showWaitingNotice && (
               <div style={{ alignSelf: "center", background: C.gold + "22", color: C.gold, fontSize: 11, padding: "6px 12px", borderRadius: 10, textAlign: "center", marginTop: 4 }}>
-                🙏 Thanks for reaching out — please bear with us while we take a look into it. We'll reply right here.
+                🙏 Thanks for reaching out, please bear with us while we take a look into it. We'll reply right here.
               </div>
             )}
-            {active?.status === "resolved" && (
+            {active && !ACTIVE_STATUSES.includes(active.status) && (
               <div style={{ alignSelf: "center", color: C.textMuted, fontSize: 11, padding: "6px 12px", textAlign: "center" }}>
-                This conversation was marked resolved. Sending a new message will reopen it.
+                This conversation is {active.status.replace("_"," ")}. Sending a new message will start a fresh one.
               </div>
             )}
           </div>

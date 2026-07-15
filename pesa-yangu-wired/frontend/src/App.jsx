@@ -1360,6 +1360,7 @@ export default function App() {
   });
   const normaliseInv = (i) => ({
     ...i,
+    units:        parseFloat(i.units||0),
     buyPrice:     parseFloat(i.buy_price_kes||0),
     currentPrice: parseFloat(i.current_price_kes||0),
     wallet:       i.wallet_id,
@@ -2045,6 +2046,10 @@ export default function App() {
       });
       setInvestments(p=>p.map(i=>i.id===inv.id?{...i,returns:[...i.returns,{type:ret.return_type,amount:parseFloat(ret.amount_kes),date:ret.return_date,note:ret.note}]}:i));
       setWallets(p=>p.map(w=>w.id===fRet.wallet?{...w,balance:parseFloat(w.balance)+parseFloat(ret.amount_kes||0)}:w));
+      if (ret.transaction) {
+        const tx = ret.transaction;
+        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+      }
       setFRet(blankRet); closeM("ret");
       showToast("Return recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -2524,6 +2529,8 @@ export default function App() {
         const reverseByWallet = {};
         inv.returns.forEach(r=>{ if(r.wallet_id) reverseByWallet[r.wallet_id]=(reverseByWallet[r.wallet_id]||0)+(r.amount||0); });
         setWallets(p=>p.map(w=>reverseByWallet[w.id]?{...w,balance:parseFloat(w.balance)-reverseByWallet[w.id]}:w));
+        const returnIds = new Set(inv.returns.map(r=>r.id));
+        setTxs(p=>p.filter(t=>!returnIds.has(t.investment_return_id)));
       }
       showToast("Investment deleted");
     } catch(err) { showToast("Failed to delete", C.coral); }
@@ -2576,6 +2583,7 @@ export default function App() {
         return {...i, returns: i.returns.filter(r=>r.id!==returnId)};
       }));
       if (walletId) setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)-parseFloat(returnAmount||0)}:w));
+      setTxs(p=>p.filter(t=>t.investment_return_id!==returnId));
       showToast("Return deleted");
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete return", C.coral); }
   };
@@ -3777,7 +3785,7 @@ export default function App() {
                       <Badge color={C.blue}>{inv.type}</Badge>
                       <Badge color={C.textFaint}>{inv.currency}</Badge>
                     </div>
-                    <div style={{color:C.textMuted,fontSize:11,marginBottom:10}}>{inv.units} units · {fmtC(inv.buyPrice,inv.currency,currencies)} → {fmtC(inv.currentPrice,inv.currency,currencies)} · {w?.name||"—"}</div>
+                    <div style={{color:C.textMuted,fontSize:11,marginBottom:10}}>{inv.units.toLocaleString(undefined,{maximumFractionDigits:8})} units · {fmtC(inv.buyPrice,inv.currency,currencies)} → {fmtC(inv.currentPrice,inv.currency,currencies)} · {w?.name||"—"}</div>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                       <Chip label="Invested" value={disp(invested)} color={C.textMuted}/>
                       <Chip label="Value" value={disp(current)} color={C.gold}/>

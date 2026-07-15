@@ -470,9 +470,9 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[d.amount_kes,d.wallet_id,req.user.id]);
       const catMap={interest:"Interest",dividend:"Dividend",capital_gain:"Investment Return",coupon:"Interest",other:"Other Income"};
       const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name=$2 AND type='income' LIMIT 1",[req.user.id,catMap[d.return_type]||"Investment Return"]);
-      await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date) VALUES ($1,$2,$3,'income',$4,$5,$6,$7)",
-        [req.user.id,d.wallet_id,cats[0]?.id||null,d.amount_kes,inv.name,d.note||null,d.return_date||new Date()]);
-      return rows[0];
+      const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,investment_return_id) VALUES ($1,$2,$3,'income',$4,$5,$6,$7,$8) RETURNING *",
+        [req.user.id,d.wallet_id,cats[0]?.id||null,d.amount_kes,inv.name,d.note||null,d.return_date||new Date(),rows[0].id]);
+      return {...rows[0], transaction: txRows[0]};
     });
     res.status(201).json({return:ret});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}

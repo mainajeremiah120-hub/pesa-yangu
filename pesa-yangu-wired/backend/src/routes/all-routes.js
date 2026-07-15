@@ -24,6 +24,21 @@ const upload = multer({
   },
 });
 
+// 8 MB cap for repayment proof/statement uploads (PDF/CSV/images) — larger than
+// the CSV-only `upload` above since bank-issued PDF statements run bigger.
+const uploadStatement = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["application/pdf", "text/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream", "image/jpeg", "image/png"];
+    const name = file.originalname.toLowerCase();
+    if (!allowed.includes(file.mimetype) && !/\.(pdf|csv|jpg|jpeg|png)$/.test(name)) {
+      return cb(Object.assign(new Error("Only PDF, CSV, JPG, or PNG files are allowed"), { status: 400 }));
+    }
+    cb(null, true);
+  },
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // CATEGORIES
 // ══════════════════════════════════════════════════════════════════════════════
@@ -521,7 +536,18 @@ loanRouter.post("/", async (req,res,next)=>{
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
-loanRouter.post("/:id/repayments", upload.array("files",5), async (req,res,next)=>{
+loanRouter.post("/:id/repayments/parse", uploadStatement.single("file"), async (req,res,next)=>{
+  try {
+    const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    if(!lr.length) return res.status(404).json({error:"Loan not found"});
+    if(!req.file) return res.status(400).json({error:"No file uploaded"});
+    const { extractRepaymentFromFile } = require("../lib/parseStatement");
+    const fields = await extractRepaymentFromFile(req.file);
+    res.json(fields);
+  } catch(e){next(e);}
+});
+
+loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,res,next)=>{
   try {
     const {rows:lr}=await query("SELECT * FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!lr.length) return res.status(404).json({error:"Loan not found"});

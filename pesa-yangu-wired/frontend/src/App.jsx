@@ -1726,6 +1726,8 @@ export default function App() {
   const [fLoan,   setFLoan]  = useState(blankLoan);
   const [fPolicy, setFPolicy]= useState(blankPolicy);
   const [fRepay,  setFRepay] = useState(blankRepay);
+  const [parsingStatement, setParsingStatement] = useState(false);
+  const [statementNotice,  setStatementNotice]  = useState("");
   const [fInv,    setFInv]   = useState(blankInv);
   const [fRet,    setFRet]   = useState(blankRet);
   const [fGoal,   setFGoal]  = useState(blankGoal);
@@ -1989,6 +1991,24 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
+  const handleRepayStatementFile = async (file) => {
+    setFRepay(p=>({...p,files:[...p.files,file]}));
+    if(!fRepay.loanId) return;
+    setParsingStatement(true); setStatementNotice("");
+    try {
+      const fields = await loansApi.parseRepaymentStatement(fRepay.loanId, file);
+      setFRepay(p=>({
+        ...p,
+        total:  p.total  || (fields.amount_kes ? String(fields.amount_kes) : p.total),
+        date:   fields.payment_date || p.date,
+        note:   p.note   || (fields.note || p.note),
+      }));
+      setStatementNotice(fields.warning || "Auto-filled from the statement — please review before saving.");
+    } catch(err) {
+      setStatementNotice(err?.response?.data?.error||"Couldn't read this file — please fill in the fields manually.");
+    } finally { setParsingStatement(false); }
+  };
+
   const addRepayment = async () => {
     const total = parseFloat(fRepay.total); if(!total) return;
     const loan  = loans.find(l=>l.id===fRepay.loanId); if(!loan) return;
@@ -2008,7 +2028,7 @@ export default function App() {
         return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
       setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
-      setFRepay(blankRepay); closeM("repay");
+      setFRepay(blankRepay); setStatementNotice(""); closeM("repay");
       showToast("Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
@@ -3821,7 +3841,7 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
               <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Loans & Debt</div><div style={{color:C.textMuted,fontSize:12}}>Remaining: {disp(totalDebt)}</div></div>
               <div style={{display:"flex",gap:8}}>
-                <Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:loans[0]?.id||"",wallet:wallets[0]?.id||""});openM("repay");}} outline color={C.coral} small>Record Repayment</Btn>
+                <Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:loans[0]?.id||"",wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} small>Record Repayment</Btn>
                 <Btn onClick={()=>{setEditLoan(null);setFLoan(blankLoan);openM("loan");}}>+ Add Loan</Btn>
               </div>
             </div>
@@ -3873,7 +3893,7 @@ export default function App() {
                     </div>
                   </div>)}
                 </div>}
-                <div style={{marginTop:10}}><Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:l.id,wallet:wallets[0]?.id||""});openM("repay");}} outline color={C.coral} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>
+                <div style={{marginTop:10}}><Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:l.id,wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>
               </Card>;
             })}
           </div>
@@ -4473,7 +4493,7 @@ export default function App() {
       </Modal>
 
       {/* Record / Edit Repayment */}
-      <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);}} title={editRepay?"✏️ Edit Repayment":"💳 Record Loan Repayment"}>
+      <Modal open={isOpen("repay")} onClose={()=>{closeM("repay");setEditRepay(null);setStatementNotice("");}} title={editRepay?"✏️ Edit Repayment":"💳 Record Loan Repayment"}>
         {!editRepay&&<Field label="Loan" value={fRepay.loanId} onChange={v=>setFRepay({...fRepay,loanId:v})} options={loanOpts}/>}
         {(()=>{
           const l=loans.find(ln=>ln.id===fRepay.loanId);
@@ -4500,7 +4520,11 @@ export default function App() {
           </>;
         })()}
         <Field label="Note (optional)" value={fRepay.note} onChange={v=>setFRepay({...fRepay,note:v})} placeholder="e.g. June repayment"/>
-        {!editRepay&&<><Divider label="Attachments"/><FileUpload label="Repayment Plan / Statement" accept=".pdf,.csv,.jpg,.png" onFile={f=>setFRepay({...fRepay,files:[...fRepay.files,f]})} files={fRepay.files}/></>}
+        {!editRepay&&<><Divider label="Attachments"/>
+          <FileUpload label="Repayment Plan / Statement" accept=".pdf,.csv,.jpg,.png" onFile={handleRepayStatementFile} files={fRepay.files}/>
+          {parsingStatement&&<div style={{color:C.textMuted,fontSize:12,marginTop:-6,marginBottom:12}}>⏳ Reading statement…</div>}
+          {!parsingStatement&&statementNotice&&<div style={{color:C.gold,fontSize:12,marginTop:-6,marginBottom:12}}>ℹ️ {statementNotice}</div>}
+        </>}
         <Btn onClick={saveRepayment} style={{width:"100%",padding:13,fontSize:14}}>{editRepay?"Save Changes":"Record Repayment"}</Btn>
       </Modal>
 

@@ -176,6 +176,15 @@ export const loansApi = {
       })
     );
   },
+  parseRepaymentStatement: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return unwrap(
+      client.post(`/loans/${id}/repayments/parse`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    );
+  },
 };
 
 // ── Recurring ─────────────────────────────────────────────────────────────────

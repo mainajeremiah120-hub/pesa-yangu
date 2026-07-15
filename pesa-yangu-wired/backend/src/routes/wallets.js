@@ -109,4 +109,50 @@ router.post("/transfer", async (req, res, next) => {
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
+// POST /wallets/split-windfall — one-off income split across multiple
+// Primary categories per their windfall_percent rules, executed as one
+// atomic batch of transfers (all-or-nothing) instead of N separate calls.
+router.post("/split-windfall", async (req, res, next) => {
+  try {
+    const d = z.object({
+      from_wallet_id: z.string().uuid(),
+      amount_kes: z.number().positive(),
+      allocations: z.array(z.object({
+        category_id: z.string().uuid(),
+        wallet_id:   z.string().uuid(),
+        amount_kes:  z.number().positive(),
+      })).min(1).max(50),
+    }).parse(req.body);
+
+    const totalAlloc = d.allocations.reduce((s,a)=>s+a.amount_kes,0);
+    if (totalAlloc > d.amount_kes + 0.01) return res.status(400).json({error:"Allocations exceed the windfall amount"});
+
+    const destWalletIds = [...new Set(d.allocations.map(a=>a.wallet_id))];
+    if (destWalletIds.includes(d.from_wallet_id)) return res.status(400).json({error:"Source and destination cannot be the same"});
+
+    const catIds = [...new Set(d.allocations.map(a=>a.category_id))];
+    const {rows:cr} = await query("SELECT id FROM categories WHERE id=ANY($1) AND user_id=$2", [catIds, req.user.id]);
+    if (cr.length !== catIds.length) return res.status(400).json({error:"One or more categories not found"});
+
+    const allWalletIds = [d.from_wallet_id, ...destWalletIds];
+    await withTransaction(async(client)=>{
+      const {rows} = await client.query("SELECT id,balance FROM wallets WHERE id=ANY($1) AND user_id=$2 FOR UPDATE",[allWalletIds, req.user.id]);
+      if (rows.length !== allWalletIds.length) throw Object.assign(new Error("Wallet not found"),{status:404});
+      const fromRow = rows.find(w=>w.id===d.from_wallet_id);
+      if (parseFloat(fromRow.balance) < totalAlloc) throw Object.assign(new Error("Insufficient balance"),{status:400});
+
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2", [totalAlloc, d.from_wallet_id]);
+      for (const a of d.allocations) {
+        const pairId = require("crypto").randomUUID();
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2", [a.amount_kes, a.wallet_id]);
+        await client.query(
+          `INSERT INTO transactions (user_id,wallet_id,type,amount_kes,note,transfer_pair_id,category_id) VALUES ($1,$2,'transfer_out',$3,$4,$5,$7),($1,$6,'transfer_in',$3,$4,$5,NULL)`,
+          [req.user.id, d.from_wallet_id, a.amount_kes, "Windfall split", pairId, a.wallet_id, a.category_id]
+        );
+      }
+    });
+    res.json({ok:true});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
 module.exports = router;

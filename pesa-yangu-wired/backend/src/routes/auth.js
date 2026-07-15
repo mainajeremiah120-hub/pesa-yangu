@@ -62,7 +62,7 @@ router.post("/register", async (req, res, next) => {
     const user = await withTransaction(async (client) => {
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, full_name)
-         VALUES ($1,$2,$3) RETURNING id, email, full_name, plan, role, budget_mode`,
+         VALUES ($1,$2,$3) RETURNING id, email, full_name, plan, role, budget_mode, false AS has_pin`,
         [email.toLowerCase(), password_hash, full_name]
       );
       await seed(client, rows[0].id);
@@ -94,7 +94,7 @@ router.post("/login", async (req, res, next) => {
     }).parse(req.body);
 
     const { rows } = await query(
-      "SELECT id,email,full_name,plan,role,budget_mode,password_hash FROM users WHERE email=$1",
+      "SELECT id,email,full_name,plan,role,budget_mode,password_hash,(pin_hash IS NOT NULL) AS has_pin FROM users WHERE email=$1",
       [email.toLowerCase()]
     );
     const user = rows[0];
@@ -157,11 +157,48 @@ router.patch("/profile", requireAuth, async (req, res, next) => {
     if (d.budget_mode != null) { vals.push(d.budget_mode); sets.push(`budget_mode=$${vals.length}`); }
     vals.push(req.user.id);
     const { rows } = await query(
-      `UPDATE users SET ${sets.join(",")} WHERE id=$${vals.length} RETURNING id,email,full_name,plan,role,budget_mode`,
+      `UPDATE users SET ${sets.join(",")} WHERE id=$${vals.length} RETURNING id,email,full_name,plan,role,budget_mode,(pin_hash IS NOT NULL) AS has_pin`,
       vals
     );
     res.json({ user: rows[0] });
   } catch(err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
+    next(err);
+  }
+});
+
+// POST /auth/set-pin — set, change, or remove (pin:null) the app lock PIN.
+// Requires the account password, since this creates a new security boundary
+// rather than just editing a display preference.
+router.patch("/pin", requireAuth, async (req, res, next) => {
+  try {
+    const d = z.object({
+      pin:              z.string().regex(/^\d{4,6}$/, "PIN must be 4-6 digits").nullable(),
+      current_password: z.string().min(1),
+    }).parse(req.body);
+    const { rows } = await query("SELECT password_hash FROM users WHERE id=$1", [req.user.id]);
+    if (!rows.length || !(await bcrypt.compare(d.current_password, rows[0].password_hash)))
+      return res.status(401).json({ error: "Incorrect password" });
+    const pinHash = d.pin ? await bcrypt.hash(d.pin, 12) : null;
+    await query("UPDATE users SET pin_hash=$1 WHERE id=$2", [pinHash, req.user.id]);
+    res.json({ ok: true, has_pin: !!pinHash });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
+    next(err);
+  }
+});
+
+// POST /auth/verify-pin — checks a submitted PIN against the stored hash.
+// Purely a local-unlock confirmation; does not issue a new token.
+router.post("/verify-pin", requireAuth, async (req, res, next) => {
+  try {
+    const { pin } = z.object({ pin: z.string().min(1) }).parse(req.body);
+    const { rows } = await query("SELECT pin_hash FROM users WHERE id=$1", [req.user.id]);
+    if (!rows.length || !rows[0].pin_hash) return res.status(400).json({ error: "No PIN set" });
+    const ok = await bcrypt.compare(pin, rows[0].pin_hash);
+    if (!ok) return res.status(401).json({ error: "Incorrect PIN" });
+    res.json({ ok: true });
+  } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
     next(err);
   }

@@ -138,6 +138,15 @@ const forgotPasswordLimiter = rateLimit({
   message: { error: "Too many password reset requests — please wait an hour." },
 });
 
+// A 4-6 digit PIN has far less entropy than a password — cap attempts hard.
+const pinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max:      10,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { error: "Too many PIN attempts — please wait 15 minutes." },
+});
+
 app.use("/api/", globalLimiter);
 
 // ── Instant ping — no DB, pre-warms Render before login
@@ -160,6 +169,7 @@ const v1 = express.Router();
 v1.use("/auth/login",           authLimiter);
 v1.use("/auth/register",        authLimiter);
 v1.use("/auth/forgot-password", forgotPasswordLimiter);
+v1.use("/auth/verify-pin",      pinLimiter);
 v1.use("/auth",        authRoutes);
 
 v1.use("/admin",       requireAuth, requireAdmin, adminRoutes);

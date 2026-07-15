@@ -76,6 +76,8 @@ export const authApi = {
   forgotPassword: (email)            => unwrap(client.post("/auth/forgot-password", { email })),
   resetPassword:  (token, password)  => unwrap(client.post("/auth/reset-password", { token, password })),
   updateProfile:  (patch)            => unwrap(client.patch("/auth/profile", patch)),
+  setPin:         (pin, current_password) => unwrap(client.patch("/auth/pin", { pin, current_password })),
+  verifyPin:      (pin)              => unwrap(client.post("/auth/verify-pin", { pin })),
   resetData:      ()                 => unwrap(client.post("/auth/reset-data")),
   logout: () => {
     const rt = localStorage.getItem("py_refresh_token");
@@ -92,6 +94,7 @@ export const walletsApi = {
   update:   (id, p)    => unwrap(client.patch(`/wallets/${id}`, p)),
   remove:   (id)       => unwrap(client.delete(`/wallets/${id}`)),
   transfer: (p)        => unwrap(client.post("/wallets/transfer", p)),
+  splitWindfall: (p)   => unwrap(client.post("/wallets/split-windfall", p)),
 };
 
 // ── Transactions ──────────────────────────────────────────────────────────────

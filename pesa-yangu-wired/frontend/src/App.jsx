@@ -555,6 +555,20 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
           </div>
         </div>
         {cap>0 && <div style={{marginTop:10}}><Bar value={used} max={cap} color={node.color}/></div>}
+        {node.goalTargetKes>0 && linkedWallet && (()=>{
+          const saved = parseFloat(linkedWallet.balance||0);
+          const days = node.goalDeadline ? Math.max(0, Math.ceil((new Date(node.goalDeadline)-new Date())/86400000)) : null;
+          const months = days!=null ? Math.ceil(days/30) : null;
+          return (
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.textMuted,marginBottom:4}}>
+                <span>🎯 Goal: {disp(saved)} / {disp(node.goalTargetKes)}</span>
+                <span>{Math.min((saved/node.goalTargetKes)*100,100).toFixed(0)}%{months!=null?` · ${months}mo left`:""}</span>
+              </div>
+              <Bar value={saved} max={node.goalTargetKes} color={C.gold}/>
+            </div>
+          );
+        })()}
         {linkedWallet && (
           <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             <select value={allocFrom} onChange={e=>setAllocFrom(e.target.value)} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:11,cursor:"pointer",flex:1,minWidth:140}}>
@@ -759,6 +773,26 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
   const [editName,   setEditName]   = useState(user?.full_name || "");
   const [savingName, setSavingName] = useState(false);
   const [notifPerm,  setNotifPerm]  = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "default"));
+  const [pinForm,    setPinForm]    = useState(false); // showing the set/change PIN form
+  const [pin1,       setPin1]       = useState("");
+  const [pin2,       setPin2]       = useState("");
+  const [pinPassword,setPinPassword]= useState("");
+  const [savingPin,  setSavingPin]  = useState(false);
+
+  const savePin = async (newPin) => {
+    if (!pinPassword) { showToast("Enter your account password to confirm", C.coral); return; }
+    if (newPin && !/^\d{4,6}$/.test(newPin)) { showToast("PIN must be 4-6 digits", C.coral); return; }
+    if (newPin && newPin !== pin2) { showToast("PINs don't match", C.coral); return; }
+    setSavingPin(true);
+    try {
+      const { has_pin } = await authApi.setPin(newPin || null, pinPassword);
+      updateUser({ has_pin });
+      if (has_pin) sessionStorage.setItem("py_unlocked", "1"); // don't lock yourself out mid-session
+      setPinForm(false); setPin1(""); setPin2(""); setPinPassword("");
+      showToast(newPin ? "PIN set" : "PIN removed", C.teal);
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+    finally { setSavingPin(false); }
+  };
 
   const toggleNotifications = async () => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -871,6 +905,34 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
         </div>
       </Card>
 
+      {/* Security — PIN lock */}
+      <Card>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔒 Security</div>
+        <div style={{fontSize:11,color:C.textMuted,marginBottom:14}}>Require a PIN to open the app on this device</div>
+        {!pinForm ? (
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600}}>App Lock</div>
+              <div style={{fontSize:11,color:C.textMuted}}>{user.has_pin?"PIN is set — required each time you open the app":"No PIN set"}</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setPinForm(true)} style={{background:C.navyLight,border:"none",borderRadius:10,padding:"8px 16px",color:C.textPrimary,cursor:"pointer",fontWeight:600,fontSize:12}}>{user.has_pin?"Change PIN":"Set PIN"}</button>
+              {user.has_pin && <button onClick={()=>setPinForm(true)} style={{background:"none",border:`1px solid ${C.coral}55`,borderRadius:10,padding:"8px 16px",color:C.coral,cursor:"pointer",fontWeight:600,fontSize:12}}>Remove</button>}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Field label="New PIN (4-6 digits, leave blank to remove)" type="password" value={pin1} onChange={v=>{setPin1(v.replace(/\D/g,"").slice(0,6));}} placeholder="••••"/>
+            {pin1 && <Field label="Confirm PIN" type="password" value={pin2} onChange={v=>setPin2(v.replace(/\D/g,"").slice(0,6))} placeholder="••••"/>}
+            <Field label="Account Password" type="password" value={pinPassword} onChange={setPinPassword} placeholder="Confirm it's you"/>
+            <div style={{display:"flex",gap:8}}>
+              <Btn onClick={()=>savePin(pin1||null)} disabled={savingPin} style={{flex:1,padding:12,fontSize:13}}>{savingPin?"Saving…":pin1?"Save PIN":"Remove PIN"}</Btn>
+              <button onClick={()=>{setPinForm(false);setPin1("");setPin2("");setPinPassword("");}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:10,padding:"0 16px",color:C.textMuted,cursor:"pointer",fontSize:12}}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* Notifications */}
       <Card>
         <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔔 Notification Preferences</div>
@@ -973,6 +1035,24 @@ export default function App() {
   const [currencies,  setCurrencies]  = useState(DEFAULT_CURRENCIES);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError,   setDataError]   = useState("");
+
+  // ── PIN lock — sessionStorage so it clears when the browser/tab closes,
+  // requiring the PIN again next time the app is opened (the actual point
+  // of a lock screen), without prompting again on every in-app navigation.
+  const [pinUnlocked,  setPinUnlocked]  = useState(() => sessionStorage.getItem("py_unlocked") === "1");
+  const [pinEntry,     setPinEntry]     = useState("");
+  const [pinError,     setPinError]     = useState("");
+  const [pinVerifying, setPinVerifying] = useState(false);
+  const verifyPin = async () => {
+    if (!pinEntry) return;
+    setPinVerifying(true); setPinError("");
+    try {
+      await authApi.verifyPin(pinEntry);
+      sessionStorage.setItem("py_unlocked", "1");
+      setPinUnlocked(true); setPinEntry("");
+    } catch { setPinError("Incorrect PIN"); setPinEntry(""); }
+    finally { setPinVerifying(false); }
+  };
 
   // ── UI state
   const [tab,    _setTab]   = useState(() => {
@@ -1233,6 +1313,9 @@ export default function App() {
     percentOfParent: c.percent_of_parent!=null ? parseFloat(c.percent_of_parent) : null,
     spendKind:       c.spend_kind || null,
     linkedWalletId:  c.linked_wallet_id || null,
+    windfallPercent: c.windfall_percent!=null ? parseFloat(c.windfall_percent) : null,
+    goalTargetKes:   c.goal_target_kes!=null ? parseFloat(c.goal_target_kes) : null,
+    goalDeadline:    (c.goal_deadline||"").slice(0,10) || null,
   });
   const normaliseGoal = (g) => ({
     ...g,
@@ -1554,8 +1637,9 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
   const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly", time:"" };
   const blankXfer  = { from:"", to:"", amount:"", note:"" };
+  const blankWindfall = { amount:"", fromWallet:"" };
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
-  const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null, kind:"spending" };
+  const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null, kind:"spending", windfallPercent:"", goalTarget:"", goalDeadline:"" };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"" };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
@@ -1569,6 +1653,7 @@ export default function App() {
 
   const [fTx,     setFTx]    = useState(blankTx);
   const [fXfer,   setFXfer]  = useState(blankXfer);
+  const [fWindfall, setFWindfall] = useState(blankWindfall);
   const [fWal,    setFWal]   = useState(blankWal);
   const [fExpCat, setFExpCat]= useState(blankExpCat);
   const [fIncCat, setFIncCat]= useState(blankIncCat);
@@ -1701,6 +1786,36 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Allocation failed", C.coral); }
   };
 
+  // One-off income (bonus, gift) split across every top-level Primary category
+  // that has both a Windfall % and a linked account — a separate percentage
+  // set from the monthly Gross Income cascade, executed as one atomic batch.
+  const recordWindfall = async () => {
+    const amt = parseFloat(fWindfall.amount); if(!amt || !fWindfall.fromWallet) return;
+    const fromW = wallets.find(w=>w.id===fWindfall.fromWallet);
+    const amtKES = toKES(amt, fromW?.currency||"KES", currencies);
+    const candidates = expCats.filter(c=>!c.parentId && c.windfallPercent>0 && c.linkedWalletId);
+    if(!candidates.length) { showToast("No Primary category has both a Windfall % and a linked account", C.coral); return; }
+    const allocations = candidates.map(c=>({ category_id:c.id, wallet_id:c.linkedWalletId, amount_kes: amtKES*(c.windfallPercent/100) }));
+    try {
+      await walletsApi.splitWindfall({ from_wallet_id: fWindfall.fromWallet, amount_kes: amtKES, allocations });
+      setWallets(p=>p.map(w=>{
+        let delta = 0;
+        if (w.id===fWindfall.fromWallet) delta -= allocations.reduce((s,a)=>s+a.amount_kes,0);
+        delta += allocations.filter(a=>a.wallet_id===w.id).reduce((s,a)=>s+a.amount_kes,0);
+        return delta ? {...w, balance: parseFloat(w.balance) + delta} : w;
+      }));
+      const { transactions: fresh } = await txApi.list({ limit: candidates.length*2 + 10 });
+      if (fresh?.length) {
+        const newTxs = fresh
+          .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
+          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
+        if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
+      }
+      setFWindfall(blankWindfall); closeM("windfall");
+      showToast(`Windfall split across ${candidates.length} categor${candidates.length===1?"y":"ies"}`);
+    } catch(err) { showToast(err?.response?.data?.error||"Windfall split failed", C.coral); }
+  };
+
   const addWallet = async () => {
     if(!fWal.name) return;
     try {
@@ -1725,6 +1840,9 @@ export default function App() {
       spendKind:c.spendKind||null,
       linkedWalletId:c.linkedWalletId||null,
       kind: c.allocationType==="fixed" ? "spending" : (c.linkedWalletId ? "primary" : "parent"),
+      windfallPercent:c.windfallPercent!=null?String(c.windfallPercent):"",
+      goalTarget:c.goalTargetKes!=null?String(c.goalTargetKes):"",
+      goalDeadline:c.goalDeadline||"",
     });
     openM("expCat");
   };
@@ -1737,6 +1855,10 @@ export default function App() {
     payload.parent_id = fExpCat.parentId || null;
     payload.spend_kind = fExpCat.parentId ? fExpCat.spendKind : null;
     payload.linked_wallet_id = fExpCat.allocationType==="percent" ? (fExpCat.linkedWalletId||null) : null;
+    const isPrimary = fExpCat.kind==="primary";
+    payload.windfall_percent = isPrimary && fExpCat.windfallPercent!=="" ? parseFloat(fExpCat.windfallPercent)||0 : null;
+    payload.goal_target_kes  = isPrimary && payload.linked_wallet_id && fExpCat.goalTarget!=="" ? parseFloat(fExpCat.goalTarget)||0 : null;
+    payload.goal_deadline    = isPrimary && payload.linked_wallet_id && fExpCat.goalDeadline ? fExpCat.goalDeadline : null;
     try {
       if (fExpCat.id) {
         const { category } = await catsApi.update(fExpCat.id, payload);
@@ -2641,6 +2763,28 @@ export default function App() {
 
   if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yangu…"/></ThemeCtx.Provider>;
   if (!user)       return <AuthPage onLogin={login} onRegister={register}/>;
+  // PIN lock — gates everyone (including admins) below this point. Wrapped in
+  // ThemeCtx.Provider because Field/Btn read the theme via useC()/context,
+  // same lesson as the admin-dashboard crash fixed earlier today.
+  if (user.has_pin && !pinUnlocked) return (
+    <ThemeCtx.Provider value={C}>
+      <div style={{minHeight:"100vh",background:C.navy,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif",padding:20}}>
+        <div style={{width:46,height:46,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,marginBottom:16}}>🔒</div>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.textPrimary,marginBottom:4}}>Enter your PIN</div>
+        <div style={{fontSize:12,color:C.textMuted,marginBottom:20}}>Pesa Yangu is locked on this device</div>
+        <div style={{width:"100%",maxWidth:280}}>
+          <input type="password" inputMode="numeric" autoFocus value={pinEntry}
+            onChange={e=>{setPinEntry(e.target.value.replace(/\D/g,"").slice(0,6));setPinError("");}}
+            onKeyDown={e=>e.key==="Enter"&&verifyPin()}
+            placeholder="••••"
+            style={{width:"100%",textAlign:"center",letterSpacing:"0.3em",fontSize:20,background:C.navyLight,border:`1px solid ${pinError?C.coral:C.navyLight}`,borderRadius:12,padding:"14px",color:C.textPrimary,outline:"none",boxSizing:"border-box"}}/>
+          {pinError && <div style={{color:C.coral,fontSize:12,marginTop:8,textAlign:"center"}}>{pinError}</div>}
+          <Btn onClick={verifyPin} disabled={pinVerifying||!pinEntry} style={{width:"100%",marginTop:14,padding:13,fontSize:14}}>{pinVerifying?"Checking…":"Unlock"}</Btn>
+          <button onClick={logout} style={{background:"none",border:"none",color:C.textMuted,fontSize:12,marginTop:16,cursor:"pointer",width:"100%"}}>Sign out instead</button>
+        </div>
+      </div>
+    </ThemeCtx.Provider>
+  );
   // LoadingScreen (used as the Suspense fallback below) reads the theme via
   // useC()/ThemeCtx, not a prop — this branch must be wrapped in the
   // Provider itself (matching the authLoading/dataLoading branches above),
@@ -3375,6 +3519,10 @@ export default function App() {
                   </div>
                   {incomeCarriedForward && grossIncome>0 && <Badge color={C.gold}>Carried forward</Badge>}
                 </div>
+                <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.navyLight}`}}>
+                  <Btn onClick={()=>{setFWindfall(blankWindfall);openM("windfall");}} outline color={C.purple} small>🎁 Record Windfall</Btn>
+                  <div style={{fontSize:10,color:C.textMuted,marginTop:6}}>Got a bonus or gift? Split it using your Windfall % rules instead of your monthly income split.</div>
+                </div>
               </Card>
               <Divider label={`Allocation Rules${bq&&filtRootExpCats.length!==rootExpCats.length?` (${filtRootExpCats.length} of ${rootExpCats.length})`:""}`}/>
               {filtRootExpCats.length===0 && bq && <div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No categories match "{budgetSearch}"</div>}
@@ -3883,6 +4031,31 @@ export default function App() {
         <Btn onClick={doTransfer} style={{width:"100%",padding:13,fontSize:14}}>Transfer Funds</Btn>
       </Modal>
 
+      {/* Record Windfall */}
+      <Modal open={isOpen("windfall")} onClose={()=>closeM("windfall")} title="🎁 Record Windfall">
+        <div style={{fontSize:12,color:C.textMuted,marginBottom:14,lineHeight:1.5}}>Split a one-off amount (bonus, gift) using each category's Windfall %, separate from your monthly income rules.</div>
+        <Field label="Source Account" value={fWindfall.fromWallet} onChange={v=>setFWindfall({...fWindfall,fromWallet:v})} options={wOpts}/>
+        <Field label={`Windfall Amount (${baseCurrency})`} type="number" value={fWindfall.amount} onChange={v=>setFWindfall({...fWindfall,amount:v})} placeholder="e.g. 50000"/>
+        {(()=>{
+          const amt = parseFloat(fWindfall.amount)||0;
+          const all = expCats.filter(c=>!c.parentId && c.windfallPercent>0);
+          const linked = all.filter(c=>c.linkedWalletId);
+          const unlinked = all.filter(c=>!c.linkedWalletId);
+          if (!all.length) return <div style={{fontSize:11,color:C.coral,marginBottom:14}}>No Primary category has a Windfall % set yet — edit one and add it first.</div>;
+          return <div style={{background:C.navyLight,borderRadius:10,padding:"10px 12px",marginBottom:14}}>
+            <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Split preview</div>
+            {linked.map(c=>(
+              <div key={c.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
+                <span>{c.icon} {c.name} ({c.windfallPercent}%)</span>
+                <strong style={{color:C.teal}}>{disp(amt*(c.windfallPercent/100))}</strong>
+              </div>
+            ))}
+            {unlinked.length>0 && <div style={{fontSize:10,color:C.textFaint,marginTop:6}}>Reference only (no linked account, won't be transferred): {unlinked.map(c=>c.name).join(", ")}</div>}
+          </div>;
+        })()}
+        <Btn onClick={recordWindfall} style={{width:"100%",padding:13,fontSize:14}}>Confirm & Split</Btn>
+      </Modal>
+
       {/* Add / Edit Wallet */}
       <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"✏️ Edit Account":"🏦 Add Account / Wallet"}>
         <Field label="Account Name" value={fWal.name} onChange={v=>setFWal({...fWal,name:v})} placeholder="e.g. Equity Bank Current"/>
@@ -4080,6 +4253,16 @@ export default function App() {
             {catKind==="primary" && (
               <Field label="Linked Account (optional)" value={fExpCat.linkedWalletId||""} onChange={v=>setFExpCat({...fExpCat,linkedWalletId:v||null})}
                 options={[{value:"",label:"— None —"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
+            )}
+            {catKind==="primary" && (
+              <Field label="Windfall Share (%) — optional" type="number" value={fExpCat.windfallPercent} onChange={v=>setFExpCat({...fExpCat,windfallPercent:v})}
+                placeholder="e.g. 30" note="Used only when you record a one-off windfall (bonus, gift) — a separate split from your monthly income rule."/>
+            )}
+            {catKind==="primary" && fExpCat.linkedWalletId && (
+              <div className="grid-2">
+                <Field label={`Savings Target (${baseCurrency}, optional)`} type="number" value={fExpCat.goalTarget} onChange={v=>setFExpCat({...fExpCat,goalTarget:v})} placeholder="e.g. 300000"/>
+                <Field label="Target Date (optional)" type="date" value={fExpCat.goalDeadline} onChange={v=>setFExpCat({...fExpCat,goalDeadline:v})}/>
+              </div>
             )}
             <CatPicker label="Parent Category (optional)" value={fExpCat.parentId||""} onChange={v=>setFExpCat({...fExpCat,parentId:v||null})}
               categories={[{id:"",name:"— None (top level) —",icon:"—",color:C.textMuted,parentId:null}, ...expCats.filter(c=>c.id!==fExpCat.id && !getDescendantIds(fExpCat.id||"__none__").includes(c.id))]}

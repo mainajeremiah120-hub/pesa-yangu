@@ -3209,7 +3209,7 @@ export default function App() {
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
               <div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Accounts & Wallets</div>
+                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Accounts</div>
                 <div style={{color:C.textMuted,fontSize:12}}>Total: {disp(totalBalance)}</div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -3341,7 +3341,7 @@ export default function App() {
             {txWalletFilter&&(()=>{
               const fw=wallets.find(w=>w.id===txWalletFilter);
               return fw?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:fw.color+"22",border:`1px solid ${fw.color}44`,borderRadius:12,padding:"10px 14px",marginBottom:10,gap:8}}>
-                <button onClick={()=>setTab("accounts")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px",flexShrink:0}}>← Wallets</button>
+                <button onClick={()=>setTab("accounts")} style={{background:"none",border:"none",color:fw.color,cursor:"pointer",fontSize:13,fontWeight:700,padding:"0 4px",flexShrink:0}}>← Accounts</button>
                 <div style={{flex:1,textAlign:"center"}}>
                   <div style={{fontSize:12,color:fw.color,fontWeight:600}}>{fw.icon} {fw.name}</div>
                   <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:parseFloat(fw.balance||0)>=0?C.teal:C.coral,marginTop:2}}>{disp(parseFloat(fw.balance||0))}</div>
@@ -4041,7 +4041,7 @@ export default function App() {
                         </div>
                       </>}
 
-                      {lapseRisk&&<div style={{marginTop:8,padding:"6px 10px",background:C.coral+"18",borderRadius:8,fontSize:11,color:C.coral,fontWeight:600}}>⚠ Wallet balance below next premium — top up {w.name} to avoid lapse</div>}
+                      {lapseRisk&&<div style={{marginTop:8,padding:"6px 10px",background:C.coral+"18",borderRadius:8,fontSize:11,color:C.coral,fontWeight:600}}>⚠ Account balance below next premium — top up {w.name} to avoid lapse</div>}
 
                       <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
                         <Btn onClick={()=>openEditPolicy(p)} outline color={C.blue} small>✏️ Edit</Btn>
@@ -4113,7 +4113,7 @@ export default function App() {
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expCats.filter(c=>c.allocationType!=="percent"&&!c.linkedWalletId):incCats} groupByParent={fTx.type==="expense"}/>
-        <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
+        <Field label="Account" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
         <div className="grid-2">
           <Field label="Date" type="date" value={fTx.date||todayStr()} onChange={v=>setFTx({...fTx,date:v})}/>
           <Field label="Time" type="time" value={fTx.time||nowTimeStr()} onChange={v=>setFTx({...fTx,time:v})}/>
@@ -4167,7 +4167,7 @@ export default function App() {
       </Modal>
 
       {/* Add / Edit Wallet */}
-      <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"✏️ Edit Account":"🏦 Add Account / Wallet"}>
+      <Modal open={isOpen("wallet")} onClose={()=>{closeM("wallet");setEditWal(null);}} title={editWal?"✏️ Edit Account":"🏦 Add Account"}>
         <Field label="Account Name" value={fWal.name} onChange={v=>setFWal({...fWal,name:v})} placeholder="e.g. Equity Bank Current"/>
         <Field label="Account Type" value={fWal.accountType} onChange={v=>setFWal({...fWal,accountType:v})} options={[{value:"current",label:"🏦 Current / Checking"},{value:"savings",label:"💰 Savings Account"},{value:"investment",label:"📈 Investment Account"},{value:"cash",label:"👛 Cash Wallet"},{value:"digital",label:"📱 Mobile Money"}]}/>
         <Field label="Currency" value={fWal.currency} onChange={v=>setFWal({...fWal,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name} (${c.symbol})`}))}/>
@@ -4249,7 +4249,7 @@ export default function App() {
                 <span style={{fontWeight:600,color:cat?.color||C.textPrimary}}>{cat?.icon} {cat?.name||"—"}</span>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:C.textMuted}}>Wallet</span>
+                <span style={{color:C.textMuted}}>Account</span>
                 <span style={{fontWeight:600,color:C.textPrimary}}>{w?.name||"—"}</span>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
@@ -4441,7 +4441,7 @@ export default function App() {
         </div>
         <Field label={`Amount Paid So Far (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Total premiums paid to date" note="Enter the actual cumulative amount paid — overrides the auto-calculation"/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
-        <Field label="Linked Wallet (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
+        <Field label="Linked Account (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
         <Field label="Currency" value={fPolicy.currency} onChange={v=>setFPolicy({...fPolicy,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <Field label="Notes (optional)" value={fPolicy.notes} onChange={v=>setFPolicy({...fPolicy,notes:v})} placeholder="Any extra details"/>
         <Btn onClick={savePolicy} style={{width:"100%",padding:13,fontSize:14}}>{editPolicy?"Save Changes":"Add Policy"}</Btn>
@@ -4495,7 +4495,7 @@ export default function App() {
                 : <span> · Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>}
             </div>
             <Field label="Payment Date" type="date" value={fRepay.date} onChange={v=>setFRepay({...fRepay,date:v})}/>
-            <Field label="Pay From Wallet" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
+            <Field label="Pay From Account" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
             <Divider label="Payment Amount"/>
             <Field label="Amount Paid" type="number" value={fRepay.total} onChange={v=>setFRepay({...fRepay,total:v,principal:isSimple?"0":String((parseFloat(v)||0)-(parseFloat(fRepay.interest)||0)),interest:isSimple?"0":fRepay.interest})} placeholder={isSimple?`e.g. ${disp(l.remaining)} (full balance)`:"e.g. 15000"}/>
             {!isSimple&&<div className="grid-2">
@@ -4541,7 +4541,7 @@ export default function App() {
           <Field label="Amount" type="number" value={fRet.amount} onChange={v=>setFRet({...fRet,amount:v})} placeholder="0.00"/>
           <Field label="Date" type="date" value={fRet.date} onChange={v=>setFRet({...fRet,date:v})}/>
         </div>
-        <Field label="Credit to Wallet" value={fRet.wallet} onChange={v=>setFRet({...fRet,wallet:v})} options={wOpts}/>
+        <Field label="Credit to Account" value={fRet.wallet} onChange={v=>setFRet({...fRet,wallet:v})} options={wOpts}/>
         <Field label="Note (optional)" value={fRet.note} onChange={v=>setFRet({...fRet,note:v})} placeholder="e.g. Q2 dividend"/>
         <Btn onClick={addReturn} style={{width:"100%",padding:13,fontSize:14}}>Record Return</Btn>
       </Modal>
@@ -4574,7 +4574,7 @@ export default function App() {
           <Field label="Frequency" value={fRecur.freq} onChange={v=>setFRecur({...fRecur,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>
         </div>
         <Field label="Merchant / Name" value={fRecur.merchant} onChange={v=>setFRecur({...fRecur,merchant:v})} placeholder="e.g. Spotify"/>
-        <Field label="Wallet" value={fRecur.wallet} onChange={v=>setFRecur({...fRecur,wallet:v})} options={wOpts}/>
+        <Field label="Account" value={fRecur.wallet} onChange={v=>setFRecur({...fRecur,wallet:v})} options={wOpts}/>
         <Field label="Next Date" type="date" value={fRecur.nextDate} onChange={v=>setFRecur({...fRecur,nextDate:v})}/>
         <Btn onClick={addRecurring} style={{width:"100%",padding:13,fontSize:14}}>Add Recurring</Btn>
       </Modal>
@@ -4596,7 +4596,7 @@ export default function App() {
           <Field label="Refund Amount" type="number" value={fRefund.amount} onChange={v=>setFRefund({...fRefund,amount:v})} placeholder="0.00" note="In wallet's currency"/>
           <Field label="Date" type="date" value={fRefund.date} onChange={v=>setFRefund({...fRefund,date:v})}/>
         </div>
-        <Field label="Credit to Wallet" value={fRefund.wallet} onChange={v=>setFRefund({...fRefund,wallet:v})} options={wOpts}/>
+        <Field label="Credit to Account" value={fRefund.wallet} onChange={v=>setFRefund({...fRefund,wallet:v})} options={wOpts}/>
         <Field label="Note (optional)" value={fRefund.note} onChange={v=>setFRefund({...fRefund,note:v})} placeholder="e.g. Returned damaged item"/>
         <div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:11,color:C.textMuted,lineHeight:1.7}}>
           ↩ Refund will be <strong style={{color:C.teal}}>credited to your wallet</strong> and <strong style={{color:C.teal}}>deducted from category spend</strong>.
@@ -4618,7 +4618,7 @@ export default function App() {
             <Btn onClick={()=>downloadBlob(new Blob([TX_TEMPLATE]),`pesa-yangu-template.csv`)} outline color={C.textMuted} small style={{width:"100%",fontSize:11}}>📄 Transactions Template</Btn>
           </div>
           <div style={{marginTop:8}}>
-            <Btn onClick={()=>downloadBlob(new Blob([WALLETS_TEMPLATE]),`pesa-yangu-wallets-template.csv`)} outline color={C.blue} small style={{fontSize:11}}>🏦 Wallets Template (with Opening Balance)</Btn>
+            <Btn onClick={()=>downloadBlob(new Blob([WALLETS_TEMPLATE]),`pesa-yangu-wallets-template.csv`)} outline color={C.blue} small style={{fontSize:11}}>🏦 Accounts Template (with Opening Balance)</Btn>
           </div>
           <div style={{marginTop:8,background:C.navyLight,borderRadius:8,padding:"8px 12px",fontSize:10,color:C.textFaint,lineHeight:1.7}}>
             Full export downloads 3 files: <strong style={{color:C.textMuted}}>transactions</strong>, <strong style={{color:C.textMuted}}>wallets</strong>, and <strong style={{color:C.textMuted}}>goals</strong>.
@@ -4639,7 +4639,7 @@ export default function App() {
 
             {importNewWallets.length > 0 && (
               <div style={{marginBottom:16}}>
-                <div style={{fontWeight:700,fontSize:12,color:C.teal,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>New Accounts / Wallets</div>
+                <div style={{fontWeight:700,fontSize:12,color:C.teal,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>New Accounts</div>
                 {importNewWallets.map((w,i) => (
                   <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,background:C.navyLight,borderRadius:10,padding:"10px 14px",flexWrap:"wrap"}}>
                     <input type="checkbox" checked={w.selected} onChange={()=>setImportNewWallets(p=>p.map((x,j)=>j===i?{...x,selected:!x.selected}:x))} style={{accentColor:C.teal,width:16,height:16,cursor:"pointer"}}/>
@@ -4731,7 +4731,7 @@ export default function App() {
             <div style={{border:`1px solid ${C.navyLight}`,borderRadius:12,overflow:"hidden",marginBottom:14,maxHeight:280,overflowY:"auto"}}>
               {/* Header */}
               <div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 90px 90px",gap:8,padding:"8px 14px",background:C.navyLight,position:"sticky",top:0}}>
-                {["Date","Type","Merchant / Note","Amount","Wallet"].map(h=>(
+                {["Date","Type","Merchant / Note","Amount","Account"].map(h=>(
                   <div key={h} style={{color:C.textFaint,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>
                 ))}
               </div>
@@ -4855,7 +4855,7 @@ export default function App() {
       }}>
         {[
           { id: "dashboard",    label: "Home",    icon: "◈" },
-          { id: "accounts",     label: "Wallets", icon: "🏦" },
+          { id: "accounts",     label: "Accounts", icon: "🏦" },
           { id: "transactions", label: "Records", icon: "📋" },
           { id: "budgets",      label: "Budgets", icon: "📊" },
           { id: "more",         label: "More",    icon: "☰" },

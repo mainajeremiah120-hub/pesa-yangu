@@ -533,8 +533,13 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
     <div style={{marginLeft: depth*14, marginBottom:8}}>
       <Card style={{borderLeft:over?`3px solid ${C.coral}`:node.watch?`3px solid ${C.gold}`:"3px solid transparent"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1,cursor:"pointer"}} onClick={()=>kids.length ? setExpanded(e=>!e) : onViewHistory?.(node)} title={kids.length?undefined:"View transactions in this category"}>
-            {kids.length>0 && <span style={{color:C.textMuted,fontSize:11,width:12,flexShrink:0}}>{expanded?"▾":"▸"}</span>}
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1,cursor:"pointer"}}
+            onClick={()=>{
+              if (!kids.length) { onViewHistory?.(node); return; }
+              if (!expanded) setExpanded(true); else onViewHistory?.(node);
+            }}
+            title={kids.length?(expanded?"View transactions in this category":"Expand"):"View transactions in this category"}>
+            {kids.length>0 && <span onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}} style={{color:C.textMuted,fontSize:11,width:12,flexShrink:0}}>{expanded?"▾":"▸"}</span>}
             <span style={{fontSize:18,flexShrink:0}}>{node.icon}</span>
             <div style={{minWidth:0}}>
               <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>

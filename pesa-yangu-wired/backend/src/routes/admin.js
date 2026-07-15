@@ -96,6 +96,42 @@ router.get("/tickets", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /admin/tickets/:id — full ticket with message thread
+router.get("/tickets/:id", async (req, res, next) => {
+  try {
+    const { rows: [ticket] } = await query(`
+      SELECT t.*, u.email, u.full_name
+      FROM support_tickets t
+      JOIN users u ON u.id = t.user_id
+      WHERE t.id=$1
+    `, [req.params.id]);
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    let { rows: messages } = await query(
+      `SELECT m.id, m.message, m.sender_role, m.created_at, u.full_name, u.email
+       FROM ticket_messages m JOIN users u ON u.id = m.sender_id
+       WHERE m.ticket_id = $1 ORDER BY m.created_at ASC`,
+      [ticket.id]
+    );
+
+    // Synthesize thread for pre-migration tickets (no rows in ticket_messages yet)
+    if (messages.length === 0) {
+      messages = [{
+        id: ticket.id + "_init", message: ticket.message, sender_role: "user",
+        created_at: ticket.created_at, full_name: ticket.full_name, email: ticket.email,
+      }];
+      if (ticket.admin_reply) {
+        messages.push({
+          id: ticket.id + "_admin_reply", message: ticket.admin_reply, sender_role: "admin",
+          created_at: ticket.replied_at || ticket.updated_at, full_name: "Pesa Yangu Support", email: null,
+        });
+      }
+    }
+
+    res.json({ ticket, messages });
+  } catch (err) { next(err); }
+});
+
 // PATCH /admin/tickets/:id — reply and/or update status
 router.patch("/tickets/:id", async (req, res, next) => {
   try {

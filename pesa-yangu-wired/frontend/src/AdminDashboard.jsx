@@ -40,6 +40,8 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
   const [replyText, setReplyText] = useState("");
   const [replyStatus, setReplyStatus] = useState("resolved");
   const [replying,  setReplying] = useState(false);
+  const [thread, setThread] = useState([]);
+  const [threadLoading, setThreadLoading] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -60,6 +62,29 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
     setTFilter(status);
     try { const d = await adminApi.tickets(status); setTickets(d.tickets||[]); } catch {}
   };
+
+  const loadThread = useCallback(async (id) => {
+    setThreadLoading(true);
+    try { const d = await adminApi.getTicket(id); setThread(d.messages||[]); }
+    catch { /* ignore */ }
+    finally { setThreadLoading(false); }
+  }, []);
+
+  const openTicket = (t) => {
+    setActiveTicket(t); setReplyText(t.admin_reply||""); setReplyStatus("resolved");
+    setThread([]); loadThread(t.id);
+  };
+
+  // Poll for new activity while on the Tickets tab — new messages a user sends
+  // via the chat widget should show up here without a manual reload.
+  useEffect(() => {
+    if (tab !== "tickets") return;
+    const id = setInterval(() => {
+      loadTickets(ticketFilter);
+      if (activeTicket) loadThread(activeTicket.id);
+    }, 25000);
+    return () => clearInterval(id);
+  }, [tab, ticketFilter, activeTicket, loadThread]); // eslint-disable-line
 
   const loadUsers = async (q) => {
     setUSearch(q);
@@ -256,12 +281,20 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
                 <div style={{background:C.navyMid,borderRadius:"20px 20px 0 0",padding:24,width:"100%",maxWidth:600,maxHeight:"85vh",overflowY:"auto"}}>
                   <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>{activeTicket.subject}</div>
                   <div style={{fontSize:11,color:C.textMuted,marginBottom:12}}>from {activeTicket.full_name} · {activeTicket.email}</div>
-                  <div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",fontSize:13,color:C.textPrimary,marginBottom:16,whiteSpace:"pre-wrap"}}>{activeTicket.message}</div>
-                  {activeTicket.admin_reply&&(
-                    <div style={{background:C.teal+"18",border:`1px solid ${C.teal}33`,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMuted,marginBottom:16}}>
-                      <strong style={{color:C.teal}}>Previous reply:</strong><br/>{activeTicket.admin_reply}
-                    </div>
-                  )}
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:260,overflowY:"auto",padding:"2px 2px"}}>
+                    {threadLoading&&thread.length===0&&<div style={{color:C.textFaint,fontSize:12,textAlign:"center",padding:10}}>Loading conversation…</div>}
+                    {thread.map(m=>{
+                      const isAdmin = m.sender_role==="admin";
+                      return (
+                        <div key={m.id} style={{display:"flex",justifyContent:isAdmin?"flex-end":"flex-start"}}>
+                          <div style={{maxWidth:"85%",background:isAdmin?C.teal+"22":C.navyLight,border:isAdmin?`1px solid ${C.teal}44`:"none",borderRadius:10,padding:"8px 12px",fontSize:12.5,color:C.textPrimary,whiteSpace:"pre-wrap"}}>
+                            <div style={{fontSize:9,fontWeight:700,color:isAdmin?C.teal:C.textMuted,marginBottom:2}}>{isAdmin?"Support (you)":(m.full_name||"User")}</div>
+                            {m.message}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                   <textarea value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder="Type your reply…" rows={4}
                     style={{...inp,resize:"vertical",marginBottom:12}}/>
                   <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
@@ -298,7 +331,7 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
                   <div style={{fontSize:12,color:C.textPrimary,marginBottom:8,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{t.message}</div>
                   <div style={{fontSize:10,color:C.textFaint,marginBottom:10}}>{fmtDateTime(t.created_at)}</div>
                   {t.admin_reply&&<div style={{background:C.teal+"11",borderRadius:8,padding:"8px 12px",fontSize:11,color:C.textMuted,marginBottom:8}}>✓ Replied: {t.admin_reply.slice(0,80)}{t.admin_reply.length>80?"…":""}</div>}
-                  <button onClick={()=>{setActiveTicket(t);setReplyText(t.admin_reply||"");setReplyStatus("resolved");}}
+                  <button onClick={()=>openTicket(t)}
                     style={{fontSize:11,padding:"6px 14px",borderRadius:8,border:`1px solid ${C.teal}`,background:"none",color:C.teal,cursor:"pointer",fontWeight:700}}>
                     {t.admin_reply?"Update Reply":"Reply"}
                   </button>

@@ -212,6 +212,7 @@ export const adminApi = {
   updateUser:    (id, patch)  => unwrap(client.patch(`/admin/users/${id}`, patch)),
   deleteUser:    (id)         => unwrap(client.delete(`/admin/users/${id}`)),
   tickets:       (status)     => unwrap(client.get("/admin/tickets", { params: { status } })),
+  getTicket:     (id)         => unwrap(client.get(`/admin/tickets/${id}`)),
   replyTicket:   (id, patch)  => unwrap(client.patch(`/admin/tickets/${id}`, patch)),
 };
 

@@ -18,6 +18,7 @@ import {
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
+import { ChatWidget } from "./components/ChatWidget.jsx";
 
 // Lazy-loaded: only admins ever render AdminApp/AdminPanel, and Support
 // Tickets is a rarely-visited screen — no reason every regular user
@@ -3025,6 +3026,8 @@ export default function App() {
 
       {/* Toast */}
       {toast&&<div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:toast.color===C.coral?C.textPrimary:C.navy,padding:"10px 20px",borderRadius:12,fontWeight:700,fontSize:13,zIndex:2000,animation:"slideIn 0.3s ease",whiteSpace:"nowrap",boxShadow:"0 4px 20px #0008"}}>{toast.msg}</div>}
+
+      <ChatWidget user={user} C={C} showToast={showToast}/>
 
       {/* Header */}
       <div style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,padding:"11px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,gap:8,flexWrap:"wrap"}}>

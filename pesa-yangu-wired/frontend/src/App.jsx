@@ -1704,6 +1704,7 @@ export default function App() {
   const blankGoal  = { name:"", icon:"🎯", target:"", wallet:"", deadline:"", color:C.teal, openingBalance:"" };
   const blankRecur = { type:"expense", category:"", amount:"", wallet:"", merchant:"", note:"", freq:"monthly", nextDate:"" };
   const blankRefund = { refundOf:"", amount:"", wallet:"", note:"", date:todayStr() };
+  const blankPremiumPayment = { policyId:"", wallet:"", amount:"", date:todayStr(), note:"" };
 
   const [fTx,     setFTx]    = useState(blankTx);
   const [fXfer,   setFXfer]  = useState(blankXfer);
@@ -1714,6 +1715,7 @@ export default function App() {
   const [fBudget, setFBudget]= useState(blankBudget);
   const [fLoan,   setFLoan]  = useState(blankLoan);
   const [fPolicy, setFPolicy]= useState(blankPolicy);
+  const [fPremiumPayment, setFPremiumPayment] = useState(blankPremiumPayment);
   const [fRepay,  setFRepay] = useState(blankRepay);
   const [parsingStatement, setParsingStatement] = useState(false);
   const [statementNotice,  setStatementNotice]  = useState("");
@@ -2391,7 +2393,7 @@ export default function App() {
     try {
       if (editPolicy) {
         const {policy} = await insuranceApi.update(editPolicy.id, payload);
-        setPolicies(p => p.map(x => x.id===editPolicy.id ? policy : x));
+        setPolicies(p => p.map(x => x.id===editPolicy.id ? {...policy, payments:x.payments||[]} : x));
         showToast("Policy updated");
       } else {
         const {policy} = await insuranceApi.create(payload);
@@ -2430,6 +2432,34 @@ export default function App() {
       notes:          p.notes||"",
     });
     openM("policy");
+  };
+
+  const recordPremiumPayment = async () => {
+    const amt = parseFloat(fPremiumPayment.amount); if(!amt || !fPremiumPayment.policyId || !fPremiumPayment.wallet) return;
+    try {
+      const { payment } = await insuranceApi.recordPayment(fPremiumPayment.policyId, {
+        wallet_id: fPremiumPayment.wallet, amount_kes: amt,
+        payment_date: fPremiumPayment.date, note: fPremiumPayment.note||undefined,
+      });
+      setPolicies(p => p.map(x => x.id===fPremiumPayment.policyId ? {...x, payments:[payment, ...(x.payments||[])]} : x));
+      setWallets(p => p.map(w => w.id===fPremiumPayment.wallet ? {...w, balance:parseFloat(w.balance)-amt} : w));
+      if (payment.transaction) {
+        const tx = payment.transaction;
+        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+      }
+      setFPremiumPayment(blankPremiumPayment); closeM("premiumPayment");
+      showToast("Payment recorded");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const deletePremiumPayment = async (policyId, paymentId, amount, walletId) => {
+    try {
+      await insuranceApi.removePayment(policyId, paymentId);
+      setPolicies(p => p.map(x => x.id===policyId ? {...x, payments:(x.payments||[]).filter(pm=>pm.id!==paymentId)} : x));
+      if (walletId) setWallets(p => p.map(w => w.id===walletId ? {...w, balance:parseFloat(w.balance)+parseFloat(amount||0)} : w));
+      setTxs(p => p.filter(t => t.premium_payment_id !== paymentId));
+      showToast("Payment deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete payment", C.coral); }
   };
 
   // ── Refund handlers ──────────────────────────────────────────────────────────
@@ -4002,7 +4032,10 @@ export default function App() {
                   const days=daysUntil(nd);
                   const paid=monthsPaid(p.start_date,p.premium_frequency);
                   const totMo=totalMonths(p.start_date,p.end_date);
-                  const paidAmt=p.amount_paid!=null?parseFloat(p.amount_paid):paid*(parseFloat(p.premium_amount)||0);
+                  const trackedPaid=(p.payments||[]).reduce((s,pm)=>s+parseFloat(pm.amount_kes||0),0);
+                  const paidAmt=(p.amount_paid!=null?parseFloat(p.amount_paid):0)+trackedPaid;
+                  const expectedDue=paid*(parseFloat(p.premium_amount)||0);
+                  const balanceDue=Math.max(0,expectedDue-paidAmt);
                   const pct=totMo?Math.min((paid/totMo)*100,100):0;
                   const w=wallets.find(w=>w.id===p.wallet_id);
                   const lapseRisk=w&&parseFloat(w.balance)<parseFloat(p.premium_amount);
@@ -4028,6 +4061,7 @@ export default function App() {
                       <div style={{display:"flex",gap:16,marginBottom:totMo?10:0,flexWrap:"wrap"}}>
                         {p.sum_assured&&<div><div style={{fontSize:10,color:C.textMuted}}>Sum Assured</div><div style={{fontWeight:600,fontSize:12,color:C.blue}}>{disp(parseFloat(p.sum_assured))}</div></div>}
                         {(paidAmt>0)&&<div><div style={{fontSize:10,color:C.textMuted}}>Paid so far</div><div style={{fontWeight:600,fontSize:12,color:C.teal}}>{disp(paidAmt)}</div></div>}
+                        {(balanceDue>0)&&<div><div style={{fontSize:10,color:C.textMuted}}>Balance Due</div><div style={{fontWeight:600,fontSize:12,color:C.coral}}>{disp(balanceDue)}</div></div>}
                         {p.surrender_value&&<div><div style={{fontSize:10,color:C.textMuted}}>Surrender Value</div><div style={{fontWeight:600,fontSize:12}}>{disp(parseFloat(p.surrender_value))}</div></div>}
                         {p.beneficiary&&<div><div style={{fontSize:10,color:C.textMuted}}>Beneficiary</div><div style={{fontWeight:600,fontSize:12}}>{p.beneficiary}</div></div>}
                       </div>
@@ -4043,7 +4077,19 @@ export default function App() {
 
                       {lapseRisk&&<div style={{marginTop:8,padding:"6px 10px",background:C.coral+"18",borderRadius:8,fontSize:11,color:C.coral,fontWeight:600}}>⚠ Account balance below next premium — top up {w.name} to avoid lapse</div>}
 
+                      {(p.payments||[]).length>0&&<div style={{marginTop:10}}>
+                        <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Payment History</div>
+                        {p.payments.map(pm=><div key={pm.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
+                          <div>
+                            <div style={{fontSize:12,fontWeight:600}}>{fmtDate(pm.payment_date)} — {disp(parseFloat(pm.amount_kes))}</div>
+                            {pm.note&&<div style={{fontSize:10,color:C.textMuted}}>{pm.note}</div>}
+                          </div>
+                          <button onClick={()=>askConfirm("Delete Payment",`Delete this payment of ${disp(parseFloat(pm.amount_kes))}? The amount will be returned to the account.`,()=>deletePremiumPayment(p.id,pm.id,pm.amount_kes,pm.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete payment">🗑</button>
+                        </div>)}
+                      </div>}
+
                       <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+                        <Btn onClick={()=>{setFPremiumPayment({...blankPremiumPayment,policyId:p.id,wallet:p.wallet_id||wallets[0]?.id||""});openM("premiumPayment");}} color={C.teal} small>💳 Record Payment</Btn>
                         <Btn onClick={()=>openEditPolicy(p)} outline color={C.blue} small>✏️ Edit</Btn>
                         <Btn onClick={()=>askConfirm("Delete Policy",`Remove "${p.name}"? This cannot be undone.`,()=>deletePolicy(p.id))} outline color={C.coral} small>🗑 Delete</Btn>
                       </div>
@@ -4439,12 +4485,21 @@ export default function App() {
           <Field label={`Sum Assured (${fPolicy.currency})`} type="number" value={fPolicy.sumAssured} onChange={v=>setFPolicy({...fPolicy,sumAssured:v})} placeholder="Payout on maturity/claim"/>
           <Field label={`Surrender Value (${fPolicy.currency})`} type="number" value={fPolicy.surrenderValue} onChange={v=>setFPolicy({...fPolicy,surrenderValue:v})} placeholder="Current cash-out value"/>
         </div>
-        <Field label={`Amount Paid So Far (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Total premiums paid to date" note="Enter the actual cumulative amount paid — overrides the auto-calculation"/>
+        <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note="Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
         <Field label="Linked Account (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
         <Field label="Currency" value={fPolicy.currency} onChange={v=>setFPolicy({...fPolicy,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <Field label="Notes (optional)" value={fPolicy.notes} onChange={v=>setFPolicy({...fPolicy,notes:v})} placeholder="Any extra details"/>
         <Btn onClick={savePolicy} style={{width:"100%",padding:13,fontSize:14}}>{editPolicy?"Save Changes":"Add Policy"}</Btn>
+      </Modal>
+
+      {/* Record Premium Payment */}
+      <Modal open={isOpen("premiumPayment")} onClose={()=>closeM("premiumPayment")} title="💳 Record Premium Payment">
+        <Field label="Pay From Account" value={fPremiumPayment.wallet} onChange={v=>setFPremiumPayment({...fPremiumPayment,wallet:v})} options={wOpts}/>
+        <Field label="Amount" type="number" value={fPremiumPayment.amount} onChange={v=>setFPremiumPayment({...fPremiumPayment,amount:v})} placeholder="e.g. 5000"/>
+        <Field label="Payment Date" type="date" value={fPremiumPayment.date} onChange={v=>setFPremiumPayment({...fPremiumPayment,date:v})}/>
+        <Field label="Note (optional)" value={fPremiumPayment.note} onChange={v=>setFPremiumPayment({...fPremiumPayment,note:v})} placeholder="e.g. July premium"/>
+        <Btn onClick={recordPremiumPayment} style={{width:"100%",padding:13,fontSize:14}}>Record Payment</Btn>
       </Modal>
 
       {/* Add / Edit Loan */}

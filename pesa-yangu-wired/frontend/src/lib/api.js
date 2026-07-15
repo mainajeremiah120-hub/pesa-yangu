@@ -251,10 +251,12 @@ export const reconcileApi = {
 
 // ── Insurance ─────────────────────────────────────────────────────────────────
 export const insuranceApi = {
-  list:   ()         => unwrap(client.get("/insurance")),
-  create: (p)        => unwrap(client.post("/insurance", p)),
-  update: (id, p)    => unwrap(client.patch(`/insurance/${id}`, p)),
-  remove: (id)       => unwrap(client.delete(`/insurance/${id}`)),
+  list:          ()         => unwrap(client.get("/insurance")),
+  create:        (p)        => unwrap(client.post("/insurance", p)),
+  update:        (id, p)    => unwrap(client.patch(`/insurance/${id}`, p)),
+  remove:        (id)       => unwrap(client.delete(`/insurance/${id}`)),
+  recordPayment: (id, p)    => unwrap(client.post(`/insurance/${id}/payments`, p)),
+  removePayment: (id, pid)  => unwrap(client.delete(`/insurance/${id}/payments/${pid}`)),
 };
 
 // ── Push notifications ─────────────────────────────────────────────────────────

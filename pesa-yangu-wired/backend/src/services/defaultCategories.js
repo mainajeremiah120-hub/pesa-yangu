@@ -11,6 +11,7 @@ const EXPENSE = [
   { name:"Education",       icon:"📚", color:"#3498DB", budget_kes:3000,  watch:false },
   { name:"Subscriptions",   icon:"🔁", color:"#8E44AD", budget_kes:2000,  watch:false },
   { name:"Loan Repayment",  icon:"🏦", color:"#E74C3C", budget_kes:0,     watch:false, is_system:true },
+  { name:"Premium",         icon:"🛡️", color:"#16A085", budget_kes:0,     watch:false, is_system:true },
 ];
 
 const INCOME = [

@@ -902,8 +902,17 @@ const insuranceSchema = z.object({
 
 insuranceRouter.get("/", async (req,res,next) => {
   try {
-    const {rows} = await query("SELECT * FROM insurance_policies WHERE user_id=$1 ORDER BY created_at DESC", [req.user.id]);
-    res.json({policies:rows});
+    const {rows:policies} = await query("SELECT * FROM insurance_policies WHERE user_id=$1 ORDER BY created_at DESC", [req.user.id]);
+    if (policies.length) {
+      const {rows:allPayments} = await query(
+        "SELECT * FROM premium_payments WHERE policy_id = ANY($1) ORDER BY payment_date DESC",
+        [policies.map(p=>p.id)]
+      );
+      const byPolicy = {};
+      allPayments.forEach(p => { (byPolicy[p.policy_id]=byPolicy[p.policy_id]||[]).push(p); });
+      policies.forEach(p => { p.payments = byPolicy[p.id]||[]; });
+    }
+    res.json({policies});
   } catch(e){next(e);}
 });
 
@@ -937,8 +946,60 @@ insuranceRouter.patch("/:id", async (req,res,next) => {
 
 insuranceRouter.delete("/:id", async (req,res,next) => {
   try {
-    const {rows}=await query("DELETE FROM insurance_policies WHERE id=$1 AND user_id=$2 RETURNING id",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT id FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
+    // Reverse every payment's wallet debit before deleting (mirrors investments/loans delete).
+    const {rows:pays} = await query("SELECT * FROM premium_payments WHERE policy_id=$1", [req.params.id]);
+    await withTransaction(async(client)=>{
+      for (const p of pays) {
+        if (p.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(p.amount_kes), p.wallet_id, req.user.id]);
+      }
+      await client.query("DELETE FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
+insuranceRouter.post("/:id/payments", async (req,res,next) => {
+  try {
+    const {rows:pr} = await query("SELECT * FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id, req.user.id]);
+    if (!pr.length) return res.status(404).json({error:"Policy not found"});
+    const policy = pr[0];
+    const d = z.object({
+      wallet_id: z.string().uuid(), amount_kes: z.number().positive(),
+      payment_date: z.string().optional(), note: z.string().optional(),
+    }).parse(req.body);
+    const {rows:wr} = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id, req.user.id]);
+    if (!wr.length) return res.status(400).json({error:"Wallet not found"});
+    const payment = await withTransaction(async(client)=>{
+      const {rows} = await client.query(
+        "INSERT INTO premium_payments (policy_id,user_id,wallet_id,amount_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+        [policy.id, req.user.id, d.wallet_id, d.amount_kes, d.payment_date||new Date(), d.note||null]
+      );
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.amount_kes, d.wallet_id, req.user.id]);
+      const {rows:cats} = await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Premium' AND type='expense' LIMIT 1",[req.user.id]);
+      const {rows:txRows} = await client.query(
+        "INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,premium_payment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8) RETURNING *",
+        [req.user.id, d.wallet_id, cats[0]?.id||null, d.amount_kes, policy.name, d.note||null, d.payment_date||new Date(), rows[0].id]
+      );
+      return {...rows[0], transaction: txRows[0]};
+    });
+    res.status(201).json({payment});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+insuranceRouter.delete("/:id/payments/:pid", async (req,res,next) => {
+  try {
+    const {rows} = await query(
+      "SELECT p.* FROM premium_payments p JOIN insurance_policies i ON i.id=p.policy_id WHERE p.id=$1 AND p.policy_id=$2 AND i.user_id=$3",
+      [req.params.pid, req.params.id, req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({error:"Payment not found"});
+    const p = rows[0];
+    await withTransaction(async(client)=>{
+      if (p.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(p.amount_kes), p.wallet_id]);
+      await client.query("DELETE FROM premium_payments WHERE id=$1",[p.id]);
+    });
     res.json({ok:true});
   } catch(e){next(e);}
 });

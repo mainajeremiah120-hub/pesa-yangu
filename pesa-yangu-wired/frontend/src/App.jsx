@@ -384,28 +384,28 @@ const ColorPicker = ({ label, value, onChange, colors }) => {
           {label}
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         {/* Live preview swatch */}
         <div style={{
-          width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+          width: 26, height: 26, borderRadius: 7, flexShrink: 0,
           background: value,
           border: `2px solid ${value}`,
           boxShadow: `0 0 0 3px ${value}44`,
           transition: "background 0.2s, box-shadow 0.2s",
         }}/>
         {/* Swatch grid */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxWidth: 260 }}>
           {colors.map(col => (
             <button
               key={col}
               title={col}
               onClick={() => onChange(col)}
               style={{
-                width: 26, height: 26, borderRadius: 7,
+                width: 16, height: 16, borderRadius: 5,
                 background: col, border: "none",
                 cursor: "pointer", flexShrink: 0,
-                outline: value === col ? `2.5px solid white` : "2.5px solid transparent",
-                outlineOffset: 2,
+                outline: value === col ? `2px solid white` : "2px solid transparent",
+                outlineOffset: 1.5,
                 boxShadow: value === col ? `0 0 0 1px ${col}` : "none",
                 transform: value === col ? "scale(1.18)" : "scale(1)",
                 transition: "transform 0.15s, outline 0.15s, box-shadow 0.15s",
@@ -1001,6 +1001,41 @@ function isCurrentMonth(t) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
+// Day-level [start,end] bounds for a named period, `offset` periods back from
+// now (0 = current, -1 = the one before). Relies on JS Date's built-in
+// month/day overflow normalization (e.g. month -1 rolls into December of the
+// previous year) so year boundaries are handled automatically.
+function getPeriodRange(period, offset=0) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "today") {
+    const d = new Date(today); d.setDate(d.getDate() + offset);
+    return { start: d, end: d, label: fmtDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`) };
+  }
+  if (period === "week") {
+    const dow = today.getDay();
+    const mon = new Date(today); mon.setDate(today.getDate() - (dow===0?6:dow-1) + offset*7);
+    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+    return { start: mon, end: sun, label: `${MONTH_NAMES[mon.getMonth()]} ${mon.getDate()}–${MONTH_NAMES[sun.getMonth()]} ${sun.getDate()}` };
+  }
+  if (period === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    const end   = new Date(now.getFullYear(), now.getMonth()+offset+1, 0);
+    return { start, end, label: `${MONTH_NAMES[start.getMonth()]} ${start.getFullYear()}` };
+  }
+  if (period === "quarter") {
+    const q = Math.floor(now.getMonth()/3) + offset;
+    const start = new Date(now.getFullYear(), q*3, 1);
+    const end   = new Date(now.getFullYear(), q*3+3, 0);
+    return { start, end, label: `Q${Math.floor(start.getMonth()/3)+1} ${start.getFullYear()}` };
+  }
+  if (period === "year") {
+    const y = now.getFullYear() + offset;
+    return { start: new Date(y,0,1), end: new Date(y,11,31), label: String(y) };
+  }
+  return null;
+}
+
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function prevBudgetMonth(y,m){ return m===1?[y-1,12]:[y,m-1]; }
 function nextBudgetMonth(y,m){ return m===12?[y+1,1]:[y,m+1]; }
@@ -1514,7 +1549,8 @@ export default function App() {
   const [txSearch,       setTxSearch]       = useState("");
   const [txWalletFilter, setTxWalletFilter] = useState("");
   const [txTypeFilter,   setTxTypeFilter]   = useState("all");   // "all"|"income"|"expense"
-  const [txPeriod,       setTxPeriod]       = useState("all");   // "all"|"today"|"week"|"month"|"quarter"|"custom"
+  const [txPeriod,       setTxPeriod]       = useState("all");   // "all"|"today"|"week"|"month"|"quarter"|"year"|"custom"
+  const [txCompare,      setTxCompare]      = useState(false);
   const [txDateFrom,     setTxDateFrom]     = useState("");
   const [txDateTo,       setTxDateTo]       = useState("");
   const [walletSearch,   setWalletSearch]   = useState("");
@@ -1596,6 +1632,7 @@ export default function App() {
           const q = Math.floor(now.getMonth() / 3);
           return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth() / 3) === q;
         }
+        if (txPeriod === "year")   return d.getFullYear() === now.getFullYear();
         if (txPeriod === "custom") {
           const from = txDateFrom ? new Date(txDateFrom) : null;
           const to   = txDateTo   ? new Date(txDateTo)   : null;
@@ -1625,12 +1662,39 @@ export default function App() {
     });
   }, [txs, txSearch, txWalletFilter, txTypeFilter, txPeriod, txDateFrom, txDateTo, expCats, incCats, wallets, limits.txHistory, todayTick]);
 
+  const compareStats = useMemo(() => {
+    if (!txCompare || !["today","week","month","quarter","year"].includes(txPeriod)) return null;
+    const curRange  = getPeriodRange(txPeriod, 0);
+    const prevRange = getPeriodRange(txPeriod, -1);
+    const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
+    let base = txWalletFilter ? pool.filter(t => (t.wallet || t.wallet_id) === txWalletFilter) : pool;
+    if (txTypeFilter !== "all") base = base.filter(t => t.type === txTypeFilter);
+    const sumFor = (range) => {
+      const rows = base.filter(t => {
+        const d = new Date(t.date || t.tx_date);
+        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        return day >= range.start && day <= range.end;
+      });
+      const inAmt  = rows.filter(t => t.type === "income").reduce((s,t) => s + (t.amount || parseFloat(t.amount_kes||0)), 0);
+      const outAmt = rows.filter(t => t.type === "expense").reduce((s,t) => s + (t.amount || parseFloat(t.amount_kes||0)), 0);
+      return { in: inAmt, out: outAmt, net: inAmt - outAmt };
+    };
+    return { cur: { ...sumFor(curRange), label: curRange.label }, prev: { ...sumFor(prevRange), label: prevRange.label } };
+  }, [txCompare, txPeriod, txs, txWalletFilter, txTypeFilter, limits.txHistory, todayTick]);
+
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
   const loanOpts = loans.map(l=>({ value:l.id, label:l.name }));
   const invOpts  = investments.map(i=>({ value:i.id, label:`${i.name} (${i.ticker})` }));
   const ICONS = ["💰","💳","🏠","🚗","⚡","🎬","💊","🍔","📚","🎓","💼","💻","📈","🎯","💵","💹","✈️","🎁","💎","👶","🌴","🔧","⚕️","🎵","🐾","📱","🛒","🏋️","🎮","🌟"];
-  const CAT_COLORS = [C.blue,C.teal,C.gold,C.coral,C.purple,C.green,C.orange,"#1ABC9C","#E74C3C","#3498DB","#8E44AD","#27AE60"];
+  const CAT_COLORS = [
+    C.blue,C.teal,C.gold,C.coral,C.purple,C.green,C.orange,
+    "#1ABC9C","#E74C3C","#3498DB","#8E44AD","#27AE60",
+    "#F39C12","#D35400","#C0392B","#16A085","#2980B9",
+    "#2ECC71","#F1C40F","#E67E22","#9B59B6","#34495E","#7F8C8D",
+    "#EC407A","#AB47BC","#5C6BC0","#26A69A","#66BB6A","#FFCA28",
+    "#FF7043","#8D6E63","#78909C","#EF5350","#29B6F6","#9CCC65",
+  ];
 
   // ─────────────────────────────────────────────────────────────────────────
   // FORM BLANKS
@@ -3311,13 +3375,15 @@ export default function App() {
 
             {/* ── Period filter ── */}
             {(()=>{
-              const periods=[["all","All time"],["today","Today"],["week","This week"],["month","This month"],["quarter","This quarter"],["custom","Custom"]];
+              const periods=[["all","All time"],["today","Today"],["week","This week"],["month","This month"],["quarter","This quarter"],["year","This year"],["custom","Custom"]];
+              const comparable = ["today","week","month","quarter","year"].includes(txPeriod);
               return(<>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                   {periods.map(([v,label])=>{
                     const active=txPeriod===v;
                     return <button key={v} onClick={()=>setTxPeriod(v)} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?C.teal:C.navyLight}`,background:active?C.teal+"22":"none",color:active?C.teal:C.textMuted,fontWeight:active?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>{label}</button>;
                   })}
+                  {comparable&&<button onClick={()=>setTxCompare(c=>!c)} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${txCompare?C.gold:C.navyLight}`,background:txCompare?C.gold+"22":"none",color:txCompare?C.gold:C.textMuted,fontWeight:txCompare?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>📊 Compare</button>}
                 </div>
                 {txPeriod==="custom"&&(
                   <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
@@ -3347,6 +3413,34 @@ export default function App() {
                 </div>
               );
             })()}
+
+            {compareStats&&(
+              <Card>
+                <div style={{fontSize:12,color:C.textMuted,marginBottom:10,fontWeight:600}}>
+                  {compareStats.cur.label} vs {compareStats.prev.label}
+                </div>
+                <div className="grid-3" style={{gap:10}}>
+                  {[
+                    ["In",  compareStats.cur.in,  compareStats.prev.in,  C.teal,  false],
+                    ["Out", compareStats.cur.out, compareStats.prev.out, C.coral, true],
+                    ["Net", compareStats.cur.net, compareStats.prev.net, compareStats.cur.net>=compareStats.prev.net?C.teal:C.coral, false],
+                  ].map(([label,cur,prev,col,badIfUp])=>{
+                    const diff = cur - prev;
+                    const up = diff >= 0;
+                    const pct = prev !== 0 ? Math.abs(diff/prev)*100 : (cur!==0?100:0);
+                    const deltaColor = (up !== badIfUp) ? C.teal : C.coral;
+                    return (
+                      <div key={label} style={{padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
+                        <div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>{label}</div>
+                        <div style={{fontSize:15,fontWeight:700,color:col}}>{disp(cur)}</div>
+                        <div style={{fontSize:11,color:C.textFaint,marginTop:2}}>was {disp(prev)}</div>
+                        <div style={{fontSize:11,fontWeight:600,marginTop:4,color:deltaColor}}>{up?"▲":"▼"} {pct.toFixed(0)}%</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
 
             <Card style={{padding:0}}>
               {filteredTxs.length === 0 ? (
@@ -4003,14 +4097,14 @@ export default function App() {
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expCats.filter(c=>c.allocationType!=="percent"&&!c.linkedWalletId):incCats} groupByParent={fTx.type==="expense"}/>
-        <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         <Field label="Account / Wallet" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
         <div className="grid-2">
           <Field label="Date" type="date" value={fTx.date||todayStr()} onChange={v=>setFTx({...fTx,date:v})}/>
           <Field label="Time" type="time" value={fTx.time||nowTimeStr()} onChange={v=>setFTx({...fTx,time:v})}/>
         </div>
-        <Field label="Merchant / Source" value={fTx.merchant} onChange={v=>setFTx({...fTx,merchant:v})} placeholder="e.g. Naivas"/>
+        <Field label={fTx.type==="expense"?"Vendor":"Merchant / Source"} value={fTx.merchant} onChange={v=>setFTx({...fTx,merchant:v})} placeholder="e.g. Naivas"/>
         <Field label="Note (optional)" value={fTx.note} onChange={v=>setFTx({...fTx,note:v})} placeholder="e.g. Weekly groceries"/>
+        <Field label="Amount" type="number" value={fTx.amount} onChange={v=>setFTx({...fTx,amount:v})} placeholder="0.00" note="In wallet's native currency"/>
         {!editTx&&<><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
           <input type="checkbox" id="isRecurChk" checked={!!fTx.isRecurring} onChange={e=>setFTx({...fTx,isRecurring:e.target.checked})} style={{accentColor:C.teal,width:16,height:16}}/>
           <label htmlFor="isRecurChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>🔁 Make recurring</label>

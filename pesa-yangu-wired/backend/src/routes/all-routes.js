@@ -205,6 +205,23 @@ budgetRouter.post("/monthly", async (req,res,next)=>{
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
+// DELETE /budgets/monthly — remove a month's override, reverting that category back to its constant default
+budgetRouter.delete("/monthly", async (req,res,next)=>{
+  try {
+    const {category_id,year,month}=z.object({
+      category_id:z.string().uuid(),
+      year:z.number().int().min(2000).max(2100),
+      month:z.number().int().min(1).max(12),
+    }).parse({
+      category_id: req.query.category_id,
+      year: parseInt(req.query.year,10),
+      month: parseInt(req.query.month,10),
+    });
+    await query("DELETE FROM monthly_budgets WHERE user_id=$1 AND category_id=$2 AND year=$3 AND month=$4",[req.user.id,category_id,year,month]);
+    res.json({ok:true});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
 // GET /budgets/trend?months=6 — last N months: total budgeted vs total spent per month
 budgetRouter.get("/trend", async (req,res,next)=>{
   try {

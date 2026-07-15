@@ -128,6 +128,7 @@ export const budgetsApi = {
   list:        (year, month) => unwrap(client.get("/budgets", { params: { year, month } })),
   set:         (p)           => unwrap(client.post("/budgets", p)),
   setMonthly:  (p)           => unwrap(client.post("/budgets/monthly", p)),
+  removeMonthly: (category_id, year, month) => unwrap(client.delete("/budgets/monthly", { params: { category_id, year, month } })),
   trend:       (months)      => unwrap(client.get("/budgets/trend", { params: { months } })),
 };
 

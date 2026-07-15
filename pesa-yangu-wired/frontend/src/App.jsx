@@ -16,6 +16,7 @@ import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
+  budgetsApi,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 import { ChatWidget } from "./components/ChatWidget.jsx";
@@ -1574,6 +1575,23 @@ export default function App() {
   const [budgetSearch,   setBudgetSearch]   = useState("");
   const [budgetView,     setBudgetView]     = useState("all"); // "all"|"expense"|"income"
 
+  // ── Per-month budget overrides (manual mode only). A category's budget_kes
+  // is the constant default that applies every month unless a monthly_budgets
+  // row exists for the currently viewed month — fetched fresh whenever the
+  // budget month changes.
+  const [monthlyOverrides, setMonthlyOverrides] = useState({}); // {categoryId: budget_kes}
+  useEffect(() => {
+    if (user?.budget_mode === "percentage") return;
+    let cancelled = false;
+    budgetsApi.list(budgetYear, budgetMonth).then(({budgets}) => {
+      if (cancelled) return;
+      const overrides = {};
+      (budgets||[]).forEach(b => { if (b.monthly_budget_kes != null) overrides[b.id] = parseFloat(b.monthly_budget_kes); });
+      setMonthlyOverrides(overrides);
+    }).catch(()=>{});
+    return () => { cancelled = true; };
+  }, [user?.budget_mode, budgetYear, budgetMonth]);
+
   // ── Keep "today"-derived state in sync across a midnight rollover, without
   // clobbering a month/period the user deliberately navigated to.
   const todayTick = useMidnightTick();
@@ -1695,7 +1713,7 @@ export default function App() {
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
   const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null, kind:"spending", windfallPercent:"", goalTarget:"", goalDeadline:"" };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
-  const blankBudget= { catId:"", catType:"expense", amount:"" };
+  const blankBudget= { catId:"", catType:"expense", amount:"", monthOnly:false };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
   const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
@@ -1944,11 +1962,26 @@ export default function App() {
   const saveBudget = async () => {
     const amt = parseFloat(fBudget.amount)||0;
     try {
-      await catsApi.update(fBudget.catId, { budget_kes:amt });
-      if(fBudget.catType==="expense") setExpCats(p=>p.map(c=>c.id===fBudget.catId?{...c,budget:amt}:c));
-      else setIncCats(p=>p.map(c=>c.id===fBudget.catId?{...c,budget:amt}:c));
+      if (fBudget.monthOnly) {
+        await budgetsApi.setMonthly({ category_id:fBudget.catId, year:budgetYear, month:budgetMonth, budget_kes:amt });
+        setMonthlyOverrides(p=>({...p,[fBudget.catId]:amt}));
+        showToast(`Budget set for ${MONTH_NAMES[budgetMonth-1]} only`);
+      } else {
+        await catsApi.update(fBudget.catId, { budget_kes:amt });
+        if(fBudget.catType==="expense") setExpCats(p=>p.map(c=>c.id===fBudget.catId?{...c,budget:amt}:c));
+        else setIncCats(p=>p.map(c=>c.id===fBudget.catId?{...c,budget:amt}:c));
+        showToast("Budget updated — applies every month");
+      }
       setFBudget(blankBudget); closeM("budget");
-      showToast("Budget updated");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const clearMonthlyOverride = async (catId) => {
+    try {
+      await budgetsApi.removeMonthly(catId, budgetYear, budgetMonth);
+      setMonthlyOverrides(p=>{ const n={...p}; delete n[catId]; return n; });
+      setFBudget(blankBudget); closeM("budget");
+      showToast("Reverted to the default budget");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
@@ -3680,30 +3713,32 @@ export default function App() {
             {!isPercentMode && budgetView!=="income"&&<Divider label={`Expense Categories${bq&&filtExpCats.length!==manualExpCats.length?` (${filtExpCats.length} of ${manualExpCats.length})`:""}`}/>}
             {!isPercentMode && budgetView!=="income"&&filtExpCats.length===0&&bq&&<div style={{textAlign:"center",color:C.textMuted,fontSize:13,padding:"16px 0"}}>No expense categories match "{budgetSearch}"</div>}
             {!isPercentMode && budgetView!=="income"&&filtExpCats.map(c=>{
-              const spent=bmSpend[c.id]||0,pct=c.budget>0?Math.min((spent/c.budget)*100,100):0,over=c.budget>0&&spent>c.budget;
+              const hasOverride=monthlyOverrides[c.id]!=null;
+              const budget=hasOverride?monthlyOverrides[c.id]:(c.budget||0);
+              const spent=bmSpend[c.id]||0,pct=budget>0?Math.min((spent/budget)*100,100):0,over=budget>0&&spent>budget;
               const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:c.budget>0?10:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:budget>0?10:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:18}}>{c.icon}</span>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}</div>
-                      <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{c.budget>0?`Budget: ${disp(c.budget)}`:"No budget set"}</div>
+                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}{hasOverride&&<Badge color={C.blue}>{MONTH_NAMES[budgetMonth-1]} only</Badge>}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{budget>0?`Budget: ${disp(budget)}`:"No budget set"}</div>
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontWeight:700,fontSize:13,color:over?C.coral:C.textPrimary}}>{disp(spent)}</div>
-                      {c.budget>0&&<div style={{fontSize:10,color:over?C.coral:C.teal}}>{over?`+${disp(spent-c.budget)} over`:`${disp(c.budget-spent)} left`}</div>}
+                      {budget>0&&<div style={{fontSize:10,color:over?C.coral:C.teal}}>{over?`+${disp(spent-budget)} over`:`${disp(budget-spent)} left`}</div>}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(c.budget||"")});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.budget>0?"Edit Budget":"Set Budget"}</button>
+                      <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(budget||""),monthOnly:hasOverride});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{budget>0?"Edit Budget":"Set Budget"}</button>
                       <button onClick={e=>{e.stopPropagation();toggleWatch(c.id);}} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:8,color:c.watch?C.gold:C.textMuted,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.watch?"Watching":"Watch"}</button>
                       <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:8,color:C.coral,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>🗑 Delete</button>
                     </div>
                   </div>
                 </div>
-                {c.budget>0&&<><Bar value={spent} max={c.budget} color={c.color}/><div style={{color:C.textFaint,fontSize:10,marginTop:4}}>{pct.toFixed(0)}% used</div></>}
+                {budget>0&&<><Bar value={spent} max={budget} color={c.color}/><div style={{color:C.textFaint,fontSize:10,marginTop:4}}>{pct.toFixed(0)}% used</div></>}
               </Card>;
             })}
             {budgetView!=="expense"&&<Divider label={`Income Categories${bq&&filtIncCats.length!==incCats.length?` (${filtIncCats.length} of ${incCats.length})`:""}`}/>}
@@ -4457,7 +4492,12 @@ export default function App() {
       <Modal open={isOpen("budget")} onClose={()=>closeM("budget")} title={fBudget.catType==="expense"?"🎯 Set Budget":"🎯 Set Income Target"}>
         {(()=>{const cat=fBudget.catType==="expense"?expCats.find(c=>c.id===fBudget.catId):incCats.find(c=>c.id===fBudget.catId);return cat?<div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>{cat.icon}</span><div><div style={{fontWeight:600,fontSize:13}}>{cat.name}</div><div style={{fontSize:11,color:C.textMuted}}>Current: {cat.budget>0?disp(cat.budget):"None"}</div></div></div>:null;})()}
         <Field label={`${fBudget.catType==="expense"?"Budget":"Target"} (${baseCurrency})`} type="number" value={fBudget.amount} onChange={v=>setFBudget({...fBudget,amount:v})} placeholder="0.00" note="Set to 0 to remove"/>
+        {fBudget.catType==="expense"&&<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:C.navyLight,borderRadius:10}}>
+          <input type="checkbox" id="monthOnlyChk" checked={fBudget.monthOnly} onChange={e=>setFBudget({...fBudget,monthOnly:e.target.checked})} style={{accentColor:C.teal,width:16,height:16}}/>
+          <label htmlFor="monthOnlyChk" style={{color:C.textMuted,fontSize:12,cursor:"pointer"}}>Only for {MONTH_NAMES[budgetMonth-1]} {budgetYear} — leave unchecked to change the amount every month</label>
+        </div>}
         <Btn onClick={saveBudget} style={{width:"100%",padding:13,fontSize:14}}>Save</Btn>
+        {fBudget.catType==="expense"&&monthlyOverrides[fBudget.catId]!=null&&<Btn onClick={()=>clearMonthlyOverride(fBudget.catId)} outline color={C.textMuted} style={{width:"100%",padding:11,fontSize:13,marginTop:8}}>Remove {MONTH_NAMES[budgetMonth-1]} override — use the default every month</Btn>}
       </Modal>
 
       {/* Add / Edit Insurance Policy */}

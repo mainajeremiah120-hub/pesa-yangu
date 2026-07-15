@@ -16,7 +16,6 @@ import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
-  incomePlansApi,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 
@@ -1475,10 +1474,20 @@ export default function App() {
     walk(id);
     return out;
   };
-  // Declared here (ahead of budgetYear/budgetMonth below) because capById needs the
-  // value immediately; the effect that actually fetches/updates it is further down,
-  // once budgetYear/budgetMonth exist.
-  const [grossIncome, setGrossIncomeState] = useState(0);
+  // budgetYear/budgetMonth declared here (ahead of their other usages below)
+  // because grossIncome (and capById, which needs it) depend on them.
+  const [budgetYear,  setBudgetYear]  = useState(new Date().getFullYear());
+  const [budgetMonth, setBudgetMonth] = useState(new Date().getMonth() + 1);
+  // Income for the percentage cascade — auto-derived from actual recorded
+  // income transactions in the selected month, never typed in manually, so
+  // it always matches what really landed in the user's accounts.
+  const grossIncome = useMemo(() => {
+    return txs.filter(t => {
+      if (t.type !== "income") return false;
+      const d = new Date(t.date || t.tx_date);
+      return d.getFullYear() === budgetYear && d.getMonth() + 1 === budgetMonth;
+    }).reduce((s,t) => s + (t.amount ?? parseFloat(t.amount_kes||0)), 0);
+  }, [txs, budgetYear, budgetMonth]);
   const capById = useMemo(() => {
     const memo = {};
     const resolve = (id) => {
@@ -1562,8 +1571,6 @@ export default function App() {
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
   const [budgetSearch,   setBudgetSearch]   = useState("");
-  const [budgetYear,     setBudgetYear]     = useState(new Date().getFullYear());
-  const [budgetMonth,    setBudgetMonth]    = useState(new Date().getMonth() + 1);
   const [budgetView,     setBudgetView]     = useState("all"); // "all"|"expense"|"income"
 
   // ── Keep "today"-derived state in sync across a midnight rollover, without
@@ -1583,30 +1590,6 @@ export default function App() {
     }
     prevTodayYM.current = { y: newY, m: newM };
   }, [todayTick]);
-
-  // ── Gross Income for the selected budget month (percentage-mode budgeting).
-  // Carries forward the most recent prior month's value until explicitly changed.
-  // (grossIncome/setGrossIncomeState declared earlier, near capById.)
-  const [grossIncomeInput, setGrossIncomeInput] = useState("");
-  const [incomeCarriedForward, setIncomeCarriedForward] = useState(false);
-  useEffect(() => { setGrossIncomeInput(grossIncome ? String(grossIncome) : ""); }, [grossIncome]);
-  useEffect(() => {
-    if (user?.budget_mode !== "percentage") return;
-    let cancelled = false;
-    incomePlansApi.get(budgetYear, budgetMonth).then(({income}) => {
-      if (cancelled) return;
-      setGrossIncomeState(income ? parseFloat(income.gross_income_kes) : 0);
-      setIncomeCarriedForward(!!income?.is_carried_forward);
-    }).catch(()=>{});
-    return () => { cancelled = true; };
-  }, [user?.budget_mode, budgetYear, budgetMonth]);
-  const saveGrossIncome = async (amount) => {
-    const amt = parseFloat(amount) || 0;
-    setGrossIncomeState(amt);
-    setIncomeCarriedForward(false);
-    try { await incomePlansApi.set(budgetYear, budgetMonth, amt); }
-    catch(err) { showToast(err?.response?.data?.error||"Failed to save income", C.coral); }
-  };
 
   const filteredTxs = useMemo(() => {
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
@@ -3634,17 +3617,14 @@ export default function App() {
             </Card>}
 
             {isPercentMode && budgetView!=="income" && <>
-              <Divider label="Gross Income"/>
+              <Divider label="Income"/>
               <Card>
                 <div style={{display:"flex",alignItems:"flex-end",gap:12,flexWrap:"wrap"}}>
                   <div style={{flex:1,minWidth:160,marginBottom:0}}>
-                    <div style={{color:C.textMuted,fontSize:11,marginBottom:5,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>Gross Income for {MONTH_NAMES[budgetMonth-1]} ({baseCurrency})</div>
-                    <input type="number" value={grossIncomeInput} onChange={e=>setGrossIncomeInput(e.target.value)}
-                      onBlur={()=>saveGrossIncome(grossIncomeInput)} onKeyDown={e=>e.key==="Enter"&&e.currentTarget.blur()}
-                      placeholder="e.g. 230000"
-                      style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,padding:"10px 14px",color:C.textPrimary,width:"100%",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    <div style={{color:C.textMuted,fontSize:11,marginBottom:5,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>Income for {MONTH_NAMES[budgetMonth-1]} ({baseCurrency})</div>
+                    <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24,color:C.textPrimary}}>{disp(grossIncome)}</div>
+                    <div style={{fontSize:10,color:C.textMuted,marginTop:3}}>Auto-totaled from income you've recorded this month — log an income transaction to update it.</div>
                   </div>
-                  {incomeCarriedForward && grossIncome>0 && <Badge color={C.gold}>Carried forward</Badge>}
                 </div>
                 <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.navyLight}`}}>
                   <Btn onClick={()=>{setFWindfall(blankWindfall);openM("windfall");}} outline color={C.purple} small>🎁 Record Windfall</Btn>
@@ -4397,7 +4377,7 @@ export default function App() {
           </>;
         })()}
         {fExpCat.allocationType==="percent"
-          ? <Field label={`Percent of ${fExpCat.parentId ? (catsById[fExpCat.parentId]?.name||"parent") : "Gross Income"} (%)`} type="number" value={fExpCat.percentOfParent} onChange={v=>setFExpCat({...fExpCat,percentOfParent:v})} placeholder="e.g. 10"/>
+          ? <Field label={`Percent of ${fExpCat.parentId ? (catsById[fExpCat.parentId]?.name||"parent") : "Income"} (%)`} type="number" value={fExpCat.percentOfParent} onChange={v=>setFExpCat({...fExpCat,percentOfParent:v})} placeholder="e.g. 10"/>
           : <Field label={`Monthly Budget (${baseCurrency})`} type="number" value={fExpCat.budget} onChange={v=>setFExpCat({...fExpCat,budget:v})} placeholder="0 = no budget"/>}
         {user.budget_mode==="percentage" && fExpCat.parentId && fExpCat.allocationType==="fixed" && (
           <div style={{display:"flex",gap:8,marginBottom:14}}>

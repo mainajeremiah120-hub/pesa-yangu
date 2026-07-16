@@ -3306,7 +3306,7 @@ export default function App() {
         {/* ACCOUNTS  */}
         {tab==="accounts"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
               <div>
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Accounts</div>
                 <div style={{color:C.textMuted,fontSize:12}}>Total: {disp(totalBalance)}</div>

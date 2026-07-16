@@ -1568,6 +1568,8 @@ export default function App() {
   const [txTypeFilter,   setTxTypeFilter]   = useState("all");   // "all"|"income"|"expense"
   const [txPeriod,       setTxPeriod]       = useState("all");   // "all"|"today"|"week"|"month"|"quarter"|"year"|"custom"
   const [txCompare,      setTxCompare]      = useState(false);
+  const [compareMode,    setCompareMode]    = useState("previous"); // "previous"|"lastYear"|"custom"
+  const [compareCustom,  setCompareCustom]  = useState({ month:"", quarter:1, year:new Date().getFullYear() });
   const [txDateFrom,     setTxDateFrom]     = useState("");
   const [txDateTo,       setTxDateTo]       = useState("");
   const [walletSearch,   setWalletSearch]   = useState("");
@@ -1670,10 +1672,44 @@ export default function App() {
     });
   }, [txs, txSearch, txWalletFilter, txTypeFilter, txPeriod, txDateFrom, txDateTo, expCats, incCats, wallets, limits.txHistory, todayTick]);
 
+  // How far back "period B" is from "now", in units of the selected period
+  // type (today=days, week=weeks, month/quarter/year=months/quarters/years).
+  // "lastYear" and "custom" both resolve to a plain offset so they can reuse
+  // getPeriodRange exactly like "previous" does — no separate date math.
+  const compareOffset = useMemo(() => {
+    const now = new Date();
+    if (compareMode === "previous") return -1;
+    if (compareMode === "lastYear") {
+      if (txPeriod === "today") {
+        const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const b = new Date(now.getFullYear()-1, now.getMonth(), now.getDate());
+        return Math.round((b - a) / 86400000);
+      }
+      if (txPeriod === "week")    return -52;
+      if (txPeriod === "month")   return -12;
+      if (txPeriod === "quarter") return -4;
+      if (txPeriod === "year")    return -1;
+    }
+    if (compareMode === "custom") {
+      if (txPeriod === "month" && compareCustom.month) {
+        const [y,m] = compareCustom.month.split("-").map(Number);
+        return (y - now.getFullYear())*12 + (m - (now.getMonth()+1));
+      }
+      if (txPeriod === "quarter") {
+        const curQ = Math.floor(now.getMonth()/3) + 1;
+        return (compareCustom.year - now.getFullYear())*4 + (compareCustom.quarter - curQ);
+      }
+      if (txPeriod === "year") {
+        return compareCustom.year - now.getFullYear();
+      }
+    }
+    return -1;
+  }, [compareMode, compareCustom, txPeriod]);
+
   const compareStats = useMemo(() => {
     if (!txCompare || !["today","week","month","quarter","year"].includes(txPeriod)) return null;
     const curRange  = getPeriodRange(txPeriod, 0);
-    const prevRange = getPeriodRange(txPeriod, -1);
+    const prevRange = getPeriodRange(txPeriod, compareOffset);
     const pool = limits.txHistory < Infinity ? txs.slice(0, limits.txHistory) : txs;
     let base = txWalletFilter ? pool.filter(t => (t.wallet || t.wallet_id) === txWalletFilter) : pool;
     if (txTypeFilter !== "all") base = base.filter(t => t.type === txTypeFilter);
@@ -1688,7 +1724,7 @@ export default function App() {
       return { in: inAmt, out: outAmt, net: inAmt - outAmt };
     };
     return { cur: { ...sumFor(curRange), label: curRange.label }, prev: { ...sumFor(prevRange), label: prevRange.label } };
-  }, [txCompare, txPeriod, txs, txWalletFilter, txTypeFilter, limits.txHistory, todayTick]);
+  }, [txCompare, txPeriod, compareOffset, txs, txWalletFilter, txTypeFilter, limits.txHistory, todayTick]);
 
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
@@ -3463,7 +3499,7 @@ export default function App() {
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                   {periods.map(([v,label])=>{
                     const active=txPeriod===v;
-                    return <button key={v} onClick={()=>setTxPeriod(v)} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?C.teal:C.navyLight}`,background:active?C.teal+"22":"none",color:active?C.teal:C.textMuted,fontWeight:active?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>{label}</button>;
+                    return <button key={v} onClick={()=>{setTxPeriod(v);setCompareMode("previous");}} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?C.teal:C.navyLight}`,background:active?C.teal+"22":"none",color:active?C.teal:C.textMuted,fontWeight:active?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>{label}</button>;
                   })}
                   {comparable&&<button onClick={()=>setTxCompare(c=>!c)} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${txCompare?C.gold:C.navyLight}`,background:txCompare?C.gold+"22":"none",color:txCompare?C.gold:C.textMuted,fontWeight:txCompare?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>📊 Compare</button>}
                 </div>
@@ -3480,6 +3516,42 @@ export default function App() {
                     {(txDateFrom||txDateTo)&&<button onClick={()=>{setTxDateFrom("");setTxDateTo("");}} style={{background:"none",border:"none",color:C.textMuted,fontSize:12,cursor:"pointer",padding:"4px 6px"}}>✕ Clear</button>}
                   </div>
                 )}
+                {txCompare&&comparable&&(()=>{
+                  const prevLabel = {today:"Yesterday",week:"Previous week",month:"Previous month",quarter:"Previous quarter",year:"Previous year"}[txPeriod];
+                  const canPickExact = ["month","quarter","year"].includes(txPeriod);
+                  const modes = [["previous",prevLabel],["lastYear","Same time last year"],...(canPickExact?[["custom",`Choose a specific ${txPeriod}`]]:[])];
+                  const lastMonthStr = ()=>{ const d=new Date(); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+                  return (
+                    <div style={{background:C.navyLight,borderRadius:12,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{fontSize:10,color:C.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>Compare against</div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {modes.map(([v,label])=>{
+                          const active=compareMode===v;
+                          return <button key={v} onClick={()=>{setCompareMode(v); if(v==="custom"&&txPeriod==="month"&&!compareCustom.month) setCompareCustom(c=>({...c,month:lastMonthStr()}));}}
+                            style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${active?C.gold:C.navyLight}`,background:active?C.gold+"22":C.navyMid,color:active?C.gold:C.textMuted,fontWeight:active?700:500,fontSize:11,cursor:"pointer"}}>{label}</button>;
+                        })}
+                      </div>
+                      {compareMode==="custom"&&txPeriod==="month"&&(
+                        <input type="month" value={compareCustom.month||lastMonthStr()} onChange={e=>setCompareCustom(c=>({...c,month:e.target.value}))}
+                          style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",cursor:"pointer",width:"fit-content"}}/>
+                      )}
+                      {compareMode==="custom"&&txPeriod==="quarter"&&(
+                        <div style={{display:"flex",gap:8}}>
+                          <select value={compareCustom.quarter} onChange={e=>setCompareCustom(c=>({...c,quarter:+e.target.value}))}
+                            style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",cursor:"pointer"}}>
+                            {[1,2,3,4].map(q=><option key={q} value={q}>Q{q}</option>)}
+                          </select>
+                          <input type="number" value={compareCustom.year} onChange={e=>setCompareCustom(c=>({...c,year:+e.target.value||c.year}))}
+                            style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",width:90}}/>
+                        </div>
+                      )}
+                      {compareMode==="custom"&&txPeriod==="year"&&(
+                        <input type="number" value={compareCustom.year} onChange={e=>setCompareCustom(c=>({...c,year:+e.target.value||c.year}))}
+                          style={{background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",width:110}}/>
+                      )}
+                    </div>
+                  );
+                })()}
               </>);
             })()}
 

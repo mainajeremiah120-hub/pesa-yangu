@@ -3980,47 +3980,62 @@ export default function App() {
               <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No loans yet</div>
               <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>Track loans, repayments, and interest splits.</div>
               <Btn onClick={()=>{setEditLoan(null);setFLoan(blankLoan);openM("loan");}}>+ Add Your First Loan</Btn>
-            </Card>:loans.map(l=>{
-              const paid=l.principal-l.remaining,pct=l.principal>0?(paid/l.principal)*100:0;
-              const monthsLeft=l.monthlyPayment>0?Math.ceil(l.remaining/l.monthlyPayment):0;
-              return<Card key={l.id} style={{borderLeft:`3px solid ${C.coral}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                  <div><div style={{fontWeight:700,fontSize:15}}>{l.name}</div><div style={{color:C.textMuted,fontSize:11}}>{l.lender} · {l.rate||l.interest_rate}% p.a. · {l.currency}</div></div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.coral}}>{disp(l.remaining)}</div>
-                    <div style={{color:C.textMuted,fontSize:10}}>remaining</div>
-                    <div style={{display:"flex",gap:5,marginTop:4}}>
-                      <button onClick={()=>openEditLoan(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
-                      <button onClick={()=>askConfirm("Delete Loan",`Delete loan "${l.name}"? All repayment history will also be removed.`,()=>deleteLoan(l.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
+            </Card>:(()=>{
+              const activeLoans  = loans.filter(l=>l.remaining>0);
+              const settledLoans = loans.filter(l=>l.remaining<=0);
+              const renderLoanCard = (l) => {
+                const settled=l.remaining<=0;
+                const paid=l.principal-l.remaining,pct=l.principal>0?(paid/l.principal)*100:0;
+                const monthsLeft=l.monthlyPayment>0?Math.ceil(l.remaining/l.monthlyPayment):0;
+                const accent = settled?C.teal:C.coral;
+                return<Card key={l.id} style={{borderLeft:`3px solid ${accent}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                    <div><div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:6}}>{l.name}{settled&&<Badge color={C.teal}>✅ Cleared</Badge>}</div><div style={{color:C.textMuted,fontSize:11}}>{l.lender} · {l.rate||l.interest_rate}% p.a. · {l.currency}</div></div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:accent}}>{disp(l.remaining)}</div>
+                      <div style={{color:C.textMuted,fontSize:10}}>remaining</div>
+                      <div style={{display:"flex",gap:5,marginTop:4}}>
+                        <button onClick={()=>openEditLoan(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
+                        <button onClick={()=>askConfirm("Delete Loan",`Delete loan "${l.name}"? All repayment history will also be removed.`,()=>deleteLoan(l.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <Bar value={paid} max={l.principal} color={C.teal}/>
-                <div style={{display:"flex",gap:10,marginTop:7,fontSize:11,flexWrap:"wrap"}}>
-                  <span style={{color:C.textMuted}}>Paid: <strong style={{color:C.teal}}>{pct.toFixed(0)}%</strong></span>
-                  <span style={{color:C.textMuted}}>Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>
-                  {l.termMonths&&<span style={{color:C.textMuted}}>Term: <strong style={{color:C.textPrimary}}>{l.termMonths >= 12 ? `${Math.floor(l.termMonths/12)}yr${l.termMonths%12?` ${l.termMonths%12}mo`:""}` : `${l.termMonths}mo`}</strong></span>}
-                  <span style={{color:C.textMuted}}>~{monthsLeft} months left</span>
-                  <span style={{color:C.textMuted}}>Next: <strong>{l.nextDue||l.next_due_date}</strong></span>
-                </div>
-                {l.repayments.length>0&&<div style={{marginTop:10}}>
-                  <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Repayment History</div>
-                  {l.repayments.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:600}}>{fmtDate(r.date||r.payment_date)} — {disp(r.total||r.total_kes)}</div>
-                      <div style={{fontSize:10,color:C.textMuted}}>Principal: {disp(r.principal||r.principal_kes||0)} · Interest: {disp(r.interest||r.interest_kes||0)}</div>
-                      {r.attachments?.length>0&&<div style={{fontSize:10,color:C.blue,marginTop:2}}>📎 {r.attachments.join(", ")}</div>}
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <Badge color={C.teal}>Paid</Badge>
-                      <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
-                      <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0,r.wallet||r.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
-                    </div>
-                  </div>)}
-                </div>}
-                <div style={{marginTop:10}}><Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:l.id,wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>
-              </Card>;
-            })}
+                  <Bar value={paid} max={l.principal} color={C.teal}/>
+                  <div style={{display:"flex",gap:10,marginTop:7,fontSize:11,flexWrap:"wrap"}}>
+                    <span style={{color:C.textMuted}}>Paid: <strong style={{color:C.teal}}>{pct.toFixed(0)}%</strong></span>
+                    {!settled&&<span style={{color:C.textMuted}}>Monthly: <strong style={{color:C.gold}}>{disp(l.monthlyPayment)}</strong></span>}
+                    {l.termMonths&&<span style={{color:C.textMuted}}>Term: <strong style={{color:C.textPrimary}}>{l.termMonths >= 12 ? `${Math.floor(l.termMonths/12)}yr${l.termMonths%12?` ${l.termMonths%12}mo`:""}` : `${l.termMonths}mo`}</strong></span>}
+                    {!settled&&<span style={{color:C.textMuted}}>~{monthsLeft} months left</span>}
+                    {!settled&&<span style={{color:C.textMuted}}>Next: <strong>{l.nextDue||l.next_due_date}</strong></span>}
+                  </div>
+                  {l.repayments.length>0&&<div style={{marginTop:10}}>
+                    <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Repayment History</div>
+                    {l.repayments.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600}}>{fmtDate(r.date||r.payment_date)} — {disp(r.total||r.total_kes)}</div>
+                        <div style={{fontSize:10,color:C.textMuted}}>Principal: {disp(r.principal||r.principal_kes||0)} · Interest: {disp(r.interest||r.interest_kes||0)}</div>
+                        {r.attachments?.length>0&&<div style={{fontSize:10,color:C.blue,marginTop:2}}>📎 {r.attachments.join(", ")}</div>}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <Badge color={C.teal}>Paid</Badge>
+                        <button onClick={()=>openEditRepay(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
+                        <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? The amount will be returned to the wallet and loan balance restored.`,()=>deleteRepayment(l.id,r.id,r.total||r.total_kes||0,r.wallet||r.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
+                      </div>
+                    </div>)}
+                  </div>}
+                  {!settled&&<div style={{marginTop:10}}><Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:l.id,wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>}
+                </Card>;
+              };
+              return <>
+                {settledLoans.length>0&&<Divider label={`Active Loans${activeLoans.length?` (${activeLoans.length})`:""}`}/>}
+                {activeLoans.length===0&&settledLoans.length>0&&<div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"16px 0"}}>No active loans — everything's cleared 🎉</div>}
+                {activeLoans.map(renderLoanCard)}
+                {settledLoans.length>0&&<>
+                  <Divider label={`Fully Repaid (${settledLoans.length})`}/>
+                  {settledLoans.map(renderLoanCard)}
+                </>}
+              </>;
+            })()}
           </div>
         )}
 

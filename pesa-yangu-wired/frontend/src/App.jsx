@@ -4665,6 +4665,8 @@ export default function App() {
             <Field label="Pay From Account" value={fRepay.wallet} onChange={v=>setFRepay({...fRepay,wallet:v})} options={wOpts}/>
             <Divider label="Payment Amount"/>
             <Field label="Amount Paid" type="number" value={fRepay.total} onChange={v=>setFRepay({...fRepay,total:v,principal:isSimple?"0":String((parseFloat(v)||0)-(parseFloat(fRepay.interest)||0)),interest:isSimple?"0":fRepay.interest})} placeholder={isSimple?`e.g. ${disp(l.remaining)} (full balance)`:"e.g. 15000"}/>
+            {l.remaining>0&&<button onClick={()=>setFRepay({...fRepay,total:String(l.remaining),principal:isSimple?"0":String(l.remaining),interest:"0"})}
+              style={{background:"none",border:`1px solid ${C.teal}`,borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,marginBottom:14}}>💯 Pay Full Balance ({disp(l.remaining)})</button>}
             {!isSimple&&<div className="grid-2">
               <Field label="Principal Portion" type="number" value={fRepay.principal} onChange={v=>setFRepay({...fRepay,principal:v})} placeholder="0.00"/>
               <Field label="Interest Portion"  type="number" value={fRepay.interest}  onChange={v=>{const int=parseFloat(v)||0,tot=parseFloat(fRepay.total)||0;setFRepay({...fRepay,interest:v,principal:String((tot-int).toFixed(2))});}} placeholder="0.00"/>

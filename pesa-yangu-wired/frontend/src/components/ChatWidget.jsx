@@ -14,9 +14,9 @@ const SEEN_KEY = "py_chat_last_seen";
 const DISMISS_KEY = "py_chat_dismissed"; // sessionStorage — clears on next login/session, same pattern as py_unlocked
 const ACTIVE_STATUSES = ["open", "in_progress"]; // statuses a follow-up message can be added to
 
-function XIcon() {
+function XIcon({ size = 22 }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <line x1="6" y1="6" x2="18" y2="18"/>
       <line x1="18" y1="6" x2="6" y2="18"/>
     </svg>
@@ -153,28 +153,44 @@ export function ChatWidget({ user, C, showToast }) {
           .chat-widget-panel { bottom: 142px !important; }
         }
       `}</style>
-      <button
-        className="chat-widget-btn"
-        onClick={() => open ? dismiss() : setOpen(true)}
-        aria-label={open ? "Dismiss support chat" : "Support chat"}
-        title={open ? "Dismiss — it'll be back next time you log in" : undefined}
-        style={{
-          position: "fixed", right: 18, bottom: 18, zIndex: 1400,
-          width: 54, height: 54, borderRadius: "50%",
-          background: `linear-gradient(135deg,${C.teal},${C.blue})`,
-          border: "none", cursor: "pointer", color: "#fff",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 24, boxShadow: "0 6px 20px #0006",
-        }}
-      >
-        {open ? <XIcon/> : "💬"}
-        {unread && !open && (
-          <span style={{
-            position: "absolute", top: -2, right: -2, width: 14, height: 14, borderRadius: "50%",
-            background: C.coral, border: `2px solid ${C.navy||"#0B1120"}`,
-          }}/>
-        )}
-      </button>
+      <div className="chat-widget-btn" style={{ position: "fixed", right: 18, bottom: 18, zIndex: 1400, width: 54, height: 54 }}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          aria-label="Support chat"
+          style={{
+            width: "100%", height: "100%", borderRadius: "50%",
+            background: `linear-gradient(135deg,${C.teal},${C.blue})`,
+            border: "none", cursor: "pointer", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 24, boxShadow: "0 6px 20px #0006",
+          }}
+        >
+          💬
+          {unread && !open && (
+            <span style={{
+              position: "absolute", top: -2, right: -2, width: 14, height: 14, borderRadius: "50%",
+              background: C.coral, border: `2px solid ${C.navy||"#0B1120"}`,
+            }}/>
+          )}
+        </button>
+        {/* Small dismiss badge riding on top of the bubble, separate from the
+            open/close tap target — closing the panel and dismissing the
+            widget for the session are two different actions now, not one
+            button that means different things depending on state. */}
+        <button
+          onClick={dismiss}
+          aria-label="Dismiss support chat"
+          title="Dismiss — it'll be back next time you log in"
+          style={{
+            position: "absolute", top: -6, left: -6, width: 20, height: 20, borderRadius: "50%",
+            background: C.navyMid, border: `1.5px solid ${C.navyLight}`, color: C.textMuted,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", padding: 0, boxShadow: "0 2px 6px #0006",
+          }}
+        >
+          <XIcon size={11}/>
+        </button>
+      </div>
 
       {open && (
         <div className="chat-widget-panel" style={{

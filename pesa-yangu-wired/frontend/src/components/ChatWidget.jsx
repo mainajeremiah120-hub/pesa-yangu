@@ -11,7 +11,17 @@ import { ticketsApi } from "../lib/api.js";
 const LIST_POLL_MS   = 25000; // refresh ticket list (cheap) while mounted
 const THREAD_POLL_MS = 12000; // refresh open thread while panel is open
 const SEEN_KEY = "py_chat_last_seen";
+const DISMISS_KEY = "py_chat_dismissed"; // sessionStorage — clears on next login/session, same pattern as py_unlocked
 const ACTIVE_STATUSES = ["open", "in_progress"]; // statuses a follow-up message can be added to
+
+function XIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <line x1="6" y1="6" x2="18" y2="18"/>
+      <line x1="18" y1="6" x2="6" y2="18"/>
+    </svg>
+  );
+}
 
 function relTime(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -25,6 +35,7 @@ function relTime(dateStr) {
 
 export function ChatWidget({ user, C, showToast }) {
   const [open,        setOpen]        = useState(false);
+  const [dismissed,   setDismissed]   = useState(() => sessionStorage.getItem(DISMISS_KEY) === "1");
   const [tickets,     setTickets]     = useState([]);
   const [messages,    setMessages]    = useState([]);
   const [input,       setInput]       = useState("");
@@ -124,7 +135,12 @@ export function ChatWidget({ user, C, showToast }) {
     && messages.length > 0
     && !messages.some(m => m.sender_role === "admin");
 
-  if (!user || user.role === "admin") return null;
+  if (!user || user.role === "admin" || dismissed) return null;
+
+  const dismiss = () => {
+    sessionStorage.setItem(DISMISS_KEY, "1");
+    setDismissed(true);
+  };
 
   return (
     <>
@@ -139,18 +155,19 @@ export function ChatWidget({ user, C, showToast }) {
       `}</style>
       <button
         className="chat-widget-btn"
-        onClick={() => setOpen(o => !o)}
-        aria-label="Support chat"
+        onClick={() => open ? dismiss() : setOpen(true)}
+        aria-label={open ? "Dismiss support chat" : "Support chat"}
+        title={open ? "Dismiss — it'll be back next time you log in" : undefined}
         style={{
           position: "fixed", right: 18, bottom: 18, zIndex: 1400,
           width: 54, height: 54, borderRadius: "50%",
           background: `linear-gradient(135deg,${C.teal},${C.blue})`,
-          border: "none", cursor: "pointer",
+          border: "none", cursor: "pointer", color: "#fff",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 24, boxShadow: "0 6px 20px #0006",
         }}
       >
-        {open ? "✕" : "💬"}
+        {open ? <XIcon/> : "💬"}
         {unread && !open && (
           <span style={{
             position: "absolute", top: -2, right: -2, width: 14, height: 14, borderRadius: "50%",

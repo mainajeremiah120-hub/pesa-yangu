@@ -128,7 +128,17 @@ export function ChatWidget({ user, C, showToast }) {
 
   return (
     <>
+      {/* Mobile has a fixed 60px bottom nav bar (see .mobile-bottom-nav in
+          App.jsx) sitting in this same bottom-right corner — push the widget
+          up above it on narrow screens so it doesn't cover the "More" tab. */}
+      <style>{`
+        @media (max-width: 640px) {
+          .chat-widget-btn   { bottom: 78px !important; }
+          .chat-widget-panel { bottom: 142px !important; }
+        }
+      `}</style>
       <button
+        className="chat-widget-btn"
         onClick={() => setOpen(o => !o)}
         aria-label="Support chat"
         style={{
@@ -150,7 +160,7 @@ export function ChatWidget({ user, C, showToast }) {
       </button>
 
       {open && (
-        <div style={{
+        <div className="chat-widget-panel" style={{
           position: "fixed", right: 18, bottom: 82, zIndex: 1400,
           width: "min(340px, calc(100vw - 36px))", height: "min(460px, calc(100vh - 140px))",
           background: C.navyMid, border: `1px solid ${C.navyLight}`, borderRadius: 16,

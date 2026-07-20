@@ -647,15 +647,19 @@ const ConfirmModal = ({ open, onClose, onConfirm, title, message, danger=true })
 // ─────────────────────────────────────────────────────────────────────────────
 // GOAL CARD  — own component so useState doesn't break inside .map()
 // ─────────────────────────────────────────────────────────────────────────────
-function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
+function GoalCard({ g, wallets, disp, fmtDate, onFund, onEdit, onDelete, onEditContribution, onDeleteContribution }) {
   const C = useC();
   const [amt,      setAmt]      = useState("");
-  const [fromWal,  setFromWal]  = useState(() => g.wallet_id || wallets[0]?.id || "");
+  const [fromWal,  setFromWal]  = useState(() => wallets.find(w=>w.id!==g.wallet_id)?.id || "");
+  const [note,     setNote]     = useState("");
+  const [date,     setDate]     = useState(() => todayStr());
   const [busy,     setBusy]     = useState(false);
+  const [editingId,setEditingId]= useState(null);
+  const [showHistory,setShowHistory] = useState(false);
 
-  // If wallets loaded after first render (or goal has no wallet_id), pick first available
+  // If wallets loaded after first render, pick the first one that isn't the receiving account
   useEffect(() => {
-    if (!fromWal && wallets.length > 0) setFromWal(g.wallet_id || wallets[0].id);
+    if (!fromWal && wallets.length > 0) setFromWal(wallets.find(w=>w.id!==g.wallet_id)?.id || wallets[0].id);
   }, [wallets]);
 
   const pct    = Math.min((g.saved_kes/g.target_kes)*100, 100);
@@ -665,13 +669,26 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
   const months = days ? Math.ceil(days/30) : null;
   const needed = months&&months>0 ? rem/months : null;
 
-  const canAdd = !!amt && parseFloat(amt) > 0 && !!fromWal;
+  const canAdd = !!amt && parseFloat(amt) > 0 && !!fromWal && fromWal !== g.wallet_id && !!g.wallet_id;
+
+  const resetForm = () => { setAmt(""); setNote(""); setDate(todayStr()); setEditingId(null); };
 
   const handle = async () => {
     if (!canAdd) return;
     setBusy(true);
-    try { await onFund(g.id, parseFloat(amt), fromWal); setAmt(""); }
-    finally { setBusy(false); }
+    try {
+      if (editingId) {
+        await onEditContribution(g.id, editingId, { amount: parseFloat(amt), from_wallet_id: fromWal, contributed_date: date, note: note||null });
+      } else {
+        await onFund(g.id, parseFloat(amt), fromWal, { note, date });
+      }
+      resetForm();
+    } finally { setBusy(false); }
+  };
+
+  const startEdit = (c) => {
+    setEditingId(c.id); setAmt(String(c.amount)); setFromWal(c.fromWallet); setNote(c.note||""); setDate(c.date||todayStr());
+    setShowHistory(true);
   };
 
   const inputStyle = { background:C.navyLight, border:`1px solid ${C.navyLight}`, borderRadius:8, padding:"8px 10px", color:C.textPrimary, fontSize:12, outline:"none", width:"100%", boxSizing:"border-box" };
@@ -682,7 +699,7 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
         <div>
           <div style={{ fontSize:26, marginBottom:3 }}>{g.icon}</div>
           <div style={{ fontWeight:700, fontSize:14 }}>{g.name}</div>
-          <div style={{ color:C.textMuted, fontSize:10 }}>linked to {w?.name||"—"}</div>
+          <div style={{ color:C.textMuted, fontSize:10 }}>Receiving account: {w?.name||"— not set —"}</div>
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ fontFamily:"'DM Serif Display',serif", fontSize:22, color:g.color }}>{pct.toFixed(0)}%</div>
@@ -693,6 +710,9 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
           </div>}
         </div>
       </div>
+      {!g.wallet_id&&<div style={{background:C.coral+"18",border:`1px solid ${C.coral}44`,borderRadius:8,padding:"7px 10px",fontSize:11,color:C.coral,marginBottom:10}}>
+        ⚠ No receiving account set — edit this goal to pick one before topping up.
+      </div>}
       <Bar value={g.saved_kes} max={g.target_kes} color={g.color}/>
       <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:11 }}>
         <span style={{ color:C.textMuted }}>Saved: <strong style={{color:C.textPrimary}}>{disp(g.saved_kes)}</strong></span>
@@ -701,35 +721,53 @@ function GoalCard({ g, wallets, disp, onFund, onEdit, onDelete }) {
       {needed&&<div style={{ marginTop:8, background:C.navyLight, borderRadius:8, padding:"7px 10px", fontSize:11, color:C.textMuted }}>
         💡 <strong style={{color:g.color}}>{disp(needed)}/mo</strong> needed · {months} months to {(g.deadline||"").slice(0,10)}
       </div>}
-      {pct>=100
+
+      {g.contributions?.length>0&&<div style={{marginTop:12}}>
+        <button onClick={()=>setShowHistory(s=>!s)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:10,textTransform:"uppercase",letterSpacing:"0.05em",padding:0}}>
+          {showHistory?"▾":"▸"} {g.contributions.length} contribution{g.contributions.length!==1?"s":""}
+        </button>
+        {showHistory&&<div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
+          {g.contributions.map(c=>{
+            const fromW=wallets.find(x=>x.id===c.fromWallet);
+            return <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:600}}>{fmtDate?fmtDate(c.date):c.date} — {disp(c.amount)}</div>
+                <div style={{fontSize:10,color:C.textMuted}}>from {fromW?.name||"—"}{c.note?` · ${c.note}`:""}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <button onClick={()=>startEdit(c)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit contribution">✏️</button>
+                <button onClick={()=>onDeleteContribution(g.id,c.id,c.amount)} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete contribution">🗑</button>
+              </div>
+            </div>;
+          })}
+        </div>}
+      </div>}
+
+      {pct>=100&&!editingId
         ? <div style={{ marginTop:10, background:C.teal+"22", borderRadius:8, padding:"9px 14px", textAlign:"center", color:C.teal, fontWeight:700, fontSize:13 }}>🎉 Goal reached!</div>
         : <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:8 }}>
-            <div style={{ color:C.textFaint, fontSize:10, textTransform:"uppercase", letterSpacing:"0.05em" }}>Top up this goal</div>
+            <div style={{ color:C.textFaint, fontSize:10, textTransform:"uppercase", letterSpacing:"0.05em" }}>{editingId?"Edit contribution":"Top up this goal"}</div>
             {/* From wallet picker */}
             <select value={fromWal} onChange={e=>setFromWal(e.target.value)}
               style={{...inputStyle, cursor:"pointer"}}>
-              <option value="">— Select account to debit —</option>
-              {wallets.map(w=>(
+              <option value="">— Select account to pay from —</option>
+              {wallets.filter(w=>w.id!==g.wallet_id).map(w=>(
                 <option key={w.id} value={w.id}>{w.icon} {w.name} · {disp(parseFloat(w.balance||0))} available</option>
               ))}
             </select>
-            {/* Amount + Add button */}
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-              <input
-                type="number" value={amt}
-                onChange={e=>setAmt(e.target.value)}
-                placeholder="Enter amount to add"
-                style={{...inputStyle, flex:1}}
-                onFocus={e=>e.target.style.borderColor=C.teal}
-                onBlur={e=>e.target.style.borderColor=C.navyLight}
-                onKeyDown={e=>e.key==="Enter"&&handle()}
-              />
-              <Btn onClick={handle} disabled={!canAdd||busy} style={{padding:"8px 16px",fontSize:12,flexShrink:0}}>
-                {busy?"…":"Add"}
-              </Btn>
+            <div className="grid-2" style={{gap:8}}>
+              <input type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="Amount" style={inputStyle}/>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputStyle}/>
             </div>
-            {!fromWal&&<div style={{fontSize:10,color:C.coral}}>Select an account above to enable top-up</div>}
-            {fromWal&&!amt&&<div style={{fontSize:10,color:C.textFaint}}>Enter an amount above, then tap Add</div>}
+            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Note (optional)" style={inputStyle}/>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <Btn onClick={handle} disabled={!canAdd||busy} style={{padding:"8px 16px",fontSize:12,flex:1}}>
+                {busy?"…":editingId?"Save Changes":"Add"}
+              </Btn>
+              {editingId&&<button onClick={resetForm} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"8px 14px",cursor:"pointer",fontSize:12}}>Cancel</button>}
+            </div>
+            {!g.wallet_id&&<div style={{fontSize:10,color:C.coral}}>Set a receiving account (via Edit) before topping up</div>}
+            {g.wallet_id&&!fromWal&&<div style={{fontSize:10,color:C.coral}}>Select an account above to enable top-up</div>}
           </div>
       }
     </div>
@@ -1358,11 +1396,19 @@ export default function App() {
     goalTargetKes:   c.goal_target_kes!=null ? parseFloat(c.goal_target_kes) : null,
     goalDeadline:    (c.goal_deadline||"").slice(0,10) || null,
   });
+  const normaliseContribution = (c) => ({
+    ...c,
+    amount:     parseFloat(c.amount_kes||0),
+    fromWallet: c.from_wallet_id,
+    toWallet:   c.to_wallet_id,
+    date:       (c.contributed_date||'').slice(0,10),
+  });
   const normaliseGoal = (g) => ({
     ...g,
     target: parseFloat(g.target_kes||0),
     saved:  parseFloat(g.saved_kes||0),
     wallet: g.wallet_id,
+    contributions: (g.contributions||[]).map(normaliseContribution),
   });
   const normaliseInv = (i) => ({
     ...i,
@@ -2151,14 +2197,75 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
   };
 
-  const fundGoal = async (gid, amt, walletId) => {
+  const fundGoal = async (gid, amt, walletId, extra={}) => {
     try {
-      const { goal } = await goalsApi.fund(gid, amt, walletId);
-      setGoals(p=>p.map(g=>g.id===gid?normaliseGoal(goal):g));
-      // Also update wallet balance optimistically
-      setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)-amt}:w));
+      const goal = goals.find(g=>g.id===gid);
+      const { goal: updated, contribution, transactions } = await goalsApi.fund(gid, {
+        amount: amt, from_wallet_id: walletId,
+        note: extra.note||undefined, contributed_date: extra.date||undefined,
+      });
+      const normContrib = normaliseContribution(contribution);
+      setGoals(p=>p.map(g=>g.id===gid?{...g, saved:parseFloat(updated.saved_kes), is_achieved:updated.is_achieved, contributions:[normContrib,...g.contributions]}:g));
+      setWallets(p=>p.map(w=>{
+        if (w.id===walletId) return {...w,balance:parseFloat(w.balance)-amt};
+        if (goal && w.id===goal.wallet_id) return {...w,balance:parseFloat(w.balance)+amt};
+        return w;
+      }));
+      if (transactions?.length) {
+        setTxs(p=>[...transactions.map(tx=>({...tx, wallet:tx.wallet_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10)})), ...p]);
+      }
       showToast(`Added ${disp(amt)} to goal`);
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const editGoalContribution = async (gid, cid, patch) => {
+    try {
+      const goal = goals.find(g=>g.id===gid);
+      const old = goal?.contributions.find(c=>c.id===cid);
+      const { goal: updated, contribution } = await goalsApi.updateContribution(gid, cid, patch);
+      const normContrib = normaliseContribution(contribution);
+      setGoals(p=>p.map(g=>g.id===gid?{...g, saved:parseFloat(updated.saved_kes), is_achieved:updated.is_achieved, contributions:g.contributions.map(c=>c.id===cid?normContrib:c)}:g));
+      // Reverse the old contribution's wallet effect and apply the new one
+      setWallets(p=>p.map(w=>{
+        let b = parseFloat(w.balance);
+        if (old) {
+          if (w.id === old.fromWallet) b += old.amount;
+          if (w.id === old.toWallet)   b -= old.amount;
+        }
+        if (w.id === normContrib.fromWallet) b -= normContrib.amount;
+        if (w.id === normContrib.toWallet)   b += normContrib.amount;
+        return b !== parseFloat(w.balance) ? {...w, balance:b} : w;
+      }));
+      setTxs(p=>p.map(t=>{
+        if (t.goal_contribution_id !== cid) return t;
+        return {
+          ...t,
+          amount: normContrib.amount,
+          wallet: t.type==="transfer_out" ? normContrib.fromWallet : normContrib.toWallet,
+          date:   normContrib.date,
+          note:   normContrib.note,
+        };
+      }));
+      showToast("Contribution updated");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const deleteGoalContribution = async (gid, cid) => {
+    try {
+      const goal = goals.find(g=>g.id===gid);
+      const c = goal?.contributions.find(x=>x.id===cid);
+      await goalsApi.removeContribution(gid, cid);
+      setGoals(p=>p.map(g=>g.id===gid?{...g, saved:Math.max(0,g.saved-(c?.amount||0)), contributions:g.contributions.filter(x=>x.id!==cid)}:g));
+      if (c) {
+        setWallets(p=>p.map(w=>{
+          if (w.id===c.fromWallet) return {...w,balance:parseFloat(w.balance)+c.amount};
+          if (w.id===c.toWallet)   return {...w,balance:parseFloat(w.balance)-c.amount};
+          return w;
+        }));
+      }
+      setTxs(p=>p.filter(t=>t.goal_contribution_id!==cid));
+      showToast("Contribution deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete", C.coral); }
   };
 
   const addRecurring = async () => {
@@ -2616,14 +2723,25 @@ export default function App() {
 
   const deleteGoal = async (id) => {
     try {
-      const res = await goalsApi.remove(id);
       const g = goals.find(g=>g.id===id);
+      await goalsApi.remove(id);
       setGoals(p=>p.filter(g=>g.id!==id));
-      // If backend returned saved_kes, restore to wallet optimistically
-      if(res?.returned_kes>0 && g?.wallet_id) {
-        setWallets(p=>p.map(w=>w.id===g.wallet_id?{...w,balance:parseFloat(w.balance)+(res.returned_kes)}:w));
+      // Mirrors the backend, which reverses every contribution back to the
+      // wallet it actually came from (not a lump sum into g.wallet_id —
+      // contributions can each have a different source account).
+      if (g?.contributions?.length) {
+        setWallets(p=>p.map(w=>{
+          let b = parseFloat(w.balance);
+          g.contributions.forEach(c=>{
+            if (w.id===c.fromWallet) b += c.amount;
+            if (w.id===c.toWallet)   b -= c.amount;
+          });
+          return b !== parseFloat(w.balance) ? {...w, balance:b} : w;
+        }));
+        const contribIds = new Set(g.contributions.map(c=>c.id));
+        setTxs(p=>p.filter(t=>!contribIds.has(t.goal_contribution_id)));
       }
-      showToast("Goal deleted" + (res?.returned_kes>0 ? ` · ${disp(res.returned_kes)} returned to wallet` : ""));
+      showToast("Goal deleted");
     } catch(err) { showToast("Failed to delete", C.coral); }
   };
 
@@ -3853,7 +3971,12 @@ export default function App() {
               <Btn onClick={()=>{setEditGoal(null);setFGoal({...blankGoal,wallet:wallets[0]?.id||""});openM("goal");}}>+ New Goal</Btn>
             </div>
             <div className="grid-2" style={{ gap: 14 }}>
-              {goals.map(g=><GoalCard key={g.id} g={g} wallets={wallets} disp={disp} onFund={fundGoal} onEdit={openEditGoal} onDelete={(id,name)=>askConfirm("Delete Goal",`Delete goal "${name}"? This cannot be undone.`,()=>deleteGoal(id))}/>)}
+              {goals.map(g=><GoalCard key={g.id} g={g} wallets={wallets} disp={disp} fmtDate={fmtDate}
+                onFund={fundGoal} onEdit={openEditGoal}
+                onDelete={(id,name)=>askConfirm("Delete Goal",`Delete goal "${name}"? Every contribution will be reversed back to the account it came from, and this cannot be undone.`,()=>deleteGoal(id))}
+                onEditContribution={editGoalContribution}
+                onDeleteContribution={(gid,cid,amount)=>askConfirm("Delete Contribution",`Delete this contribution of ${disp(amount)}? It will be reversed back to the account it came from.`,()=>deleteGoalContribution(gid,cid))}
+              />)}
               {goals.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",color:C.textFaint,padding:"40px 0",fontSize:13}}>No goals yet. Create one to start saving with purpose.</div>}
             </div>
           </div>
@@ -4738,11 +4861,11 @@ export default function App() {
           <ColorPicker label="Colour" value={fGoal.color} onChange={v=>setFGoal({...fGoal,color:v})} colors={CAT_COLORS}/>
         </div>
         <Field label={`Target Amount (${baseCurrency})`} type="number" value={fGoal.target} onChange={v=>setFGoal({...fGoal,target:v})} placeholder="e.g. 450000"/>
-        <Field label="Save Into" value={fGoal.wallet} onChange={v=>setFGoal({...fGoal,wallet:v})} options={wOpts}/>
+        <Field label="Receiving Account" value={fGoal.wallet} onChange={v=>setFGoal({...fGoal,wallet:v})} options={wOpts} note="Where money for this goal actually sits — top-ups move money into this account from wherever you choose."/>
         {!editGoal&&(
           <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:"#00D4AA",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Already saving for this goal?</div>
-            <Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note="This amount will be deducted from the selected account and counted as already saved"/>
+            <Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note="Bookkeeping only — for money you already have sitting in the receiving account. Nothing moves and no transaction is created."/>
           </div>
         )}
         <Field label="Target Date" type="date" value={fGoal.deadline} onChange={v=>setFGoal({...fGoal,deadline:v})}/>

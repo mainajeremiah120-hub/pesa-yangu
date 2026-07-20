@@ -299,8 +299,19 @@ const goalRouter = express.Router();
 
 goalRouter.get("/", async (req,res,next)=>{
   try {
-    const {rows}=await query("SELECT g.*,w.name AS wallet_name,w.currency AS wallet_currency FROM goals g JOIN wallets w ON w.id=g.wallet_id WHERE g.user_id=$1 ORDER BY g.created_at",[req.user.id]);
-    res.json({goals:rows});
+    // LEFT JOIN — a goal with no receiving account set yet must still show
+    // up (it did not before, since an INNER JOIN silently dropped it).
+    const {rows:goals}=await query("SELECT g.*,w.name AS wallet_name,w.currency AS wallet_currency FROM goals g LEFT JOIN wallets w ON w.id=g.wallet_id WHERE g.user_id=$1 ORDER BY g.created_at",[req.user.id]);
+    if (goals.length) {
+      const {rows:allContribs}=await query(
+        "SELECT * FROM goal_contributions WHERE goal_id = ANY($1) ORDER BY contributed_date DESC, created_at DESC",
+        [goals.map(g=>g.id)]
+      );
+      const byGoal={};
+      allContribs.forEach(c=>{ (byGoal[c.goal_id]=byGoal[c.goal_id]||[]).push(c); });
+      goals.forEach(g=>{ g.contributions = byGoal[g.id]||[]; });
+    }
+    res.json({goals});
   } catch(e){next(e);}
 });
 
@@ -315,48 +326,149 @@ goalRouter.post("/", async (req,res,next)=>{
       saved_kes:  z.number().min(0).max(1e9).default(0),
       deadline:   z.string().max(20).optional(),
     }).parse(req.body);
-    const goal = await withTransaction(async(client)=>{
-      // Deduct opening balance from wallet if provided
-      if(d.saved_kes>0 && d.wallet_id) {
-        const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
-        if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
-        if(parseFloat(wr[0].balance)<d.saved_kes) throw Object.assign(new Error("Insufficient balance for opening amount"),{status:400});
-        await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[d.saved_kes,d.wallet_id]);
-      }
-      const {rows}=await client.query(
-        "INSERT INTO goals (user_id,wallet_id,name,icon,color,target_kes,saved_kes,deadline) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-        [req.user.id,d.wallet_id||null,d.name,d.icon,d.color,d.target_kes,d.saved_kes,d.deadline||null]
-      );
-      return rows[0];
-    });
-    res.status(201).json({goal});
+    // Opening balance is bookkeeping only — it represents money the user
+    // says is *already sitting* in the receiving account, so no wallet
+    // balance changes and no transaction is created (there's nothing to
+    // move). This used to silently debit the receiving wallet itself,
+    // which made that portion of "saved" not correspond to any real
+    // balance anywhere — the same bug as funding a goal used to have.
+    const {rows}=await query(
+      "INSERT INTO goals (user_id,wallet_id,name,icon,color,target_kes,saved_kes,deadline) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+      [req.user.id,d.wallet_id||null,d.name,d.icon,d.color,d.target_kes,d.saved_kes,d.deadline||null]
+    );
+    res.status(201).json({goal:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 goalRouter.post("/:id/fund", async (req,res,next)=>{
   try {
-    const {amount, wallet_id}=z.object({
-      amount:    z.number().positive(),
-      wallet_id: z.string().uuid().optional(),
+    const d=z.object({
+      amount:           z.number().positive(),
+      wallet_id:        z.string().uuid().optional(), // source (from) account — kept for back-compat with older clients
+      from_wallet_id:   z.string().uuid().optional(),
+      contributed_date: z.string().optional(),
+      note:             z.string().max(500).optional(),
     }).parse(req.body);
+    const fromWalletId = d.from_wallet_id || d.wallet_id;
+    if(!fromWalletId) return res.status(400).json({error:"No source account specified"});
+
     const {rows:gr}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!gr.length) return res.status(404).json({error:"Goal not found"});
     const g=gr[0];
-    const toAdd=Math.min(amount,parseFloat(g.target_kes)-parseFloat(g.saved_kes));
+    if(!g.wallet_id) return res.status(400).json({error:"This goal has no receiving account yet — edit the goal to set one"});
+    if(g.wallet_id === fromWalletId) return res.status(400).json({error:"Source and receiving account can't be the same"});
+
+    const toAdd=Math.min(d.amount,parseFloat(g.target_kes)-parseFloat(g.saved_kes));
     if(toAdd<=0) return res.status(400).json({error:"Goal already reached"});
-    // Use provided wallet_id or fall back to goal's linked wallet
-    const sourceWalletId = wallet_id || g.wallet_id;
-    if(!sourceWalletId) return res.status(400).json({error:"No source wallet specified"});
+
     const result=await withTransaction(async(client)=>{
-      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[sourceWalletId,req.user.id]);
-      if(!wr.length) throw Object.assign(new Error("Source wallet not found"),{status:404});
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[fromWalletId,req.user.id]);
+      if(!wr.length) throw Object.assign(new Error("Source account not found"),{status:404});
       if(parseFloat(wr[0].balance)<toAdd) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[toAdd,sourceWalletId]);
-      const {rows}=await client.query("UPDATE goals SET saved_kes=saved_kes+$1,is_achieved=(saved_kes+$1>=target_kes) WHERE id=$2 RETURNING *",[toAdd,g.id]);
-      return rows[0];
+
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[toAdd,fromWalletId]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[toAdd,g.wallet_id]);
+
+      const {rows:cRows}=await client.query(
+        "INSERT INTO goal_contributions (goal_id,user_id,from_wallet_id,to_wallet_id,amount_kes,contributed_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+        [g.id,req.user.id,fromWalletId,g.wallet_id,toAdd,d.contributed_date||new Date(),d.note||null]
+      );
+      const contribution=cRows[0];
+
+      const pairId=require("crypto").randomUUID();
+      const noteText=d.note||`Goal: ${g.name}`;
+      const contribDate=d.contributed_date||new Date();
+      const {rows:txRows}=await client.query(
+        `INSERT INTO transactions (user_id,wallet_id,type,amount_kes,note,tx_date,transfer_pair_id,goal_contribution_id)
+         VALUES ($1,$2,'transfer_out',$3,$4,$5,$6,$7),($1,$8,'transfer_in',$3,$4,$5,$6,$7) RETURNING *`,
+        [req.user.id,fromWalletId,toAdd,noteText,contribDate,pairId,contribution.id,g.wallet_id]
+      );
+
+      const {rows:gRows}=await client.query(
+        "UPDATE goals SET saved_kes=saved_kes+$1,is_achieved=(saved_kes+$1>=target_kes) WHERE id=$2 RETURNING *",
+        [toAdd,g.id]
+      );
+      return { goal:gRows[0], contribution, transactions:txRows };
     });
-    res.json({goal:result});
+    res.json(result);
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+goalRouter.patch("/:id/contributions/:cid", async (req,res,next)=>{
+  try {
+    const {rows:cr}=await query(
+      "SELECT c.* FROM goal_contributions c JOIN goals g ON g.id=c.goal_id WHERE c.id=$1 AND c.goal_id=$2 AND g.user_id=$3",
+      [req.params.cid, req.params.id, req.user.id]
+    );
+    if(!cr.length) return res.status(404).json({error:"Contribution not found"});
+    const old=cr[0];
+    const d=z.object({
+      amount:           z.number().positive().optional(),
+      from_wallet_id:   z.string().uuid().optional(),
+      contributed_date: z.string().optional(),
+      note:             z.string().nullable().optional(),
+    }).parse(req.body);
+
+    const newAmount = d.amount ?? parseFloat(old.amount_kes);
+    const newFromWallet = d.from_wallet_id ?? old.from_wallet_id;
+    const newDate = d.contributed_date ?? old.contributed_date;
+    const newNote = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
+    const toWallet = old.to_wallet_id;
+    if (newFromWallet === toWallet) return res.status(400).json({error:"Source and receiving account can't be the same"});
+
+    const result = await withTransaction(async(client)=>{
+      // Reverse the old effect first
+      if(old.from_wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(old.amount_kes),old.from_wallet_id]);
+      if(old.to_wallet_id)   await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(old.amount_kes),old.to_wallet_id]);
+
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[newFromWallet,req.user.id]);
+      if(!wr.length) throw Object.assign(new Error("Source account not found"),{status:404});
+      if(parseFloat(wr[0].balance)<newAmount) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
+
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[newAmount,newFromWallet]);
+      if(toWallet) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[newAmount,toWallet]);
+
+      const {rows:cRows}=await client.query(
+        "UPDATE goal_contributions SET from_wallet_id=$1,amount_kes=$2,contributed_date=$3,note=$4 WHERE id=$5 RETURNING *",
+        [newFromWallet,newAmount,newDate,newNote,old.id]
+      );
+      await client.query(
+        `UPDATE transactions SET
+           wallet_id = CASE WHEN type='transfer_out' THEN $1 ELSE wallet_id END,
+           amount_kes = $2, note = $3, tx_date = $4
+         WHERE goal_contribution_id=$5`,
+        [newFromWallet,newAmount,newNote||`Goal contribution`,newDate,old.id]
+      );
+      const savedDelta = newAmount - parseFloat(old.amount_kes);
+      const {rows:gRows}=await client.query(
+        "UPDATE goals SET saved_kes=GREATEST(0,saved_kes+$1), is_achieved=(GREATEST(0,saved_kes+$1)>=target_kes) WHERE id=$2 RETURNING *",
+        [savedDelta, req.params.id]
+      );
+      return { goal:gRows[0], contribution:cRows[0] };
+    });
+    res.json(result);
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+goalRouter.delete("/:id/contributions/:cid", async (req,res,next)=>{
+  try {
+    const {rows}=await query(
+      "SELECT c.* FROM goal_contributions c JOIN goals g ON g.id=c.goal_id WHERE c.id=$1 AND c.goal_id=$2 AND g.user_id=$3",
+      [req.params.cid, req.params.id, req.user.id]
+    );
+    if(!rows.length) return res.status(404).json({error:"Contribution not found"});
+    const c=rows[0];
+    await withTransaction(async(client)=>{
+      if(c.from_wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(c.amount_kes),c.from_wallet_id]);
+      if(c.to_wallet_id)   await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(c.amount_kes),c.to_wallet_id]);
+      await client.query(
+        "UPDATE goals SET saved_kes=GREATEST(0,saved_kes-$1), is_achieved=(GREATEST(0,saved_kes-$1)>=target_kes) WHERE id=$2",
+        [parseFloat(c.amount_kes), req.params.id]
+      );
+      await client.query("DELETE FROM goal_contributions WHERE id=$1",[c.id]); // CASCADE removes the linked transactions
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
 });
 
 goalRouter.patch("/:id", async (req,res,next)=>{
@@ -385,14 +497,20 @@ goalRouter.delete("/:id", async (req,res,next)=>{
     const {rows}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     const g=rows[0];
+    // Reverse every real contribution back to the wallet it actually came
+    // from (mirrors how deleting a loan/investment reverses its history) —
+    // NOT a lump refund into g.wallet_id, since contributions can each have
+    // a different source account.
+    const {rows:contribs}=await query("SELECT * FROM goal_contributions WHERE goal_id=$1",[g.id]);
     await withTransaction(async(client)=>{
-      // Return saved amount to the linked wallet
-      if(g.wallet_id && parseFloat(g.saved_kes)>0) {
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[g.saved_kes,g.wallet_id,req.user.id]);
+      for (const c of contribs) {
+        if(c.from_wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(c.amount_kes),c.from_wallet_id]);
+        if(c.to_wallet_id)   await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(c.amount_kes),c.to_wallet_id]);
       }
+      await client.query("DELETE FROM goal_contributions WHERE goal_id=$1",[g.id]); // CASCADE removes linked transactions
       await client.query("DELETE FROM goals WHERE id=$1",[g.id]);
     });
-    res.json({ok:true, returned_kes: parseFloat(g.saved_kes)||0});
+    res.json({ok:true});
   } catch(e){next(e);}
 });
 

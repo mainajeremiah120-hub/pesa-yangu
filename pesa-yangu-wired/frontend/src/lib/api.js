@@ -143,7 +143,9 @@ export const goalsApi = {
   list:   ()         => unwrap(client.get("/goals")),
   create: (p)        => unwrap(client.post("/goals", p)),
   update: (id, p)    => unwrap(client.patch(`/goals/${id}`, p)),
-  fund:   (id, amt, walletId)  => unwrap(client.post(`/goals/${id}/fund`, { amount: amt, wallet_id: walletId })),
+  fund:   (id, p)     => unwrap(client.post(`/goals/${id}/fund`, p)),
+  updateContribution: (id, cid, p) => unwrap(client.patch(`/goals/${id}/contributions/${cid}`, p)),
+  removeContribution: (id, cid)    => unwrap(client.delete(`/goals/${id}/contributions/${cid}`)),
   remove: (id)       => unwrap(client.delete(`/goals/${id}`)),
 };
 

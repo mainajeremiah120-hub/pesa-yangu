@@ -519,7 +519,10 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
   const [allocAmt,  setAllocAmt]  = useState("");
   const kids = childrenByParent[node.id] || [];
   const cap = capById[node.id]||0, used = usedById[node.id]||0, remaining = cap-used;
-  const over = cap>0 && used>cap;
+  // A linked-wallet category's "used" is money allocated into its own
+  // wallet, not money actually spent — allocating more than planned isn't
+  // overspending, so it never gets the red over-budget treatment.
+  const over = cap>0 && used>cap && !node.linkedWalletId;
   const fixedKids    = [...kids.filter(k=>k.spendKind==="fixed")].sort((a,b)=>a.name.localeCompare(b.name));
   const variableKids = [...kids.filter(k=>k.spendKind==="variable")].sort((a,b)=>a.name.localeCompare(b.name));
   const otherKids     = [...kids.filter(k=>!k.spendKind)].sort((a,b)=>a.name.localeCompare(b.name));
@@ -550,7 +553,11 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
                 {node.watch && <Badge color={C.gold}>👁</Badge>}
               </div>
               <div style={{fontSize:10,color:C.textMuted}}>
-                Cap: {disp(cap)} · Used: {disp(used)} · {over ? <span style={{color:C.coral}}>Over by {disp(used-cap)}</span> : <span>Remaining: {disp(remaining)}</span>}
+                Cap: {disp(cap)} · {node.linkedWalletId?"Allocated":"Used"}: {disp(used)} · {over
+                  ? <span style={{color:C.coral}}>Over by {disp(used-cap)}</span>
+                  : (node.linkedWalletId && used>cap)
+                    ? <span style={{color:C.teal}}>✓ {disp(used-cap)} more than planned</span>
+                    : <span>Remaining: {disp(remaining)}</span>}
               </div>
             </div>
           </div>
@@ -1580,7 +1587,10 @@ export default function App() {
   }, [catsById, childrenByParent, capById]);
   const remainingById = (id) => (capById[id]||0) - (usedById[id]||0);
 
-  const overBudget = expCats.filter(c=>(capById[c.id]||0)>0 && (usedById[c.id]||0)>(capById[c.id]||0));
+  // Linked-wallet categories track allocation (money moved into their own
+  // wallet), not actual spending — exceeding that isn't overspending, so it
+  // must not count against the financial health score or trigger alerts.
+  const overBudget = expCats.filter(c=>(capById[c.id]||0)>0 && (usedById[c.id]||0)>(capById[c.id]||0) && !c.linkedWalletId);
   const watched    = expCats.filter(c=>c.watch);
   // 0 when no activity; otherwise built from real behaviour across net worth, savings, budgets & goals
   const hasActivity = txs.length > 0 || wallets.some(w=>parseFloat(w.balance||0)!==0);
@@ -3804,7 +3814,7 @@ export default function App() {
             Object.keys(catsById).forEach(resolve);
             return memo;
           })();
-          const bmOver = expCats.filter(c=>(capById[c.id]||0)>0 && (bmUsedById[c.id]||0)>(capById[c.id]||0));
+          const bmOver = expCats.filter(c=>(capById[c.id]||0)>0 && (bmUsedById[c.id]||0)>(capById[c.id]||0) && !c.linkedWalletId);
           const bmTotalIncome  = bmTxs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
           const bmTotalExpense = Math.max(0, bmTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0) - bmTxs.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount,0));
           const isCurrentBM = budgetYear===new Date().getFullYear() && budgetMonth===new Date().getMonth()+1;

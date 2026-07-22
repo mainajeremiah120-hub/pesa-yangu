@@ -1402,6 +1402,7 @@ export default function App() {
     windfallPercent: c.windfall_percent!=null ? parseFloat(c.windfall_percent) : null,
     goalTargetKes:   c.goal_target_kes!=null ? parseFloat(c.goal_target_kes) : null,
     goalDeadline:    (c.goal_deadline||"").slice(0,10) || null,
+    allocatedKes:    c.allocated_kes!=null ? parseFloat(c.allocated_kes) : 0,
   });
   const normaliseContribution = (c) => ({
     ...c,
@@ -3499,6 +3500,27 @@ export default function App() {
                         <span>↑ {disp(wIn)}</span><span>↓ {disp(wOut)}</span>
                       </div>
                       <Sparkline values={[bal*0.82,bal*0.87,bal*0.85,bal*0.92,bal*0.97,bal]} color={w.color} width={170} height={26}/>
+                      {(()=>{
+                        const linked = expCats.filter(c=>c.linkedWalletId===w.id);
+                        if(!linked.length) return null;
+                        const sumAllocated = linked.reduce((s,c)=>s+(c.allocatedKes||0),0);
+                        const unallocated = bal - sumAllocated;
+                        return (
+                          <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`}} onClick={e=>e.stopPropagation()}>
+                            <div style={{fontSize:10,color:C.textMuted,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Allocated for</div>
+                            {linked.map(c=>(
+                              <div key={c.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                                <span style={{color:C.textMuted}}>{c.icon} {c.name}</span>
+                                <span style={{fontWeight:600,color:C.textPrimary}}>{disp(c.allocatedKes)}</span>
+                              </div>
+                            ))}
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:4,paddingTop:4,borderTop:`1px solid ${C.navyLight}`}}>
+                              <span style={{color:C.textMuted}}>{unallocated>=0?"Unallocated":"Over-allocated"}</span>
+                              <span style={{fontWeight:700,color:unallocated>=0?C.teal:C.coral}}>{disp(Math.abs(unallocated))}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </Card>;
                   })}
                 </div>

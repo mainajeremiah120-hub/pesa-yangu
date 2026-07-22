@@ -45,7 +45,23 @@ const uploadStatement = multer({
 const categoryRouter = express.Router();
 
 categoryRouter.get("/", async (req,res,next)=>{
-  try { const {rows}=await query("SELECT * FROM categories WHERE user_id=$1 ORDER BY type,sort_order",[req.user.id]); res.json({categories:rows}); } catch(e){next(e);}
+  try {
+    const {rows}=await query("SELECT * FROM categories WHERE user_id=$1 ORDER BY type,sort_order",[req.user.id]);
+    // All-time allocated total per linked-wallet category — several categories
+    // can share one wallet (a wallet holding money for a few different
+    // purposes at once), so this is what lets the wallet-side breakdown add
+    // up correctly regardless of how far back a category's history goes.
+    const linkedIds = rows.filter(c=>c.linked_wallet_id).map(c=>c.id);
+    if (linkedIds.length) {
+      const {rows:sums}=await query(
+        "SELECT category_id, COALESCE(SUM(amount_kes),0) AS allocated FROM transactions WHERE type='transfer_out' AND category_id = ANY($1) GROUP BY category_id",
+        [linkedIds]
+      );
+      const byId={}; sums.forEach(s=>{ byId[s.category_id]=parseFloat(s.allocated); });
+      rows.forEach(c=>{ if(c.linked_wallet_id) c.allocated_kes = byId[c.id]||0; });
+    }
+    res.json({categories:rows});
+  } catch(e){next(e);}
 });
 
 // Walks parent_id ancestors of `startId` and returns true if `targetId` is among them

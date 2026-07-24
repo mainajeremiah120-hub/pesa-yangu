@@ -4670,7 +4670,7 @@ export default function App() {
             ...fExpCat,
             kind,
             allocationType: kind==="spending" ? "fixed" : "percent",
-            linkedWalletId: kind==="primary" ? fExpCat.linkedWalletId : null,
+            linkedWalletId: (kind==="primary"||kind==="parent") ? fExpCat.linkedWalletId : null,
           });
           return <>
             <div style={{display:"flex",gap:8,marginBottom:14}}>
@@ -4683,9 +4683,10 @@ export default function App() {
               {catKind==="parent" && "Groups sub-categories together (e.g. Family & House) — its cap is a % of its own parent."}
               {catKind==="spending" && "Where you actually record transactions (e.g. Groceries, Rent) — a flat cap."}
             </div>
-            {catKind==="primary" && (
+            {(catKind==="primary"||catKind==="parent") && (
               <Field label="Linked Account (optional)" value={fExpCat.linkedWalletId||""} onChange={v=>setFExpCat({...fExpCat,linkedWalletId:v||null})}
-                options={[{value:"",label:"— None —"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
+                options={[{value:"",label:"— None —"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}
+                note="Several categories can share the same account — its balance breakdown will show each one."/>
             )}
             {catKind==="primary" && (
               <Field label="Windfall Share (%) — optional" type="number" value={fExpCat.windfallPercent} onChange={v=>setFExpCat({...fExpCat,windfallPercent:v})}

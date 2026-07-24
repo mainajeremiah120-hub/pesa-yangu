@@ -1944,6 +1944,11 @@ export default function App() {
         if(w.id===cat.linkedWalletId) return{...w,balance:parseFloat(w.balance)+amtKES};
         return w;
       }));
+      // Keeps the Accounts-tab allocation breakdown (which reads
+      // category.allocatedKes, fetched once at load) in sync immediately —
+      // otherwise it sits stale at its old total until the next full reload,
+      // even though the Budgets tab's own Cap/Used already reflects it live.
+      setExpCats(p=>p.map(c=>c.id===categoryId?{...c,allocatedKes:(c.allocatedKes||0)+amtKES}:c));
       const { transactions: fresh } = await txApi.list({ limit: 10 });
       if (fresh?.length) {
         const newTxs = fresh
@@ -1972,6 +1977,13 @@ export default function App() {
         if (w.id===fWindfall.fromWallet) delta -= allocations.reduce((s,a)=>s+a.amount_kes,0);
         delta += allocations.filter(a=>a.wallet_id===w.id).reduce((s,a)=>s+a.amount_kes,0);
         return delta ? {...w, balance: parseFloat(w.balance) + delta} : w;
+      }));
+      // Same reasoning as allocateToCategory — bump each funded category's
+      // allocatedKes locally so the Accounts breakdown reflects the split
+      // immediately instead of waiting for a full reload.
+      setExpCats(p=>p.map(c=>{
+        const a = allocations.find(x=>x.category_id===c.id);
+        return a ? {...c, allocatedKes:(c.allocatedKes||0)+a.amount_kes} : c;
       }));
       const { transactions: fresh } = await txApi.list({ limit: candidates.length*2 + 10 });
       if (fresh?.length) {

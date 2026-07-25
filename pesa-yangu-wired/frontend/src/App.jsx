@@ -1790,9 +1790,12 @@ export default function App() {
   const ICONS = ["💰","💳","🏠","🚗","⚡","🎬","💊","🍔","📚","🎓","💼","💻","📈","🎯","💵","💹","✈️","🎁","💎","👶","🌴","🔧","⚕️","🎵","🐾","📱","🛒","🏋️","🎮","🌟"];
   const CAT_COLORS = [
     C.blue,C.teal,C.gold,C.coral,C.purple,C.green,C.orange,
+    // Hardcoded hex values below — kept distinct from C.purple/green/orange
+    // above (which resolve to real hex codes per theme) so no entry repeats
+    // and every swatch gets a stable, unique React key.
     "#1ABC9C","#E74C3C","#3498DB","#8E44AD","#27AE60",
     "#F39C12","#D35400","#C0392B","#16A085","#2980B9",
-    "#2ECC71","#F1C40F","#E67E22","#9B59B6","#34495E","#7F8C8D",
+    "#F1C40F","#34495E","#7F8C8D",
     "#EC407A","#AB47BC","#5C6BC0","#26A69A","#66BB6A","#FFCA28",
     "#FF7043","#8D6E63","#78909C","#EF5350","#29B6F6","#9CCC65",
   ];

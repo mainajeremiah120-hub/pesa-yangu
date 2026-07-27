@@ -2329,6 +2329,7 @@ export default function App() {
   };
 
   const [allocateWallet, setAllocateWallet] = useState(null);
+  const [expandedAllocWalletId, setExpandedAllocWalletId] = useState(null);
   const [newAllocCat,    setNewAllocCat]    = useState({ name:"", parentId:"" });
   // Draft amounts currently being typed in the Allocate modal, keyed by
   // category id — lets every row's "available" hint react live to what's
@@ -3540,6 +3541,7 @@ export default function App() {
                         if(!linked.length) return null;
                         const sumAllocated = linked.reduce((s,c)=>s+(c.accountAllocatedKes||0),0);
                         const unallocated = bal - sumAllocated;
+                        const isExpanded = expandedAllocWalletId===w.id;
                         const renderRow = (c, depth) => (
                           <div key={c.id}>
                             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3,marginLeft:depth*14}}>
@@ -3551,12 +3553,18 @@ export default function App() {
                         );
                         return (
                           <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`}} onClick={e=>e.stopPropagation()}>
-                            <div style={{fontSize:10,color:C.textMuted,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Allocated for</div>
-                            {linked.map(c=>renderRow(c, 0))}
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:4,paddingTop:4,borderTop:`1px solid ${C.navyLight}`}}>
-                              <span style={{color:C.textMuted}}>{unallocated>=0?"Unallocated":"Over-allocated"}</span>
-                              <span style={{fontWeight:700,color:unallocated>=0?C.teal:C.coral}}>{disp(Math.abs(unallocated))}</span>
+                            <div style={{display:"flex",gap:8}}>
+                              <button onClick={()=>setExpandedAllocWalletId(isExpanded?null:w.id)}
+                                style={{flex:1,display:"flex",justifyContent:"space-between",alignItems:"center",background:isExpanded?C.purple+"22":C.navyLight,border:`1px solid ${isExpanded?C.purple:"transparent"}`,borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:11}}>
+                                <span style={{color:isExpanded?C.purple:C.textMuted}}>Allocated {isExpanded?"▾":"▸"}</span>
+                                <span style={{fontWeight:700,color:C.textPrimary}}>{disp(sumAllocated)}</span>
+                              </button>
+                              <div style={{flex:1,display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",fontSize:11}}>
+                                <span style={{color:C.textMuted}}>{unallocated>=0?"Unallocated":"Over"}</span>
+                                <span style={{fontWeight:700,color:unallocated>=0?C.teal:C.coral}}>{disp(Math.abs(unallocated))}</span>
+                              </div>
                             </div>
+                            {isExpanded && <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`}}>{linked.map(c=>renderRow(c, 0))}</div>}
                           </div>
                         );
                       })()}

@@ -1320,6 +1320,11 @@ export default function App() {
     .catch(err => {
       console.error("Data load error:", err);
       if (!cached?.data) setDataError("Could not load your data. Please refresh.");
+      // Cached data was already painted, so the user is looking at a normal
+      // screen with no visible error — without this, a failed refresh (e.g.
+      // a database timeout) would look identical to "you really have no
+      // data", which is exactly the kind of confusion that led here.
+      else showToast("Couldn't refresh — showing saved data from last time. Pull to refresh or reload.", C.coral, 5000);
     })
     .finally(() => setDataLoading(false));
   }, [user]); // eslint-disable-line

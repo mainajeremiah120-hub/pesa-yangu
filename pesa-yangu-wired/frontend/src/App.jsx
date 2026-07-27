@@ -512,11 +512,9 @@ const Divider = ({ label }) => {
 // Cap (top-down from Gross Income), actual Used (bottom-up from transactions),
 // and Remaining, then recurses into its children — grouping them into Fixed /
 // Variable sections when the children carry that tag.
-const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onAllocate, onViewHistory }) => {
+const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onViewHistory }) => {
   const C = useC();
   const [expanded, setExpanded] = useState(true);
-  const [allocFrom, setAllocFrom] = useState("");
-  const [allocAmt,  setAllocAmt]  = useState("");
   const kids = childrenByParent[node.id] || [];
   const cap = capById[node.id]||0, used = usedById[node.id]||0, remaining = cap-used;
   // A linked-wallet category's "used" is money allocated into its own
@@ -530,7 +528,7 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
   const linkedWallet = node.linkedWalletId ? wallets.find(w=>w.id===node.linkedWalletId) : null;
 
   const renderKids = (list) => list.map(k=>(
-    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onAllocate={onAllocate} onViewHistory={onViewHistory}/>
+    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onViewHistory={onViewHistory}/>
   ));
 
   return (
@@ -582,16 +580,9 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
             </div>
           );
         })()}
-        {linkedWallet && (
-          <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={allocFrom} onChange={e=>setAllocFrom(e.target.value)} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:11,cursor:"pointer",flex:1,minWidth:140}}>
-              <option value="">— Source account —</option>
-              {wallets.filter(w=>w.id!==node.linkedWalletId).map(w=><option key={w.id} value={w.id}>{w.icon} {w.name} · {disp(parseFloat(w.balance||0))}</option>)}
-            </select>
-            <input type="number" value={allocAmt} onChange={e=>setAllocAmt(e.target.value)} placeholder="Amount"
-              style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:11,width:100}}/>
-            <button onClick={()=>{ onAllocate(node.id, allocFrom, allocAmt); setAllocAmt(""); }} disabled={!allocFrom||!parseFloat(allocAmt)}
-              style={{background:C.purple,border:"none",borderRadius:8,color:"#fff",padding:"7px 14px",cursor:allocFrom&&parseFloat(allocAmt)?"pointer":"not-allowed",fontSize:11,fontWeight:600,opacity:allocFrom&&parseFloat(allocAmt)?1:0.5}}>Allocate</button>
+        {linkedWallet && node.accountAllocatedKes>0 && (
+          <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`,fontSize:10,color:C.textMuted}}>
+            💰 {disp(node.accountAllocatedKes)} set aside from {linkedWallet.icon} {linkedWallet.name} — manage allocations from the Accounts tab.
           </div>
         )}
       </Card>
@@ -607,6 +598,37 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
     </div>
   );
 };
+
+// One row in the Accounts-tab allocation editor — a category plus however
+// much of its pool (account balance, or its parent's own allocation) is
+// set aside for it. Own component so each row's input is independent.
+function AllocateRow({ c, depth, pool, siblingsSum, disp, onSave, childrenByParent }) {
+  const C = useC();
+  const [amt, setAmt] = useState(String(c.accountAllocatedKes || 0));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setAmt(String(c.accountAllocatedKes || 0)); }, [c.accountAllocatedKes]);
+  const available = Math.max(0, pool - siblingsSum);
+  const dirty = parseFloat(amt || 0) !== (c.accountAllocatedKes || 0);
+  const save = async () => {
+    const v = parseFloat(amt) || 0;
+    setSaving(true);
+    await onSave(c.id, v);
+    setSaving(false);
+  };
+  return (
+    <div style={{marginLeft: depth*16}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+        <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
+        <span style={{fontSize:12,color:C.textPrimary,flex:1,minWidth:80}}>{c.name}</span>
+        <span style={{fontSize:10,color:C.textFaint}}>up to {disp(available + (c.accountAllocatedKes||0))} available</span>
+        <input type="number" value={amt} onChange={e=>setAmt(e.target.value)}
+          style={{width:90,background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11}}/>
+        {dirty && <button onClick={save} disabled={saving}
+          style={{background:C.purple,border:"none",borderRadius:8,color:"#fff",padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:600,opacity:saving?0.6:1}}>{saving?"…":"Save"}</button>}
+      </div>
+    </div>
+  );
+}
 
 const FileUpload = ({ label, accept, onFile, files=[] }) => {
   const C = useC();
@@ -1402,7 +1424,7 @@ export default function App() {
     windfallPercent: c.windfall_percent!=null ? parseFloat(c.windfall_percent) : null,
     goalTargetKes:   c.goal_target_kes!=null ? parseFloat(c.goal_target_kes) : null,
     goalDeadline:    (c.goal_deadline||"").slice(0,10) || null,
-    allocatedKes:    c.allocated_kes!=null ? parseFloat(c.allocated_kes) : 0,
+    accountAllocatedKes: c.account_allocated_kes!=null ? parseFloat(c.account_allocated_kes) : 0,
   });
   const normaliseContribution = (c) => ({
     ...c,
@@ -1491,15 +1513,6 @@ export default function App() {
     return m;
   }, [txs, expCats]);
 
-  // Money moved into a Primary category's linked wallet this month (see
-  // allocateToCategory) — this is how "Used" is tracked for those categories,
-  // since real expense transactions are never posted against them.
-  const transferredByCat = useMemo(()=>{
-    const m={};
-    txs.filter(t=>t.type==="transfer_out" && isCurrentMonth(t)).forEach(t=>{ const key=t.category||t.category_id; if(key) m[key]=(m[key]||0)+t.amount; });
-    return m;
-  }, [txs]);
-
   const earnByCat = useMemo(()=>{
     const m={};
     incCats.forEach(c=>m[c.id]=0);
@@ -1564,14 +1577,17 @@ export default function App() {
     const resolve = (id) => {
       if (memo[id] != null) return memo[id];
       const kids = childrenByParent[id] || [];
+      // A category linked directly to an account is a pure allocation
+      // container (no real spending posts against it) — its "Used" is the
+      // notional account_allocated_kes label, not a transaction sum.
       const val = kids.length ? kids.reduce((s,k) => s + resolve(k.id), 0)
-        : (catsById[id]?.linkedWalletId ? (transferredByCat[id] || 0) : (spendByCat[id] || 0));
+        : (catsById[id]?.linkedWalletId ? (catsById[id]?.accountAllocatedKes || 0) : (spendByCat[id] || 0));
       memo[id] = val;
       return val;
     };
     Object.keys(catsById).forEach(resolve);
     return memo;
-  }, [catsById, childrenByParent, spendByCat, transferredByCat]);
+  }, [catsById, childrenByParent, spendByCat]);
   // Sum of children's Cap — advisory only ("you've earmarked X against a Y allocation"),
   // never the enforced Cap itself (see capById).
   const earmarkedById = useMemo(() => {
@@ -1933,34 +1949,17 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Transfer failed", C.coral); }
   };
 
-  // Moves money into a Primary category's linked wallet — a real transfer
-  // (tagged with the category so its "Used" can be tracked), not an expense.
-  const allocateToCategory = async (categoryId, sourceWalletId, amount) => {
-    const amt = parseFloat(amount); if(!amt || !sourceWalletId) return;
-    const cat = expCats.find(c=>c.id===categoryId); if(!cat?.linkedWalletId) return;
-    const fromW = wallets.find(w=>w.id===sourceWalletId);
-    const amtKES = toKES(amt, fromW?.currency||"KES", currencies);
+  // Sets how much of an account's balance (or, for a sub-category, how much
+  // of its parent's own allocation) is notionally earmarked for a category.
+  // Pure label — no money moves, nothing is recorded in Records. The server
+  // enforces that this can never exceed its pool (account balance for a
+  // root-linked category, parent's allocation for a sub-category).
+  const setAccountAllocation = async (categoryId, amountKES) => {
     try {
-      await walletsApi.transfer({ from_wallet_id:sourceWalletId, to_wallet_id:cat.linkedWalletId, amount_kes:amtKES, note:`Allocation: ${cat.name}`, category_id:categoryId });
-      setWallets(p=>p.map(w=>{
-        if(w.id===sourceWalletId)   return{...w,balance:parseFloat(w.balance)-amtKES};
-        if(w.id===cat.linkedWalletId) return{...w,balance:parseFloat(w.balance)+amtKES};
-        return w;
-      }));
-      // Keeps the Accounts-tab allocation breakdown (which reads
-      // category.allocatedKes, fetched once at load) in sync immediately —
-      // otherwise it sits stale at its old total until the next full reload,
-      // even though the Budgets tab's own Cap/Used already reflects it live.
-      setExpCats(p=>p.map(c=>c.id===categoryId?{...c,allocatedKes:(c.allocatedKes||0)+amtKES}:c));
-      const { transactions: fresh } = await txApi.list({ limit: 10 });
-      if (fresh?.length) {
-        const newTxs = fresh
-          .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
-          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
-        if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
-      }
-      showToast(`Allocated to ${cat.name}`);
-    } catch(err) { showToast(err?.response?.data?.error||"Allocation failed", C.coral); }
+      const { category } = await catsApi.allocate(categoryId, amountKES);
+      setExpCats(p=>p.map(c=>c.id===categoryId?{...c,accountAllocatedKes:parseFloat(category.account_allocated_kes)}:c));
+      return true;
+    } catch(err) { showToast(err?.response?.data?.error||"Allocation failed", C.coral); return false; }
   };
 
   // One-off income (bonus, gift) split across every top-level Primary category
@@ -1980,13 +1979,6 @@ export default function App() {
         if (w.id===fWindfall.fromWallet) delta -= allocations.reduce((s,a)=>s+a.amount_kes,0);
         delta += allocations.filter(a=>a.wallet_id===w.id).reduce((s,a)=>s+a.amount_kes,0);
         return delta ? {...w, balance: parseFloat(w.balance) + delta} : w;
-      }));
-      // Same reasoning as allocateToCategory — bump each funded category's
-      // allocatedKes locally so the Accounts breakdown reflects the split
-      // immediately instead of waiting for a full reload.
-      setExpCats(p=>p.map(c=>{
-        const a = allocations.find(x=>x.category_id===c.id);
-        return a ? {...c, allocatedKes:(c.allocatedKes||0)+a.amount_kes} : c;
       }));
       const { transactions: fresh } = await txApi.list({ limit: candidates.length*2 + 10 });
       if (fresh?.length) {
@@ -2329,6 +2321,24 @@ export default function App() {
       time: (() => { const d = tx.tx_date ? new Date(tx.tx_date) : new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); })(),
     });
     openM("tx");
+  };
+
+  const [allocateWallet, setAllocateWallet] = useState(null);
+  const [newAllocCat,    setNewAllocCat]    = useState({ name:"", parentId:"" });
+  const openAccountAllocate = (w) => { setAllocateWallet(w); setNewAllocCat({name:"",parentId:""}); openM("accountAllocate"); };
+  const addAllocCategory = async () => {
+    if(!newAllocCat.name.trim() || !allocateWallet) return;
+    try {
+      const { category } = await catsApi.create({
+        name: newAllocCat.name.trim(), type:"expense", icon:"🏷️", color:C.purple,
+        allocation_type:"percent", percent_of_parent:0,
+        parent_id: newAllocCat.parentId || undefined,
+        linked_wallet_id: newAllocCat.parentId ? undefined : allocateWallet.id,
+      });
+      setExpCats(p=>[...p, normaliseCategory(category)]);
+      setNewAllocCat({name:"",parentId:""});
+      showToast("Category added");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to add category", C.coral); }
   };
 
   const openEditWallet = (w) => {
@@ -3505,7 +3515,8 @@ export default function App() {
                           <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:w.color}}>{fmtC(bal,w.currency,currencies)}</div>
                           {baseCurrency!==w.currency&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>≈ {disp(bal)}</div>}
                           {w.opening_balance!=null&&<div style={{color:C.textFaint,fontSize:10,marginTop:2}}>Opening: {fmtC(parseFloat(w.opening_balance||0),w.currency,currencies)}</div>}
-                          <div style={{display:"flex",gap:5,marginTop:6}}>
+                          <div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                            <button onClick={e=>{e.stopPropagation();openAccountAllocate(w);}} style={{background:"none",border:`1px solid ${C.purple}44`,borderRadius:6,color:C.purple,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🎯 Allocate</button>
                             <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
                             <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                           </div>
@@ -3518,17 +3529,21 @@ export default function App() {
                       {(()=>{
                         const linked = expCats.filter(c=>c.linkedWalletId===w.id);
                         if(!linked.length) return null;
-                        const sumAllocated = linked.reduce((s,c)=>s+(c.allocatedKes||0),0);
+                        const sumAllocated = linked.reduce((s,c)=>s+(c.accountAllocatedKes||0),0);
                         const unallocated = bal - sumAllocated;
+                        const renderRow = (c, depth) => (
+                          <div key={c.id}>
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3,marginLeft:depth*14}}>
+                              <span style={{color:C.textMuted}}>{c.icon} {c.name}</span>
+                              <span style={{fontWeight:600,color:C.textPrimary}}>{disp(c.accountAllocatedKes||0)}</span>
+                            </div>
+                            {(childrenByParent[c.id]||[]).map(k=>renderRow(k, depth+1))}
+                          </div>
+                        );
                         return (
                           <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.navyLight}`}} onClick={e=>e.stopPropagation()}>
                             <div style={{fontSize:10,color:C.textMuted,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Allocated for</div>
-                            {linked.map(c=>(
-                              <div key={c.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
-                                <span style={{color:C.textMuted}}>{c.icon} {c.name}</span>
-                                <span style={{fontWeight:600,color:C.textPrimary}}>{disp(c.allocatedKes)}</span>
-                              </div>
-                            ))}
+                            {linked.map(c=>renderRow(c, 0))}
                             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:4,paddingTop:4,borderTop:`1px solid ${C.navyLight}`}}>
                               <span style={{color:C.textMuted}}>{unallocated>=0?"Unallocated":"Over-allocated"}</span>
                               <span style={{fontWeight:700,color:unallocated>=0?C.teal:C.coral}}>{disp(Math.abs(unallocated))}</span>
@@ -3559,6 +3574,7 @@ export default function App() {
                         {w.opening_balance!=null&&<div style={{color:C.textFaint,fontSize:10,marginTop:1}}>Opening: {fmtC(parseFloat(w.opening_balance||0),w.currency,currencies)}</div>}
                       </div>
                       <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                        <button onClick={e=>{e.stopPropagation();openAccountAllocate(w);}} style={{background:"none",border:`1px solid ${C.purple}44`,borderRadius:6,color:C.purple,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🎯</button>
                         <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️</button>
                         <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑</button>
                       </div>
@@ -3834,8 +3850,6 @@ export default function App() {
           bmTxs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) bmSpend[key]=Math.max(0,(bmSpend[key]||0)-t.amount); });
           const bmEarn = {}; incCats.forEach(c=>bmEarn[c.id]=0);
           bmTxs.filter(t=>t.type==="income").forEach(t=>{ const key=t.category||t.category_id; bmEarn[key]=(bmEarn[key]||0)+t.amount; });
-          const bmTransferred = {};
-          bmTxs.filter(t=>t.type==="transfer_out").forEach(t=>{ const key=t.category||t.category_id; if(key) bmTransferred[key]=(bmTransferred[key]||0)+t.amount; });
           // Bottom-up actual spend for the SELECTED month (mirrors usedById, but scoped to bmSpend
           // instead of the always-current-month spendByCat, so month navigation works correctly here).
           const bmUsedById = (() => {
@@ -3844,7 +3858,7 @@ export default function App() {
               if (memo[id] != null) return memo[id];
               const kids = childrenByParent[id] || [];
               const val = kids.length ? kids.reduce((s,k)=>s+resolve(k.id),0)
-                : (catsById[id]?.linkedWalletId ? (bmTransferred[id]||0) : (bmSpend[id]||0));
+                : (catsById[id]?.linkedWalletId ? (catsById[id]?.accountAllocatedKes||0) : (bmSpend[id]||0));
               memo[id] = val;
               return val;
             };
@@ -3942,7 +3956,7 @@ export default function App() {
                   onEdit={openEditExpCat}
                   onDelete={(node)=>askConfirm("Delete Category",`Delete category "${node.name}"? Existing transactions won't be affected.`,()=>deleteCategory(node.id,"expense"))}
                   onAddChild={(parentId)=>{setFExpCat({...blankExpCat,parentId});openM("expCat");}}
-                  wallets={wallets} onAllocate={allocateToCategory}
+                  wallets={wallets}
                   onViewHistory={(node)=>setCatHistory({cat:node,type:"expense"})}/>
               ))}
             </>}
@@ -4477,6 +4491,45 @@ export default function App() {
         <Field label="Amount" type="number" value={fXfer.amount} onChange={v=>setFXfer({...fXfer,amount:v})} placeholder="0.00" note="In source account's currency"/>
         <Field label="Note (optional)" value={fXfer.note} onChange={v=>setFXfer({...fXfer,note:v})} placeholder="e.g. Moving to savings"/>
         <Btn onClick={doTransfer} style={{width:"100%",padding:13,fontSize:14}}>Transfer Funds</Btn>
+      </Modal>
+
+      {/* Allocate an account's balance across its linked categories */}
+      <Modal open={isOpen("accountAllocate")} onClose={()=>closeM("accountAllocate")} title={allocateWallet?`🎯 Allocate ${allocateWallet.icon} ${allocateWallet.name}`:"🎯 Allocate"}>
+        {allocateWallet && (()=>{
+          const bal = parseFloat(allocateWallet.balance||0);
+          const roots = expCats.filter(c=>c.linkedWalletId===allocateWallet.id);
+          const rootsSum = roots.reduce((s,c)=>s+(c.accountAllocatedKes||0),0);
+          const renderTree = (list, pool) => list.map(c=>{
+            const siblingsSum = list.filter(x=>x.id!==c.id).reduce((s,x)=>s+(x.accountAllocatedKes||0),0);
+            const kids = childrenByParent[c.id]||[];
+            return (
+              <div key={c.id}>
+                <AllocateRow c={c} depth={list===roots?0:1} pool={pool} siblingsSum={siblingsSum} disp={disp} onSave={setAccountAllocation} childrenByParent={childrenByParent}/>
+                {kids.length>0 && renderTree(kids, c.accountAllocatedKes||0)}
+              </div>
+            );
+          });
+          return <>
+            <div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",fontSize:12}}>
+              <span style={{color:C.textMuted}}>Balance: <strong style={{color:C.textPrimary}}>{disp(bal)}</strong></span>
+              <span style={{color:C.textMuted}}>{rootsSum>bal?"Over-allocated":"Unallocated"}: <strong style={{color:rootsSum>bal?C.coral:C.teal}}>{disp(Math.abs(bal-rootsSum))}</strong></span>
+            </div>
+            {roots.length===0
+              ? <div style={{textAlign:"center",color:C.textFaint,fontSize:12,padding:"12px 0"}}>No categories linked to this account yet. Add one below, or link an existing category to it from Budgets.</div>
+              : renderTree(roots, bal)}
+            <Divider label="Add a category"/>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <input value={newAllocCat.name} onChange={e=>setNewAllocCat({...newAllocCat,name:e.target.value})} placeholder="e.g. Housing"
+                style={{flex:1,minWidth:120,background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"8px 10px",fontSize:12}}/>
+              <select value={newAllocCat.parentId} onChange={e=>setNewAllocCat({...newAllocCat,parentId:e.target.value})}
+                style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"8px 10px",fontSize:12,cursor:"pointer"}}>
+                <option value="">— Top level (this account) —</option>
+                {roots.map(c=><option key={c.id} value={c.id}>Under {c.name}</option>)}
+              </select>
+              <Btn onClick={addAllocCategory} small disabled={!newAllocCat.name.trim()}>+ Add</Btn>
+            </div>
+          </>;
+        })()}
       </Modal>
 
       {/* Record Windfall */}

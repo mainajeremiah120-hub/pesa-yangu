@@ -46,22 +46,68 @@ const categoryRouter = express.Router();
 
 categoryRouter.get("/", async (req,res,next)=>{
   try {
+    // account_allocated_kes is a plain stored column now (not computed from
+    // transfer history) — SELECT * already returns it, no extra query needed.
     const {rows}=await query("SELECT * FROM categories WHERE user_id=$1 ORDER BY type,sort_order",[req.user.id]);
-    // All-time allocated total per linked-wallet category — several categories
-    // can share one wallet (a wallet holding money for a few different
-    // purposes at once), so this is what lets the wallet-side breakdown add
-    // up correctly regardless of how far back a category's history goes.
-    const linkedIds = rows.filter(c=>c.linked_wallet_id).map(c=>c.id);
-    if (linkedIds.length) {
-      const {rows:sums}=await query(
-        "SELECT category_id, COALESCE(SUM(amount_kes),0) AS allocated FROM transactions WHERE type='transfer_out' AND category_id = ANY($1) GROUP BY category_id",
-        [linkedIds]
-      );
-      const byId={}; sums.forEach(s=>{ byId[s.category_id]=parseFloat(s.allocated); });
-      rows.forEach(c=>{ if(c.linked_wallet_id) c.allocated_kes = byId[c.id]||0; });
-    }
     res.json({categories:rows});
   } catch(e){next(e);}
+});
+
+// PATCH /categories/:id/allocate — set how much of an account's balance (or,
+// for a sub-category, how much of its parent's own allocation) is notionally
+// earmarked for this category. Pure label — no money moves, no transaction
+// is created. Enforces that a category's allocation never exceeds its pool:
+// a top-level linked category's pool is its account's real balance; a
+// sub-category's pool is its parent's account_allocated_kes.
+categoryRouter.patch("/:id/allocate", async (req,res,next)=>{
+  try {
+    const { amount_kes } = z.object({ amount_kes: z.number().min(0).max(1e12) }).parse(req.body);
+    const {rows:cr} = await query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id, req.user.id]);
+    if(!cr.length) return res.status(404).json({error:"Category not found"});
+    const cat = cr[0];
+
+    let pool, siblingsSum;
+    if (cat.linked_wallet_id) {
+      const {rows:wr} = await query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2",[cat.linked_wallet_id, req.user.id]);
+      if(!wr.length) return res.status(400).json({error:"Linked account not found"});
+      pool = parseFloat(wr[0].balance);
+      const {rows:sibs} = await query(
+        "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND linked_wallet_id=$2 AND id<>$3",
+        [req.user.id, cat.linked_wallet_id, cat.id]
+      );
+      siblingsSum = parseFloat(sibs[0].s);
+    } else if (cat.parent_id) {
+      const {rows:pr} = await query("SELECT account_allocated_kes FROM categories WHERE id=$1 AND user_id=$2",[cat.parent_id, req.user.id]);
+      if(!pr.length) return res.status(400).json({error:"Parent category not found"});
+      pool = parseFloat(pr[0].account_allocated_kes);
+      const {rows:sibs} = await query(
+        "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2 AND id<>$3",
+        [req.user.id, cat.parent_id, cat.id]
+      );
+      siblingsSum = parseFloat(sibs[0].s);
+    } else {
+      return res.status(400).json({error:"This category isn't linked to an account, directly or through a parent"});
+    }
+
+    if (siblingsSum + amount_kes > pool + 0.01) {
+      return res.status(400).json({error:`Only ${(pool - siblingsSum).toFixed(2)} available to allocate here`});
+    }
+
+    // Can't shrink below what's already committed to this category's own
+    // children — e.g. Housing can't drop to 25 while Nanny Wages + Food
+    // Ingredients already add up to 30 of it.
+    const {rows:childSum} = await query(
+      "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2",
+      [req.user.id, cat.id]
+    );
+    const childrenTotal = parseFloat(childSum[0].s);
+    if (childrenTotal > amount_kes + 0.01) {
+      return res.status(400).json({error:`Its sub-categories already use ${childrenTotal.toFixed(2)} — reduce or reassign them first`});
+    }
+
+    const {rows} = await query("UPDATE categories SET account_allocated_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[amount_kes, cat.id, req.user.id]);
+    res.json({category:rows[0]});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 // Walks parent_id ancestors of `startId` and returns true if `targetId` is among them

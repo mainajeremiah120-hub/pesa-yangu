@@ -117,10 +117,11 @@ export const txApi = {
 
 // ── Categories ────────────────────────────────────────────────────────────────
 export const catsApi = {
-  list:   ()         => unwrap(client.get("/categories")),
-  create: (p)        => unwrap(client.post("/categories", p)),
-  update: (id, p)    => unwrap(client.patch(`/categories/${id}`, p)),
-  remove: (id)       => unwrap(client.delete(`/categories/${id}`)),
+  list:     ()               => unwrap(client.get("/categories")),
+  create:   (p)               => unwrap(client.post("/categories", p)),
+  update:   (id, p)          => unwrap(client.patch(`/categories/${id}`, p)),
+  remove:   (id)              => unwrap(client.delete(`/categories/${id}`)),
+  allocate: (id, amount_kes) => unwrap(client.patch(`/categories/${id}/allocate`, { amount_kes })),
 };
 
 // ── Budgets ───────────────────────────────────────────────────────────────────

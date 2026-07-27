@@ -601,30 +601,35 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
 
 // One row in the Accounts-tab allocation editor — a category plus however
 // much of its pool (account balance, or its parent's own allocation) is
-// set aside for it. Own component so each row's input is independent.
-function AllocateRow({ c, depth, pool, siblingsSum, disp, onSave, childrenByParent }) {
+// set aside for it. Fully controlled from the modal above (value/onChange)
+// so every row's "available" hint can react live to what's typed in its
+// siblings, not just what's already saved. Auto-saves on blur or after a
+// short pause in typing — no explicit Save button.
+function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCommit }) {
   const C = useC();
-  const [amt, setAmt] = useState(String(c.accountAllocatedKes || 0));
   const [saving, setSaving] = useState(false);
-  useEffect(() => { setAmt(String(c.accountAllocatedKes || 0)); }, [c.accountAllocatedKes]);
+  const timerRef = useRef(null);
   const available = Math.max(0, pool - siblingsSum);
-  const dirty = parseFloat(amt || 0) !== (c.accountAllocatedKes || 0);
-  const save = async () => {
-    const v = parseFloat(amt) || 0;
+  const commit = async () => {
+    clearTimeout(timerRef.current);
     setSaving(true);
-    await onSave(c.id, v);
+    await onCommit(c.id, parseFloat(value) || 0);
     setSaving(false);
   };
+  const handleChange = (v) => {
+    onChange(c.id, v);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(commit, 800);
+  };
+  useEffect(() => () => clearTimeout(timerRef.current), []);
   return (
     <div style={{marginLeft: depth*16}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
         <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
         <span style={{fontSize:12,color:C.textPrimary,flex:1,minWidth:80}}>{c.name}</span>
-        <span style={{fontSize:10,color:C.textFaint}}>up to {disp(available + (c.accountAllocatedKes||0))} available</span>
-        <input type="number" value={amt} onChange={e=>setAmt(e.target.value)}
-          style={{width:90,background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11}}/>
-        {dirty && <button onClick={save} disabled={saving}
-          style={{background:C.purple,border:"none",borderRadius:8,color:"#fff",padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:600,opacity:saving?0.6:1}}>{saving?"…":"Save"}</button>}
+        <span style={{fontSize:10,color:C.textFaint}}>up to {disp(available)} available</span>
+        <input type="number" value={value} onChange={e=>handleChange(e.target.value)} onBlur={commit}
+          style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
       </div>
     </div>
   );
@@ -2325,7 +2330,11 @@ export default function App() {
 
   const [allocateWallet, setAllocateWallet] = useState(null);
   const [newAllocCat,    setNewAllocCat]    = useState({ name:"", parentId:"" });
-  const openAccountAllocate = (w) => { setAllocateWallet(w); setNewAllocCat({name:"",parentId:""}); openM("accountAllocate"); };
+  // Draft amounts currently being typed in the Allocate modal, keyed by
+  // category id — lets every row's "available" hint react live to what's
+  // typed in sibling rows, not just what's already saved to the server.
+  const [allocDrafts, setAllocDrafts] = useState({});
+  const openAccountAllocate = (w) => { setAllocateWallet(w); setNewAllocCat({name:"",parentId:""}); setAllocDrafts({}); openM("accountAllocate"); };
   const addAllocCategory = async () => {
     if(!newAllocCat.name.trim() || !allocateWallet) return;
     try {
@@ -4498,14 +4507,26 @@ export default function App() {
         {allocateWallet && (()=>{
           const bal = parseFloat(allocateWallet.balance||0);
           const roots = expCats.filter(c=>c.linkedWalletId===allocateWallet.id);
-          const rootsSum = roots.reduce((s,c)=>s+(c.accountAllocatedKes||0),0);
+          // Draft (currently typed, not-yet-saved) value if present, else the
+          // last saved value — this is what every "available" hint and the
+          // header summary react to, so they update as you type, not just
+          // after you've committed a row.
+          const draftOf = (cat) => allocDrafts[cat.id] !== undefined ? (parseFloat(allocDrafts[cat.id]) || 0) : (cat.accountAllocatedKes || 0);
+          const draftStrOf = (cat) => allocDrafts[cat.id] !== undefined ? allocDrafts[cat.id] : String(cat.accountAllocatedKes || 0);
+          const setDraft = (id, v) => setAllocDrafts(p => ({ ...p, [id]: v }));
+          const commit = async (id, v) => {
+            const ok = await setAccountAllocation(id, v);
+            if (ok) setAllocDrafts(p => { const n = { ...p }; delete n[id]; return n; });
+          };
+          const rootsSum = roots.reduce((s,c)=>s+draftOf(c),0);
           const renderTree = (list, pool) => list.map(c=>{
-            const siblingsSum = list.filter(x=>x.id!==c.id).reduce((s,x)=>s+(x.accountAllocatedKes||0),0);
+            const siblingsSum = list.filter(x=>x.id!==c.id).reduce((s,x)=>s+draftOf(x),0);
             const kids = childrenByParent[c.id]||[];
             return (
               <div key={c.id}>
-                <AllocateRow c={c} depth={list===roots?0:1} pool={pool} siblingsSum={siblingsSum} disp={disp} onSave={setAccountAllocation} childrenByParent={childrenByParent}/>
-                {kids.length>0 && renderTree(kids, c.accountAllocatedKes||0)}
+                <AllocateRow c={c} depth={list===roots?0:1} pool={pool} siblingsSum={siblingsSum} disp={disp}
+                  value={draftStrOf(c)} onChange={setDraft} onCommit={commit}/>
+                {kids.length>0 && renderTree(kids, draftOf(c))}
               </div>
             );
           });

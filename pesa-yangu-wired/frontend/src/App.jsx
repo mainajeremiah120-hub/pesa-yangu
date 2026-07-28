@@ -4600,7 +4600,13 @@ export default function App() {
           const setDraft = (id, v) => setAllocDrafts(p => ({ ...p, [id]: v }));
           const commit = async (id, v) => {
             const ok = await setAccountAllocation(id, v);
-            if (ok) setAllocDrafts(p => { const n = { ...p }; delete n[id]; return n; });
+            if (ok) setAllocDrafts(p => {
+              // If the user has since typed something newer than what this
+              // particular save was for, don't clobber it — a later save is
+              // already queued for that value and will clean up in its turn.
+              if (p[id] !== undefined && (parseFloat(p[id]) || 0) !== v) return p;
+              const n = { ...p }; delete n[id]; return n;
+            });
           };
           const rootsSum = roots.reduce((s,c)=>s+draftOf(c),0);
           const renderTree = (list, pool) => list.map(c=>{

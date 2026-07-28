@@ -644,7 +644,7 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
         <span style={{fontSize:12,color:C.textPrimary,flex:1,minWidth:80}}>{c.name}</span>
         <span style={{fontSize:10,color:C.textFaint}}>up to {disp(available)} available</span>
         {justSaved && !saving && <span style={{fontSize:10,color:C.teal}}>✓ saved</span>}
-        <input type="number" value={value} onChange={e=>onChange(c.id, e.target.value)}
+        <input type="number" value={value} placeholder="0" onChange={e=>onChange(c.id, e.target.value)}
           style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
           {isDirty && !saving && (
@@ -4587,7 +4587,7 @@ export default function App() {
           // header summary react to, so they update as you type, not just
           // after you've committed a row.
           const draftOf = (cat) => allocDrafts[cat.id] !== undefined ? (parseFloat(allocDrafts[cat.id]) || 0) : (cat.accountAllocatedKes || 0);
-          const draftStrOf = (cat) => allocDrafts[cat.id] !== undefined ? allocDrafts[cat.id] : String(cat.accountAllocatedKes || 0);
+          const draftStrOf = (cat) => allocDrafts[cat.id] !== undefined ? allocDrafts[cat.id] : (cat.accountAllocatedKes ? String(cat.accountAllocatedKes) : "");
           const setDraft = (id, v) => setAllocDrafts(p => ({ ...p, [id]: v }));
           const commit = async (id, v) => {
             const ok = await setAccountAllocation(id, v);

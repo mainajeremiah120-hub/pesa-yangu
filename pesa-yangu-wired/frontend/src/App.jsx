@@ -3960,6 +3960,7 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
               <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Budgets & Categories</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
                 <Btn onClick={()=>{setFIncCat(blankIncCat);openM("incCat");}} outline color={C.teal} small>+ Income Cat.</Btn>
                 <Btn onClick={()=>{setFExpCat(blankExpCat);openM("expCat");}} small>+ Expense Cat.</Btn>
               </div>
@@ -4113,7 +4114,10 @@ export default function App() {
                 <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Savings Goals</div>
                 <div style={{color:C.textMuted,fontSize:12}}>Saved: {disp(totalGoalSaved)}</div>
               </div>
-              <Btn onClick={()=>{setEditGoal(null);setFGoal({...blankGoal,wallet:wallets[0]?.id||""});openM("goal");}}>+ New Goal</Btn>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
+                <Btn onClick={()=>{setEditGoal(null);setFGoal({...blankGoal,wallet:wallets[0]?.id||""});openM("goal");}}>+ New Goal</Btn>
+              </div>
             </div>
             <div className="grid-2" style={{ gap: 14 }}>
               {goals.map(g=><GoalCard key={g.id} g={g} wallets={wallets} disp={disp} fmtDate={fmtDate}
@@ -4132,7 +4136,10 @@ export default function App() {
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
               <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Recurring Transactions</div><div style={{color:C.textMuted,fontSize:12}}>Bills, subscriptions & regular income</div></div>
-              <Btn onClick={()=>{setFRecur({...blankRecur,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("recur");}}>+ Add Recurring</Btn>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
+                <Btn onClick={()=>{setFRecur({...blankRecur,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("recur");}}>+ Add Recurring</Btn>
+              </div>
             </div>
             <div className="grid-3">
               <Chip label="Monthly Out" value={disp(recurring.filter(r=>r.active&&r.type==="expense").reduce((s,r)=>s+r.amount,0))} color={C.coral}/>
@@ -4167,7 +4174,8 @@ export default function App() {
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
               <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Investments</div><div style={{color:C.textMuted,fontSize:12}}>Portfolio overview</div></div>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
                 <Btn onClick={()=>{setFRet({...blankRet,investmentId:investments[0]?.id||"",wallet:wallets[0]?.id||""});openM("ret");}} outline color={C.gold} small>+ Record Return</Btn>
                 <Btn onClick={()=>{setEditInv(null);setFInv({...blankInv,wallet:wallets[0]?.id||""});openM("inv");}} small>+ Add Investment</Btn>
               </div>
@@ -4233,7 +4241,8 @@ export default function App() {
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
               <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Loans & Debt</div><div style={{color:C.textMuted,fontSize:12}}>Remaining: {disp(totalDebt)}</div></div>
-              <div style={{display:"flex",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
                 <Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:loans[0]?.id||"",wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} small>Record Repayment</Btn>
                 <Btn onClick={()=>{setEditLoan(null);setFLoan(blankLoan);openM("loan");}}>+ Add Loan</Btn>
               </div>
@@ -4310,7 +4319,10 @@ export default function App() {
         {/* RECONCILE  */}
         {tab==="reconcile"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Statement Reconciliation</div><div style={{color:C.textMuted,fontSize:12}}>Upload a bank statement CSV to match and import transactions</div></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
+              <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Statement Reconciliation</div><div style={{color:C.textMuted,fontSize:12}}>Upload a bank statement CSV to match and import transactions</div></div>
+              <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
+            </div>
             <>
                 <Card>
                   <Field label="Account to Reconcile" value={recoWallet} onChange={v=>{setRecoWallet(v);setRecoRows([]);setRecoFile(null);}} options={[{value:"",label:"Select account…"},...wOpts]}/>
@@ -4386,7 +4398,10 @@ export default function App() {
                   <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Insurance & Protection</div>
                   <div style={{color:C.textMuted,fontSize:12}}>{active.length} active {active.length===1?"policy":"policies"}</div>
                 </div>
-                <Btn onClick={()=>{setEditPolicy(null);setFPolicy({...blankPolicy,walletId:wallets[0]?.id||""});openM("policy");}}>+ Add Policy</Btn>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
+                  <Btn onClick={()=>{setEditPolicy(null);setFPolicy({...blankPolicy,walletId:wallets[0]?.id||""});openM("policy");}}>+ Add Policy</Btn>
+                </div>
               </div>
 
               {/* Summary strip */}

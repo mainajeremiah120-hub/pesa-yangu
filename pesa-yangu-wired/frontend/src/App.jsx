@@ -512,10 +512,20 @@ const Divider = ({ label }) => {
 // Cap (top-down from Gross Income), actual Used (bottom-up from transactions),
 // and Remaining, then recurses into its children — grouping them into Fixed /
 // Variable sections when the children carry that tag.
-const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onViewHistory }) => {
+const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onViewHistory, query="" }) => {
   const C = useC();
   const [expanded, setExpanded] = useState(true);
+  // A search elsewhere in the tree shouldn't stay hidden behind a node the
+  // user happened to collapse earlier — force everything back open the
+  // moment a query becomes active.
+  useEffect(() => { if (query) setExpanded(true); }, [query]);
   const kids = childrenByParent[node.id] || [];
+  const nameMatches = query && node.name.toLowerCase().includes(query);
+  const highlightName = () => {
+    if (!nameMatches) return node.name;
+    const idx = node.name.toLowerCase().indexOf(query);
+    return <>{node.name.slice(0,idx)}<mark style={{background:C.teal+"55",color:C.textPrimary,borderRadius:3,padding:"0 2px"}}>{node.name.slice(idx,idx+query.length)}</mark>{node.name.slice(idx+query.length)}</>;
+  };
   const cap = capById[node.id]||0, used = usedById[node.id]||0, remaining = cap-used;
   // A linked-wallet category's "used" is money allocated into its own
   // wallet, not money actually spent — allocating more than planned isn't
@@ -528,7 +538,7 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
   const linkedWallet = node.linkedWalletId ? wallets.find(w=>w.id===node.linkedWalletId) : null;
 
   const renderKids = (list) => list.map(k=>(
-    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onViewHistory={onViewHistory}/>
+    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onViewHistory={onViewHistory} query={query}/>
   ));
 
   return (
@@ -545,7 +555,7 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
             <span style={{fontSize:18,flexShrink:0}}>{node.icon}</span>
             <div style={{minWidth:0}}>
               <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                <span>{node.name}</span>
+                <span>{highlightName()}</span>
                 {node.allocationType==="percent" && <Badge color={C.blue}>{node.percentOfParent}%</Badge>}
                 {linkedWallet && <Badge color={C.purple}>💰 {linkedWallet.icon} {linkedWallet.name}</Badge>}
                 {node.watch && <Badge color={C.gold}>👁</Badge>}
@@ -3950,7 +3960,17 @@ export default function App() {
               />
               {budgetSearch&&<button onClick={()=>setBudgetSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:16,lineHeight:1}}>✕</button>}
             </div>
-            {bq&&<div style={{fontSize:12,color:C.textMuted}}>{filtExpCats.length+filtIncCats.length} categor{filtExpCats.length+filtIncCats.length===1?"y":"ies"} match "{budgetSearch}"</div>}
+            {bq&&(()=>{
+              // In percentage mode, expense categories match at ANY level
+              // (Primary/Parent/Spending) via name or icon — filtExpCats
+              // only covers fixed-allocation categories, which undercounts
+              // Primary/Parent matches that are found (and shown) below.
+              const expMatchCount = isPercentMode
+                ? expCats.filter(c=>c.name.toLowerCase().includes(bq)||c.icon.includes(bq)).length
+                : filtExpCats.length;
+              const total = expMatchCount + filtIncCats.length;
+              return <div style={{fontSize:12,color:C.textMuted}}>{total} categor{total===1?"y":"ies"} match "{budgetSearch}"</div>;
+            })()}
             {bmOver.length>0&&<Card style={{borderLeft:`3px solid ${C.coral}`}}>
               <div style={{fontWeight:700,color:C.coral,marginBottom:8,fontSize:13}}>⚠ Overspending Alerts</div>
               {bmOver.map(a=><div key={a.id} style={{color:C.textMuted,fontSize:12,padding:"3px 0"}}>{a.icon} <strong style={{color:C.textPrimary}}>{a.name}</strong>: {disp(bmUsedById[a.id])} vs {disp(capById[a.id])} — <span style={{color:C.coral}}>+{disp((bmUsedById[a.id]||0)-(capById[a.id]||0))} over</span></div>)}
@@ -3979,7 +3999,7 @@ export default function App() {
                   onEdit={openEditExpCat}
                   onDelete={(node)=>askConfirm("Delete Category",`Delete category "${node.name}"? Existing transactions won't be affected.`,()=>deleteCategory(node.id,"expense"))}
                   onAddChild={(parentId)=>{setFExpCat({...blankExpCat,parentId});openM("expCat");}}
-                  wallets={wallets}
+                  wallets={wallets} query={bq}
                   onViewHistory={(node)=>setCatHistory({cat:node,type:"expense"})}/>
               ))}
             </>}

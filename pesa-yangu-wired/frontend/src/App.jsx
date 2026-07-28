@@ -615,7 +615,7 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
 // so every row's "available" hint can react live to what's typed in its
 // siblings, not just what's already saved. Auto-saves on blur or after a
 // short pause in typing — no explicit Save button.
-function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCommit }) {
+function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCommit, onRemove }) {
   const C = useC();
   const [saving, setSaving]   = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -656,6 +656,8 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
         {justSaved && !saving && <span style={{fontSize:10,color:C.teal}}>✓ saved</span>}
         <input type="number" value={value} onChange={e=>handleChange(e.target.value)} onBlur={e=>commit(e.target.value)}
           style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
+        {onRemove && <button onClick={onRemove} title="Remove from this account (keeps the category)"
+          style={{background:"none",border:"none",color:C.textFaint,cursor:"pointer",fontSize:13,padding:"2px 4px"}}>✕</button>}
       </div>
     </div>
   );
@@ -1996,6 +1998,28 @@ export default function App() {
       setExpCats(p=>p.map(c=>c.id===categoryId?{...c,accountAllocatedKes:parseFloat(category.account_allocated_kes)}:c));
       return true;
     } catch(err) { showToast(err?.response?.data?.error||"Allocation failed", C.coral); return false; }
+  };
+
+  // Unlinks a category from an account without deleting the category itself
+  // — clears linked_wallet_id for a root-linked category, or parent_id for
+  // a sub-category that was nested under one. Zeroes its own allocation
+  // first (while it still has a valid pool to check against), so it never
+  // shows a stale amount for a pool it no longer belongs to. Fails cleanly
+  // (server rejects) if it still has sub-categories using its allocation —
+  // those need reducing/reassigning first.
+  const removeFromAccount = async (categoryId) => {
+    const cat = expCats.find(c=>c.id===categoryId);
+    if (!cat) return;
+    try {
+      if ((cat.accountAllocatedKes||0) > 0) {
+        const ok = await setAccountAllocation(categoryId, 0);
+        if (!ok) return;
+      }
+      const patch = cat.linkedWalletId ? { linked_wallet_id: null } : { parent_id: null };
+      const { category } = await catsApi.update(categoryId, patch);
+      setExpCats(p=>p.map(c=>c.id===categoryId?normaliseCategory(category):c));
+      showToast(`Removed ${cat.name} from the account`);
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to remove", C.coral); }
   };
 
   // One-off income (bonus, gift) split across every top-level Primary category
@@ -3580,7 +3604,10 @@ export default function App() {
                               <span style={{color:C.textMuted}}>{c.icon} {c.name}</span>
                               <span style={{fontWeight:600,color:C.textPrimary}}>{disp(c.accountAllocatedKes||0)}</span>
                             </div>
-                            {(childrenByParent[c.id]||[]).map(k=>renderRow(k, depth+1))}
+                            {/* A child with its own linked account belongs to THAT
+                                account's tree, not nested under a different parent
+                                here just because parent_id says so. */}
+                            {(childrenByParent[c.id]||[]).filter(k=>!k.linkedWalletId||k.linkedWalletId===w.id).map(k=>renderRow(k, depth+1))}
                           </div>
                         );
                         return (
@@ -4571,11 +4598,16 @@ export default function App() {
           const rootsSum = roots.reduce((s,c)=>s+draftOf(c),0);
           const renderTree = (list, pool) => list.map(c=>{
             const siblingsSum = list.filter(x=>x.id!==c.id).reduce((s,x)=>s+draftOf(x),0);
-            const kids = childrenByParent[c.id]||[];
+            // A child with its own separate linked account belongs to THAT
+            // account's tree — nesting it here too just because parent_id
+            // says so mixed categories across accounts that were never
+            // actually linked to each other.
+            const kids = (childrenByParent[c.id]||[]).filter(k=>!k.linkedWalletId||k.linkedWalletId===allocateWallet.id);
             return (
               <div key={c.id}>
                 <AllocateRow c={c} depth={list===roots?0:1} pool={pool} siblingsSum={siblingsSum} disp={disp}
-                  value={draftStrOf(c)} onChange={setDraft} onCommit={commit}/>
+                  value={draftStrOf(c)} onChange={setDraft} onCommit={commit}
+                  onRemove={()=>askConfirm("Remove from Account", `Remove "${c.name}" from ${allocateWallet.name}? The category itself won't be deleted — just unlinked from this account.`, ()=>removeFromAccount(c.id))}/>
                 {kids.length>0 && renderTree(kids, draftOf(c))}
               </div>
             );

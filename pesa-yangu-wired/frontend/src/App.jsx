@@ -617,28 +617,44 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
 // short pause in typing — no explicit Save button.
 function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCommit }) {
   const C = useC();
-  const [saving, setSaving] = useState(false);
-  const timerRef = useRef(null);
+  const [saving, setSaving]   = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const timerRef  = useRef(null);
+  const savedFlashRef = useRef(null);
+  const lastCommittedRef = useRef(c.accountAllocatedKes || 0);
   const available = Math.max(0, pool - siblingsSum);
-  const commit = async () => {
+  const commit = async (v) => {
     clearTimeout(timerRef.current);
+    const amt = parseFloat(v) || 0;
+    if (amt === lastCommittedRef.current) return; // nothing changed — don't spam the API
     setSaving(true);
-    await onCommit(c.id, parseFloat(value) || 0);
+    const ok = await onCommit(c.id, amt);
     setSaving(false);
+    if (ok) {
+      lastCommittedRef.current = amt;
+      setJustSaved(true);
+      clearTimeout(savedFlashRef.current);
+      savedFlashRef.current = setTimeout(() => setJustSaved(false), 1200);
+    }
   };
   const handleChange = (v) => {
     onChange(c.id, v);
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(commit, 800);
+    // Don't auto-save while the box is empty — that's almost always someone
+    // clearing it to type a new number, not a deliberate "set this to 0".
+    // A genuine 0 still saves the moment they blur the field.
+    if (v.trim() === "") return;
+    timerRef.current = setTimeout(() => commit(v), 800);
   };
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(() => () => { clearTimeout(timerRef.current); clearTimeout(savedFlashRef.current); }, []);
   return (
     <div style={{marginLeft: depth*16}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
         <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
         <span style={{fontSize:12,color:C.textPrimary,flex:1,minWidth:80}}>{c.name}</span>
         <span style={{fontSize:10,color:C.textFaint}}>up to {disp(available)} available</span>
-        <input type="number" value={value} onChange={e=>handleChange(e.target.value)} onBlur={commit}
+        {justSaved && !saving && <span style={{fontSize:10,color:C.teal}}>✓ saved</span>}
+        <input type="number" value={value} onChange={e=>handleChange(e.target.value)} onBlur={e=>commit(e.target.value)}
           style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
       </div>
     </div>

@@ -623,6 +623,7 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
   const savedFlashRef = useRef(null);
   const lastCommittedRef = useRef(c.accountAllocatedKes || 0);
   const available = Math.max(0, pool - siblingsSum);
+  const isDirty = (parseFloat(value) || 0) !== lastCommittedRef.current;
   const commit = async (v) => {
     clearTimeout(timerRef.current);
     const amt = parseFloat(v) || 0;
@@ -656,6 +657,12 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
         {justSaved && !saving && <span style={{fontSize:10,color:C.teal}}>✓ saved</span>}
         <input type="number" value={value} onChange={e=>handleChange(e.target.value)} onBlur={e=>commit(e.target.value)}
           style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
+        {isDirty && (
+          <button onClick={()=>commit(value)} disabled={saving}
+            style={{background:C.purple,border:"none",borderRadius:6,color:"#fff",cursor:saving?"default":"pointer",fontSize:11,fontWeight:600,padding:"6px 10px",opacity:saving?0.6:1}}>
+            {saving?"Saving…":"Save"}
+          </button>
+        )}
         {onRemove && <button onClick={onRemove} title="Remove from this account (keeps the category)"
           style={{background:"none",border:"none",color:C.textFaint,cursor:"pointer",fontSize:13,padding:"2px 4px"}}>✕</button>}
       </div>

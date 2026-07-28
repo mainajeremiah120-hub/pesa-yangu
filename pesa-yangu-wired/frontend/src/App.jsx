@@ -646,14 +646,16 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
         {justSaved && !saving && <span style={{fontSize:10,color:C.teal}}>✓ saved</span>}
         <input type="number" value={value} onChange={e=>onChange(c.id, e.target.value)}
           style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
-        {isDirty && (
-          <button onClick={()=>commit(value)} disabled={saving}
-            style={{background:C.purple,border:"none",borderRadius:6,color:"#fff",cursor:saving?"default":"pointer",fontSize:11,fontWeight:600,padding:"6px 10px",opacity:saving?0.6:1}}>
-            {saving?"Saving…":"Save"}
-          </button>
-        )}
-        {onRemove && <button onClick={onRemove} title="Remove from this account (keeps the category)"
-          style={{background:"none",border:"none",color:C.textFaint,cursor:"pointer",fontSize:13,padding:"2px 4px"}}>✕</button>}
+        <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          {isDirty && !saving && (
+            <button onClick={()=>commit(value)}
+              style={{background:C.purple,border:"none",borderRadius:6,color:"#fff",cursor:"pointer",fontSize:11,fontWeight:600,padding:"6px 10px"}}>
+              Save
+            </button>
+          )}
+          {onRemove && <button onClick={onRemove} title="Remove from this account (keeps the category)"
+            style={{background:"none",border:"none",color:C.textFaint,cursor:"pointer",fontSize:13,padding:"2px 4px"}}>✕</button>}
+        </div>
       </div>
     </div>
   );

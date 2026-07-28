@@ -619,13 +619,11 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
   const C = useC();
   const [saving, setSaving]   = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const timerRef  = useRef(null);
   const savedFlashRef = useRef(null);
   const lastCommittedRef = useRef(c.accountAllocatedKes || 0);
   const available = Math.max(0, pool - siblingsSum);
   const isDirty = (parseFloat(value) || 0) !== lastCommittedRef.current;
   const commit = async (v) => {
-    clearTimeout(timerRef.current);
     const amt = parseFloat(v) || 0;
     if (amt === lastCommittedRef.current) return; // nothing changed — don't spam the API
     setSaving(true);
@@ -638,16 +636,7 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
       savedFlashRef.current = setTimeout(() => setJustSaved(false), 1200);
     }
   };
-  const handleChange = (v) => {
-    onChange(c.id, v);
-    clearTimeout(timerRef.current);
-    // Don't auto-save while the box is empty — that's almost always someone
-    // clearing it to type a new number, not a deliberate "set this to 0".
-    // A genuine 0 still saves the moment they blur the field.
-    if (v.trim() === "") return;
-    timerRef.current = setTimeout(() => commit(v), 800);
-  };
-  useEffect(() => () => { clearTimeout(timerRef.current); clearTimeout(savedFlashRef.current); }, []);
+  useEffect(() => () => clearTimeout(savedFlashRef.current), []);
   return (
     <div style={{marginLeft: depth*16}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
@@ -655,7 +644,7 @@ function AllocateRow({ c, depth, pool, siblingsSum, disp, value, onChange, onCom
         <span style={{fontSize:12,color:C.textPrimary,flex:1,minWidth:80}}>{c.name}</span>
         <span style={{fontSize:10,color:C.textFaint}}>up to {disp(available)} available</span>
         {justSaved && !saving && <span style={{fontSize:10,color:C.teal}}>✓ saved</span>}
-        <input type="number" value={value} onChange={e=>handleChange(e.target.value)} onBlur={e=>commit(e.target.value)}
+        <input type="number" value={value} onChange={e=>onChange(c.id, e.target.value)}
           style={{width:90,background:C.navyLight,border:`1px solid ${saving?C.purple:"transparent"}`,borderRadius:8,color:C.textPrimary,padding:"6px 8px",fontSize:11,transition:"border-color 0.2s"}}/>
         {isDirty && (
           <button onClick={()=>commit(value)} disabled={saving}

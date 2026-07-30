@@ -207,6 +207,12 @@ export const fxApi = {
 // ── AI Advice ─────────────────────────────────────────────────────────────────
 export const aiApi = {
   advice: (ctx) => unwrap(client.post("/ai/advice", { context: ctx })),
+  listConversations:   ()              => unwrap(client.get("/ai/conversations")),
+  createConversation:  (title)         => unwrap(client.post("/ai/conversations", { title })),
+  getConversation:     (id)            => unwrap(client.get(`/ai/conversations/${id}`)),
+  renameConversation:  (id, title)     => unwrap(client.patch(`/ai/conversations/${id}`, { title })),
+  deleteConversation:  (id)            => unwrap(client.delete(`/ai/conversations/${id}`)),
+  sendMessage:         (id, content, context) => unwrap(client.post(`/ai/conversations/${id}/messages`, { content, context })),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

@@ -1239,8 +1239,13 @@ export default function App() {
 
   const [baseCurrency, setBase] = useState("KES");
   const [toast,        setToast] = useState(null);
-  const [aiLoading,    setAiLoading] = useState(false);
-  const [aiText,       setAiText]    = useState("");
+  const [aiListLoading, setAiListLoading] = useState(false);
+  const [aiConversations, setAiConversations] = useState([]);
+  const [aiActiveId,   setAiActiveId]   = useState(null);
+  const [aiMessages,   setAiMessages]   = useState([]);
+  const [aiMsgLoading, setAiMsgLoading] = useState(false); // loading an existing conversation's messages
+  const [aiChatInput,  setAiChatInput]  = useState("");
+  const [aiSending,    setAiSending]    = useState(false);
   const [idleWarning,  setIdleWarning] = useState(false); // show 1-min warning
 
   // ── Auto-logout after 15 min inactivity (warn at 14 min)
@@ -3110,26 +3115,82 @@ export default function App() {
     } catch(err) { showToast("Import failed", C.coral); }
   };
 
-  // ── AI Advice
-  const getAI = async () => {
-    setAiLoading(true); setAiText(""); openM("ai");
-    const ctx = {
-      netWorth:disp(netWorth), totalBalance:disp(totalBalance),
-      income:disp(totalIncome), expenses:disp(totalExpense),
-      savingsRate:savingsRate.toFixed(1)+"%", score,
-      overBudget:overBudget.map(c=>c.name),
-      watched:watched.map(c=>({name:c.name,spent:disp(spendByCat[c.id]||0),budget:disp(c.budget)})),
-      goals:goals.map(g=>({name:g.name,pct:Math.round((g.saved/g.target)*100)+"%"})),
-      loans:loans.map(l=>({name:l.name,remaining:disp(l.remaining),rate:l.rate+"%"})),
-      baseCurrency,
-    };
+  // ── AI Advisor (multi-turn chat, saved conversations)
+  const buildAiContext = () => ({
+    baseCurrency,
+    totalBalance,
+    totalIncome,
+    totalExpenses: totalExpense,
+    topCategories: watched.map(c=>({name:c.name, spent:spendByCat[c.id]||0, budget:c.budget||0})),
+    goals: goals.map(g=>({name:g.name, saved:g.saved||0, target:g.target||0})),
+    loans: loans.map(l=>({name:l.name, remaining:l.remaining||0, rate:l.rate||0})),
+    watchedAlerts: overBudget.map(c=>c.name),
+  });
+
+  const openAiChat = async () => {
+    openM("ai");
+    setAiListLoading(true);
     try {
-      const { advice } = await aiApi.advice(ctx);
-      setAiText(advice || "No response.");
+      const { conversations } = await aiApi.listConversations();
+      setAiConversations(conversations);
+      if (conversations.length) {
+        await switchAiConversation(conversations[0].id);
+      } else {
+        setAiActiveId(null); setAiMessages([]);
+      }
     } catch(err) {
-      setAiText(err?.response?.data?.error || "Unable to connect to AI advisor.");
+      showToast(err?.response?.data?.error || "Couldn't load AI chats", C.coral);
     }
-    setAiLoading(false);
+    setAiListLoading(false);
+  };
+
+  const switchAiConversation = async (id) => {
+    setAiActiveId(id); setAiMessages([]); setAiMsgLoading(true);
+    try {
+      const { messages } = await aiApi.getConversation(id);
+      setAiMessages(messages);
+    } catch(err) {
+      showToast(err?.response?.data?.error || "Couldn't load that chat", C.coral);
+    }
+    setAiMsgLoading(false);
+  };
+
+  const startNewAiChat = () => { setAiActiveId(null); setAiMessages([]); setAiChatInput(""); };
+
+  const sendAiMessage = async (text) => {
+    const content = (text ?? aiChatInput).trim();
+    if (!content || aiSending) return;
+    setAiChatInput(""); setAiSending(true);
+    const optimisticUser = { id:`local-${Date.now()}`, role:"user", content };
+    setAiMessages(p=>[...p, optimisticUser]);
+    try {
+      let convoId = aiActiveId;
+      if (!convoId) {
+        const { conversation } = await aiApi.createConversation();
+        convoId = conversation.id;
+        setAiActiveId(convoId);
+        setAiConversations(p=>[conversation, ...p]);
+      }
+      const { reply, conversation } = await aiApi.sendMessage(convoId, content, buildAiContext());
+      setAiMessages(p=>[...p, reply]);
+      setAiConversations(p=>{
+        const rest = p.filter(c=>c.id!==conversation.id);
+        return [{...conversation, last_message:reply.content}, ...rest];
+      });
+    } catch(err) {
+      showToast(err?.response?.data?.error || "AI advisor didn't respond — try again.", C.coral);
+    }
+    setAiSending(false);
+  };
+
+  const deleteAiConversation = (id, title) => {
+    askConfirm("Delete Chat", `Delete "${title}"? This can't be undone.`, async () => {
+      try {
+        await aiApi.deleteConversation(id);
+        setAiConversations(p=>p.filter(c=>c.id!==id));
+        if (aiActiveId===id) { setAiActiveId(null); setAiMessages([]); }
+      } catch(err) { showToast(err?.response?.data?.error || "Failed to delete chat", C.coral); }
+    });
   };
 
   // ── Share
@@ -3359,7 +3420,7 @@ export default function App() {
           <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small className="desktop-only-btn">⇄ Transfer</Btn>
           <Btn onClick={()=>openM("share")} outline color={C.purple} small className="desktop-only-btn">📤 Share</Btn>
           <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">⬆⬇ Data</Btn>
-          <Btn onClick={getAI} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
+          <Btn onClick={openAiChat} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
           <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀️":"🌙"}</button>
           <button onClick={logout} style={{background:"none",border:`1px solid ${C.coral}55`,borderRadius:8,color:C.coral,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,lineHeight:1,transition:"background 0.2s,border-color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.background=C.coral+"22";e.currentTarget.style.borderColor=C.coral;}} onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.borderColor=C.coral+"55";}}>Sign Out</button>
         </div>
@@ -4543,7 +4604,7 @@ export default function App() {
 
             <Divider label="Actions & Tools"/>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <Btn onClick={getAI} color={C.gold} style={{width:"100%",padding:12}}>✦ AI Financial Advisor</Btn>
+              <Btn onClick={openAiChat} color={C.gold} style={{width:"100%",padding:12}}>✦ AI Financial Advisor</Btn>
               <div className="grid-2">
                 <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} style={{padding:12}}>⇄ Transfer</Btn>
                 <Btn onClick={()=>openM("share")} outline color={C.purple} style={{padding:12}}>📤 Share App</Btn>
@@ -5350,13 +5411,49 @@ export default function App() {
       )}
 
       <Modal open={isOpen("ai")} onClose={()=>closeM("ai")} title="✦ AI Financial Advisor" wide>
-        {aiLoading
-          ? <div style={{textAlign:"center",padding:"48px 0",color:C.textMuted}}>
-              <div style={{fontSize:34,marginBottom:14,display:"inline-block",animation:"spin 1.2s linear infinite",color:C.gold}}>✦</div>
-              <div style={{fontSize:13}}>Analysing your finances…</div>
-            </div>
-          : <div style={{color:C.textMuted,fontSize:14,lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiText}</div>
-        }
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Conversation chips — switch between saved chats or start a new one */}
+          <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+            <button onClick={startNewAiChat} style={{flexShrink:0,background:aiActiveId===null?C.gold:C.navyLight,border:"none",borderRadius:20,color:aiActiveId===null?C.navy:C.textMuted,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>+ New Chat</button>
+            {aiConversations.map(c=>(
+              <div key={c.id} style={{display:"flex",alignItems:"center",flexShrink:0,background:aiActiveId===c.id?C.gold+"22":C.navyLight,border:`1px solid ${aiActiveId===c.id?C.gold:"transparent"}`,borderRadius:20,padding:"4px 4px 4px 14px",gap:2}}>
+                <button onClick={()=>switchAiConversation(c.id)} title={c.title} style={{background:"none",border:"none",color:aiActiveId===c.id?C.gold:C.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis"}}>{c.title}</button>
+                <button onClick={()=>deleteAiConversation(c.id,c.title)} title="Delete chat" style={{background:"none",border:"none",color:C.textFaint,cursor:"pointer",fontSize:12,padding:"2px 7px"}}>✕</button>
+              </div>
+            ))}
+          </div>
+
+          {/* Message thread */}
+          <div style={{background:C.navyLight,borderRadius:12,padding:14,minHeight:260,maxHeight:"50vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:10}}>
+            {aiListLoading || aiMsgLoading ? (
+              <div style={{textAlign:"center",padding:"40px 0",color:C.textMuted}}>
+                <div style={{fontSize:28,marginBottom:10,display:"inline-block",animation:"spin 1.2s linear infinite",color:C.gold}}>✦</div>
+                <div style={{fontSize:12}}>Loading…</div>
+              </div>
+            ) : aiMessages.length===0 ? (
+              <div style={{textAlign:"center",padding:"20px 4px"}}>
+                <div style={{color:C.textMuted,fontSize:13,marginBottom:14}}>Ask me anything about your money — I can see your accounts, budgets, goals, and loans.</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>
+                  {["Give me a full financial snapshot","How am I doing this month?","Where can I cut spending?","Am I on track for my goals?"].map(p=>(
+                    <button key={p} onClick={()=>sendAiMessage(p)} style={{background:C.navyMid,border:`1px solid ${C.gold}44`,borderRadius:10,color:C.textPrimary,padding:"8px 12px",fontSize:12,cursor:"pointer"}}>{p}</button>
+                  ))}
+                </div>
+              </div>
+            ) : aiMessages.map(m=>(
+              <div key={m.id} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"85%",background:m.role==="user"?C.teal+"22":C.navyMid,border:`1px solid ${m.role==="user"?C.teal+"44":C.navyLight}`,borderRadius:12,padding:"9px 13px",fontSize:13,color:C.textPrimary,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.content}</div>
+            ))}
+            {aiSending && <div style={{alignSelf:"flex-start",color:C.textFaint,fontSize:12,padding:"4px 4px"}}>✦ thinking…</div>}
+          </div>
+
+          {/* Input row */}
+          <div style={{display:"flex",gap:8}}>
+            <input value={aiChatInput} onChange={e=>setAiChatInput(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendAiMessage(); } }}
+              placeholder="Ask a question…" disabled={aiSending}
+              style={{flex:1,background:C.navyLight,border:"none",borderRadius:10,color:C.textPrimary,padding:"11px 14px",fontSize:13}}/>
+            <Btn onClick={()=>sendAiMessage()} color={C.gold} disabled={aiSending||!aiChatInput.trim()}>Send</Btn>
+          </div>
+        </div>
       </Modal>
 
       {/* Confirm Dialog */}

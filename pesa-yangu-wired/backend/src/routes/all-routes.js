@@ -969,6 +969,149 @@ aiRouter.post("/advice", async (req,res,next)=>{
   }
 });
 
+// ── Chat (multi-turn, saved) ────────────────────────────────────────────────
+// Separate from the one-shot /advice above: a user can hold several named
+// conversations, each with its own message history, so follow-up questions
+// have context and past chats can be reopened later.
+
+const aiMsgSchema = z.object({
+  content: z.string().trim().min(1).max(4000),
+  context: aiContextSchema.optional(),
+});
+
+const MAX_HISTORY_MESSAGES = 30; // messages sent to Claude per turn — caps token/cost growth on long chats
+
+async function loadOwnedConversation(userId, conversationId) {
+  const { rows } = await query("SELECT * FROM ai_conversations WHERE id=$1 AND user_id=$2", [conversationId, userId]);
+  return rows[0] || null;
+}
+
+aiRouter.get("/conversations", async (req,res,next)=>{
+  try {
+    const { rows: convos } = await query(
+      "SELECT * FROM ai_conversations WHERE user_id=$1 ORDER BY updated_at DESC",
+      [req.user.id]
+    );
+    if (convos.length) {
+      const { rows: lastMsgs } = await query(
+        `SELECT DISTINCT ON (conversation_id) conversation_id, content
+         FROM ai_messages WHERE conversation_id = ANY($1)
+         ORDER BY conversation_id, created_at DESC`,
+        [convos.map(c=>c.id)]
+      );
+      const lastById = Object.fromEntries(lastMsgs.map(m=>[m.conversation_id, m.content]));
+      convos.forEach(c => { c.last_message = lastById[c.id] || null; });
+    }
+    res.json({ conversations: convos });
+  } catch(e){ next(e); }
+});
+
+aiRouter.post("/conversations", async (req,res,next)=>{
+  try {
+    const title = (req.body?.title || "New chat").toString().slice(0,100);
+    const { rows } = await query(
+      "INSERT INTO ai_conversations (user_id, title) VALUES ($1,$2) RETURNING *",
+      [req.user.id, title]
+    );
+    res.status(201).json({ conversation: rows[0] });
+  } catch(e){ next(e); }
+});
+
+aiRouter.get("/conversations/:id", async (req,res,next)=>{
+  try {
+    const convo = await loadOwnedConversation(req.user.id, req.params.id);
+    if(!convo) return res.status(404).json({error:"Conversation not found"});
+    const { rows: messages } = await query(
+      "SELECT id, role, content, created_at FROM ai_messages WHERE conversation_id=$1 ORDER BY created_at ASC",
+      [convo.id]
+    );
+    res.json({ conversation: convo, messages });
+  } catch(e){ next(e); }
+});
+
+aiRouter.patch("/conversations/:id", async (req,res,next)=>{
+  try {
+    const convo = await loadOwnedConversation(req.user.id, req.params.id);
+    if(!convo) return res.status(404).json({error:"Conversation not found"});
+    const title = (req.body?.title || "").toString().trim().slice(0,100);
+    if(!title) return res.status(400).json({error:"Title cannot be empty"});
+    const { rows } = await query(
+      "UPDATE ai_conversations SET title=$1, updated_at=NOW() WHERE id=$2 RETURNING *",
+      [title, convo.id]
+    );
+    res.json({ conversation: rows[0] });
+  } catch(e){ next(e); }
+});
+
+aiRouter.delete("/conversations/:id", async (req,res,next)=>{
+  try {
+    const convo = await loadOwnedConversation(req.user.id, req.params.id);
+    if(!convo) return res.status(404).json({error:"Conversation not found"});
+    await query("DELETE FROM ai_conversations WHERE id=$1", [convo.id]);
+    res.json({ ok:true });
+  } catch(e){ next(e); }
+});
+
+aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
+  try {
+    if(!process.env.ANTHROPIC_API_KEY){
+      return res.status(503).json({error:"AI advisor is not configured. Please contact support."});
+    }
+    const convo = await loadOwnedConversation(req.user.id, req.params.id);
+    if(!convo) return res.status(404).json({error:"Conversation not found"});
+    const { content, context } = aiMsgSchema.parse(req.body);
+
+    const userMsg = (await query(
+      "INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1,'user',$2) RETURNING *",
+      [convo.id, content]
+    )).rows[0];
+
+    const { rows: history } = await query(
+      `SELECT role, content FROM ai_messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [convo.id, MAX_HISTORY_MESSAGES]
+    );
+    history.reverse(); // back to chronological order
+
+    const baseCurrency = context?.baseCurrency || "KES";
+    const systemPrompt = `You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${baseCurrency}, chatting inside their finance app. Answer their questions directly and specifically, using the financial snapshot below when relevant — don't repeat it back verbatim, just use it to ground your answer. Keep replies conversational and reasonably concise unless they ask for detail. Snapshot: ${JSON.stringify(context || {})}`;
+
+    const aiClient = new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
+    const msg = await aiClient.messages.create({
+      model:"claude-haiku-4-5-20251001", max_tokens:1000,
+      system: systemPrompt,
+      messages: history.map(m=>({ role:m.role, content:m.content })),
+    });
+    const replyText = msg.content[0]?.text || "";
+
+    const assistantMsg = (await query(
+      "INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1,'assistant',$2) RETURNING *",
+      [convo.id, replyText]
+    )).rows[0];
+
+    let updatedConvo = convo;
+    if (convo.title === "New chat") {
+      const autoTitle = content.slice(0,60) + (content.length>60?"…":"");
+      updatedConvo = (await query(
+        "UPDATE ai_conversations SET title=$1, updated_at=NOW() WHERE id=$2 RETURNING *",
+        [autoTitle, convo.id]
+      )).rows[0];
+    } else {
+      updatedConvo = (await query(
+        "UPDATE ai_conversations SET updated_at=NOW() WHERE id=$1 RETURNING *",
+        [convo.id]
+      )).rows[0];
+    }
+
+    res.status(201).json({ userMessage: userMsg, reply: assistantMsg, conversation: updatedConvo });
+  } catch(e){
+    if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message});
+    if(e?.status===401||e?.message?.includes("apiKey")||e?.message?.includes("authentication")){
+      return res.status(503).json({error:"AI advisor is not configured correctly. Check the API key."});
+    }
+    next(e);
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // BILLING
 // ══════════════════════════════════════════════════════════════════════════════

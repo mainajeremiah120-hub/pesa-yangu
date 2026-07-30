@@ -936,8 +936,11 @@ fxRouter.get("/", async (req,res,next)=>{
 const aiRouter  = express.Router();
 const GEMINI_MODEL = "gemini-3.5-flash"; // free-tier friendly — 2.5-flash is closed to new API keys; swap models by changing this one line
 
+// Only genuine auth/permission failures — NOT 400 (that's also "bad request",
+// e.g. an invalid model name or malformed prompt, which needs its own real
+// error message surfaced, not a misleading "check your API key").
 function isAiAuthError(e) {
-  return e?.status===400 || e?.status===401 || e?.status===403 || /api[ _]?key|permission_denied|unauthenticated/i.test(e?.message||"");
+  return e?.status===401 || e?.status===403 || /api[_ ]?key[_ ]?invalid|permission_denied|unauthenticated/i.test(e?.message||"");
 }
 
 const aiContextSchema = z.object({
@@ -968,6 +971,7 @@ aiRouter.post("/advice", async (req,res,next)=>{
   } catch(e){
     if(e instanceof z.ZodError) return res.status(400).json({error:"Invalid context: "+e.errors[0].message});
     if(isAiAuthError(e)){
+      logger.error({msg:"AI advisor auth error", detail:e.message});
       return res.status(503).json({error:"AI advisor is not configured correctly. Check the API key."});
     }
     next(e);
@@ -1113,6 +1117,7 @@ aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
   } catch(e){
     if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message});
     if(isAiAuthError(e)){
+      logger.error({msg:"AI advisor auth error", detail:e.message});
       return res.status(503).json({error:"AI advisor is not configured correctly. Check the API key."});
     }
     next(e);

@@ -934,7 +934,7 @@ fxRouter.get("/", async (req,res,next)=>{
 // AI ADVICE
 // ══════════════════════════════════════════════════════════════════════════════
 const aiRouter  = express.Router();
-const GEMINI_MODEL = "gemini-2.5-flash"; // free-tier friendly — swap models by changing this one line
+const GEMINI_MODEL = "gemini-3.5-flash"; // free-tier friendly — 2.5-flash is closed to new API keys; swap models by changing this one line
 
 function isAiAuthError(e) {
   return e?.status===400 || e?.status===401 || e?.status===403 || /api[ _]?key|permission_denied|unauthenticated/i.test(e?.message||"");

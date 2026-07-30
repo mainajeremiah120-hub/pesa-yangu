@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
+    "@google/genai": "^2.15.0",
     "axios": "^1.7.2",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",

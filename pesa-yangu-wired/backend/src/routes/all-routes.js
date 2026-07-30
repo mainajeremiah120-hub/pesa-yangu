@@ -6,7 +6,7 @@
 const express = require("express");
 const multer  = require("multer");
 const { z }   = require("zod");
-const Anthropic = require("@anthropic-ai/sdk");
+const { GoogleGenAI } = require("@google/genai");
 const { query, withTransaction } = require("../models/db");
 const { requirePro } = require("../middleware/auth");
 const { getRates }   = require("../services/fx");
@@ -934,7 +934,11 @@ fxRouter.get("/", async (req,res,next)=>{
 // AI ADVICE
 // ══════════════════════════════════════════════════════════════════════════════
 const aiRouter  = express.Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const GEMINI_MODEL = "gemini-2.5-flash"; // free-tier friendly — swap models by changing this one line
+
+function isAiAuthError(e) {
+  return e?.status===400 || e?.status===401 || e?.status===403 || /api[ _]?key|permission_denied|unauthenticated/i.test(e?.message||"");
+}
 
 const aiContextSchema = z.object({
   baseCurrency:   z.string().length(3).default("KES"),
@@ -949,20 +953,21 @@ const aiContextSchema = z.object({
 
 aiRouter.post("/advice", async (req,res,next)=>{
   try {
-    if(!process.env.ANTHROPIC_API_KEY){
+    if(!process.env.GEMINI_API_KEY){
       return res.status(503).json({error:"AI advisor is not configured. Please contact support."});
     }
     // Validate and sanitize context — reject arbitrary keys/values
     const context = aiContextSchema.parse(req.body.context ?? req.body);
-    const aiClient = new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
-    const msg=await aiClient.messages.create({
-      model:"claude-haiku-4-5-20251001", max_tokens:1000,
-      messages:[{role:"user",content:`You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${context.baseCurrency}. Based on their data below, give 5 specific, numbered, actionable insights covering: spending vs budget, watched categories, goals progress, loan strategy, and one forward-looking prediction. Be direct and data-led. Data: ${JSON.stringify(context)}`}],
+    const aiClient = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
+    const result = await aiClient.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ role:"user", parts:[{ text:`You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${context.baseCurrency}. Based on their data below, give 5 specific, numbered, actionable insights covering: spending vs budget, watched categories, goals progress, loan strategy, and one forward-looking prediction. Be direct and data-led. Data: ${JSON.stringify(context)}` }] }],
+      config: { maxOutputTokens: 1000 },
     });
-    res.json({advice:msg.content[0]?.text||""});
+    res.json({advice:result.text||""});
   } catch(e){
     if(e instanceof z.ZodError) return res.status(400).json({error:"Invalid context: "+e.errors[0].message});
-    if(e?.status===401||e?.message?.includes("apiKey")||e?.message?.includes("authentication")){
+    if(isAiAuthError(e)){
       return res.status(503).json({error:"AI advisor is not configured correctly. Check the API key."});
     }
     next(e);
@@ -1054,7 +1059,7 @@ aiRouter.delete("/conversations/:id", async (req,res,next)=>{
 
 aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
   try {
-    if(!process.env.ANTHROPIC_API_KEY){
+    if(!process.env.GEMINI_API_KEY){
       return res.status(503).json({error:"AI advisor is not configured. Please contact support."});
     }
     const convo = await loadOwnedConversation(req.user.id, req.params.id);
@@ -1075,13 +1080,15 @@ aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
     const baseCurrency = context?.baseCurrency || "KES";
     const systemPrompt = `You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${baseCurrency}, chatting inside their finance app. Answer their questions directly and specifically, using the financial snapshot below when relevant — don't repeat it back verbatim, just use it to ground your answer. Keep replies conversational and reasonably concise unless they ask for detail. Snapshot: ${JSON.stringify(context || {})}`;
 
-    const aiClient = new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
-    const msg = await aiClient.messages.create({
-      model:"claude-haiku-4-5-20251001", max_tokens:1000,
-      system: systemPrompt,
-      messages: history.map(m=>({ role:m.role, content:m.content })),
+    // Gemini uses role "model" for assistant turns (not "assistant") — translate
+    // only at the API boundary; we keep storing "assistant" in our own schema.
+    const aiClient = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
+    const result = await aiClient.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: history.map(m=>({ role: m.role==="assistant"?"model":"user", parts:[{ text:m.content }] })),
+      config: { systemInstruction: systemPrompt, maxOutputTokens: 1000 },
     });
-    const replyText = msg.content[0]?.text || "";
+    const replyText = result.text || "";
 
     const assistantMsg = (await query(
       "INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1,'assistant',$2) RETURNING *",
@@ -1105,7 +1112,7 @@ aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
     res.status(201).json({ userMessage: userMsg, reply: assistantMsg, conversation: updatedConvo });
   } catch(e){
     if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message});
-    if(e?.status===401||e?.message?.includes("apiKey")||e?.message?.includes("authentication")){
+    if(isAiAuthError(e)){
       return res.status(503).json({error:"AI advisor is not configured correctly. Check the API key."});
     }
     next(e);

@@ -2212,7 +2212,7 @@ export default function App() {
       setLoans(p=>p.map(l=>{
         if(l.id!==loan.id) return l;
         const reduction = l.interest_type==="simple" ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
-        return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
+        return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{id:repayment.id,wallet:repayment.wallet_id,total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
       setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
       setFRepay(blankRepay); setStatementNotice(""); closeM("repay");

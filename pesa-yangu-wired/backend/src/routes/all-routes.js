@@ -943,6 +943,22 @@ function isAiAuthError(e) {
   return e?.status===401 || e?.status===403 || /api[_ ]?key[_ ]?invalid|permission_denied|unauthenticated/i.test(e?.message||"");
 }
 
+// Free-tier Flash models occasionally come back 503 "model is overloaded" at
+// busy times — transient, not a real failure. One short retry clears most of
+// these rather than failing the user's message outright.
+function isAiOverloadedError(e) {
+  return e?.status===503 || /overloaded|unavailable/i.test(e?.message||"");
+}
+async function generateWithRetry(aiClient, params) {
+  try {
+    return await aiClient.models.generateContent(params);
+  } catch(e) {
+    if (!isAiOverloadedError(e)) throw e;
+    await new Promise(r=>setTimeout(r,1200));
+    return aiClient.models.generateContent(params);
+  }
+}
+
 const aiContextSchema = z.object({
   baseCurrency:   z.string().length(3).default("KES"),
   totalBalance:   z.number().optional(),
@@ -962,7 +978,7 @@ aiRouter.post("/advice", async (req,res,next)=>{
     // Validate and sanitize context — reject arbitrary keys/values
     const context = aiContextSchema.parse(req.body.context ?? req.body);
     const aiClient = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
-    const result = await aiClient.models.generateContent({
+    const result = await generateWithRetry(aiClient, {
       model: GEMINI_MODEL,
       contents: [{ role:"user", parts:[{ text:`You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${context.baseCurrency}. Based on their data below, give 5 specific, numbered, actionable insights covering: spending vs budget, watched categories, goals progress, loan strategy, and one forward-looking prediction. Be direct and data-led. Data: ${JSON.stringify(context)}` }] }],
       config: { maxOutputTokens: 1000 },
@@ -1087,7 +1103,7 @@ aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
     // Gemini uses role "model" for assistant turns (not "assistant") — translate
     // only at the API boundary; we keep storing "assistant" in our own schema.
     const aiClient = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
-    const result = await aiClient.models.generateContent({
+    const result = await generateWithRetry(aiClient, {
       model: GEMINI_MODEL,
       contents: history.map(m=>({ role: m.role==="assistant"?"model":"user", parts:[{ text:m.content }] })),
       config: { systemInstruction: systemPrompt, maxOutputTokens: 1000 },

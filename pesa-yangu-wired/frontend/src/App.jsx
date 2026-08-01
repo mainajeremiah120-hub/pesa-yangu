@@ -1588,6 +1588,8 @@ export default function App() {
   // because grossIncome (and capById, which needs it) depend on them.
   const [budgetYear,  setBudgetYear]  = useState(new Date().getFullYear());
   const [budgetMonth, setBudgetMonth] = useState(new Date().getMonth() + 1);
+  const [spendReportYear,  setSpendReportYear]  = useState(new Date().getFullYear());
+  const [spendReportMonth, setSpendReportMonth] = useState(new Date().getMonth() + 1);
   // Income for the percentage cascade — auto-derived from actual recorded
   // income transactions in the selected month, never typed in manually, so
   // it always matches what really landed in the user's accounts.
@@ -3556,8 +3558,11 @@ export default function App() {
             )}
 
             <div className="grid-2" style={{ gap: 14 }}>
-              <Card onClick={() => setTab("budgets")}>
-                <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>Spending by Category</div>
+              <Card onClick={() => {setSpendReportYear(new Date().getFullYear());setSpendReportMonth(new Date().getMonth()+1);openM("spendReport");}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontWeight:700,fontSize:13}}>Spending by Category</div>
+                  <span style={{color:C.teal,fontSize:11}}>Full report →</span>
+                </div>
                 {expCats.filter(c=>spendByCat[c.id]>0).sort((a,b)=>(spendByCat[b.id]||0)-(spendByCat[a.id]||0)).slice(0,6).map(c=>(
                   <div key={c.id} style={{marginBottom:9}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
@@ -3792,6 +3797,7 @@ export default function App() {
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
                 <Btn onClick={exportTransactions} outline color={C.textMuted} small>⬇ Export</Btn>
+                <Btn onClick={()=>{setSpendReportYear(new Date().getFullYear());setSpendReportMonth(new Date().getMonth()+1);openM("spendReport");}} outline color={C.gold} small>📊 By Category</Btn>
                 <Btn onClick={()=>openM("expCat")} outline color={C.blue} small>＋ Category</Btn>
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
               </div>
@@ -4696,6 +4702,49 @@ export default function App() {
         <Field label="Amount" type="number" value={fXfer.amount} onChange={v=>setFXfer({...fXfer,amount:v})} placeholder="0.00" note="In source account's currency"/>
         <Field label="Note (optional)" value={fXfer.note} onChange={v=>setFXfer({...fXfer,note:v})} placeholder="e.g. Moving to savings"/>
         <Btn onClick={doTransfer} style={{width:"100%",padding:13,fontSize:14}}>{editXferPairId?"Save Changes":"Transfer Funds"}</Btn>
+      </Modal>
+
+      {/* Monthly Spending — every category and what was spent, for any month, without wading through Budgets */}
+      <Modal open={isOpen("spendReport")} onClose={()=>closeM("spendReport")} title="📊 Monthly Spending" wide>
+        {(()=>{
+          const isCurrentSR = spendReportYear===new Date().getFullYear() && spendReportMonth===new Date().getMonth()+1;
+          const srTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===spendReportYear && d.getMonth()+1===spendReportMonth; });
+          const srSpend = {};
+          srTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; srSpend[key]=(srSpend[key]||0)+(t.amount||parseFloat(t.amount_kes||0)); });
+          srTxs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) srSpend[key]=Math.max(0,(srSpend[key]||0)-(t.amount||parseFloat(t.amount_kes||0))); });
+          const rows = expCats.filter(c=>(srSpend[c.id]||0)>0).sort((a,b)=>(srSpend[b.id]||0)-(srSpend[a.id]||0));
+          const total = rows.reduce((s,c)=>s+(srSpend[c.id]||0),0);
+          return <>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <button onClick={()=>{const[y,m]=prevBudgetMonth(spendReportYear,spendReportMonth);setSpendReportYear(y);setSpendReportMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"6px 14px",cursor:"pointer",fontSize:22,lineHeight:1}}>‹</button>
+                <div style={{fontWeight:700,fontSize:19,minWidth:120,textAlign:"center"}}>{MONTH_NAMES[spendReportMonth-1]} {spendReportYear}</div>
+                <button onClick={()=>{const[y,m]=nextBudgetMonth(spendReportYear,spendReportMonth);setSpendReportYear(y);setSpendReportMonth(m);}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"6px 14px",cursor:"pointer",fontSize:22,lineHeight:1}}>›</button>
+              </div>
+              {!isCurrentSR&&<button onClick={()=>{setSpendReportYear(new Date().getFullYear());setSpendReportMonth(new Date().getMonth()+1);}} style={{background:C.teal+"22",border:"none",borderRadius:6,color:C.teal,padding:"3px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>Today</button>}
+            </div>
+            <div style={{background:C.navyLight,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:C.textMuted,fontSize:13}}>Total Spent</span>
+              <span style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.textPrimary}}>{disp(total)}</span>
+            </div>
+            {rows.length===0
+              ? <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"32px 0"}}>No expenses recorded in {MONTH_NAMES[spendReportMonth-1]} {spendReportYear}.</div>
+              : <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"50vh",overflowY:"auto"}}>
+                  {rows.map(c=>(
+                    <div key={c.id}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:13,color:C.textPrimary}}>{c.icon} {c.name}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:c.budget>0&&srSpend[c.id]>c.budget?C.coral:C.textPrimary}}>
+                          {disp(srSpend[c.id])}{c.budget>0&&<span style={{color:C.textFaint,fontWeight:400}}> / {disp(c.budget)}</span>}
+                        </span>
+                      </div>
+                      {c.budget>0&&<Bar value={srSpend[c.id]} max={c.budget} color={c.color}/>}
+                    </div>
+                  ))}
+                </div>
+            }
+          </>;
+        })()}
       </Modal>
 
       {/* Allocate an account's balance across its linked categories */}

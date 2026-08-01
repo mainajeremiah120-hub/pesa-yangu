@@ -137,6 +137,68 @@ router.patch("/:id", async (req, res, next) => {
   } catch(e) { if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message }); next(e); }
 });
 
+// PATCH /transactions/transfer/:pairId — edits BOTH legs of a transfer
+// atomically (source/destination account, amount, date, note). The generic
+// PATCH /:id above only ever touches one transaction row, which would leave
+// a transfer's two legs (linked by transfer_pair_id) out of sync if used
+// directly on one leg — this mirrors how DELETE already treats a transfer's
+// pair as a single unit.
+router.patch("/transfer/:pairId", async (req, res, next) => {
+  try {
+    const { rows: legs } = await query(
+      "SELECT * FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",
+      [req.params.pairId, req.user.id]
+    );
+    const outLeg = legs.find(l => l.type === "transfer_out");
+    const inLeg  = legs.find(l => l.type === "transfer_in");
+    if (!outLeg || !inLeg) return res.status(404).json({ error: "Transfer not found" });
+
+    const d = z.object({
+      from_wallet_id: z.string().uuid().optional(),
+      to_wallet_id:   z.string().uuid().optional(),
+      amount_kes:     z.number().positive().optional(),
+      note:           z.string().nullable().optional(),
+      tx_date:        z.string().optional(),
+    }).parse(req.body);
+
+    const newFrom   = d.from_wallet_id ?? outLeg.wallet_id;
+    const newTo     = d.to_wallet_id   ?? inLeg.wallet_id;
+    const newAmount = d.amount_kes     ?? parseFloat(outLeg.amount_kes);
+    const newNote   = Object.prototype.hasOwnProperty.call(d, "note") ? d.note : outLeg.note;
+    const newDate   = d.tx_date ?? outLeg.tx_date;
+
+    if (newFrom === newTo) return res.status(400).json({ error: "Source and destination account can't be the same" });
+    const { rows: fromCheck } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [newFrom, req.user.id]);
+    if (!fromCheck.length) return res.status(400).json({ error: "Source account not found" });
+    const { rows: toCheck } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [newTo, req.user.id]);
+    if (!toCheck.length) return res.status(400).json({ error: "Destination account not found" });
+
+    const result = await withTransaction(async (client) => {
+      // Reverse the old effect on both original wallets first
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [parseFloat(outLeg.amount_kes), outLeg.wallet_id, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3", [parseFloat(inLeg.amount_kes), inLeg.wallet_id, req.user.id]);
+
+      const { rows: wr } = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE", [newFrom, req.user.id]);
+      if (!wr.length) throw Object.assign(new Error("Source account not found"), { status: 404 });
+      if (parseFloat(wr[0].balance) < newAmount) throw Object.assign(new Error("Insufficient balance in the source account"), { status: 400 });
+
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3", [newAmount, newFrom, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [newAmount, newTo, req.user.id]);
+
+      const { rows: outRows } = await client.query(
+        "UPDATE transactions SET wallet_id=$1, amount_kes=$2, note=$3, tx_date=$4 WHERE id=$5 RETURNING *",
+        [newFrom, newAmount, newNote, newDate, outLeg.id]
+      );
+      const { rows: inRows } = await client.query(
+        "UPDATE transactions SET wallet_id=$1, amount_kes=$2, note=$3, tx_date=$4 WHERE id=$5 RETURNING *",
+        [newTo, newAmount, newNote, newDate, inLeg.id]
+      );
+      return { transfer_out: outRows[0], transfer_in: inRows[0] };
+    });
+    res.json(result);
+  } catch (e) { if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message }); next(e); }
+});
+
 router.delete("/:id", async (req, res, next) => {
   try {
     const {rows}=await query("SELECT * FROM transactions WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);

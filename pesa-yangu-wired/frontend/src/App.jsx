@@ -1879,6 +1879,7 @@ export default function App() {
 
   const [fTx,     setFTx]    = useState(blankTx);
   const [fXfer,   setFXfer]  = useState(blankXfer);
+  const [editXferPairId, setEditXferPairId] = useState(null);
   const [fWindfall, setFWindfall] = useState(blankWindfall);
   const [fWal,    setFWal]   = useState(blankWal);
   const [fExpCat, setFExpCat]= useState(blankExpCat);
@@ -1966,10 +1967,54 @@ export default function App() {
     } catch(err) { showToast(err?.response?.data?.error||"Failed to add transaction", C.coral); }
   };
 
+  const openEditTransfer = (t) => {
+    const pairId = t.transfer_pair_id; if(!pairId) return;
+    const legs = txs.filter(x=>x.transfer_pair_id===pairId);
+    const outLeg = legs.find(x=>x.type==="transfer_out");
+    const inLeg  = legs.find(x=>x.type==="transfer_in");
+    if(!outLeg||!inLeg) return;
+    const fromW = wallets.find(w=>w.id===(outLeg.wallet||outLeg.wallet_id));
+    setEditXferPairId(pairId);
+    setFXfer({
+      from:   outLeg.wallet||outLeg.wallet_id,
+      to:     inLeg.wallet||inLeg.wallet_id,
+      amount: String(fromKES(outLeg.amount ?? parseFloat(outLeg.amount_kes||0), fromW?.currency||"KES", currencies)),
+      note:   outLeg.note||"",
+    });
+    openM("xfer");
+  };
+
   const doTransfer = async () => {
     const amt = parseFloat(fXfer.amount); if(!amt) return;
     const fromW = wallets.find(w=>w.id===fXfer.from);
     const amtKES = toKES(amt, fromW?.currency||"KES", currencies);
+
+    if (editXferPairId) {
+      try {
+        const oldOut = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_out");
+        const oldIn  = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_in");
+        const { transfer_out, transfer_in } = await txApi.updateTransfer(editXferPairId, {
+          from_wallet_id: fXfer.from, to_wallet_id: fXfer.to, amount_kes: amtKES, note: fXfer.note||undefined,
+        });
+        setTxs(p=>p.map(t=>{
+          if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:(transfer_out.tx_date||"").slice(0,10)};
+          if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:(transfer_in.tx_date||"").slice(0,10)};
+          return t;
+        }));
+        setWallets(p=>p.map(w=>{
+          let bal = parseFloat(w.balance);
+          if(oldOut && w.id===(oldOut.wallet||oldOut.wallet_id)) bal += parseFloat(oldOut.amount ?? oldOut.amount_kes ?? 0);
+          if(oldIn  && w.id===(oldIn.wallet||oldIn.wallet_id))   bal -= parseFloat(oldIn.amount ?? oldIn.amount_kes ?? 0);
+          if(w.id===fXfer.from) bal -= amtKES;
+          if(w.id===fXfer.to)   bal += amtKES;
+          return {...w, balance:bal};
+        }));
+        setFXfer(blankXfer); setEditXferPairId(null); closeM("xfer");
+        showToast("Transfer updated");
+      } catch(err) { showToast(err?.response?.data?.error||"Failed to update transfer", C.coral); }
+      return;
+    }
+
     try {
       await walletsApi.transfer({ from_wallet_id:fXfer.from, to_wallet_id:fXfer.to, amount_kes:amtKES, note:fXfer.note||undefined });
       setWallets(p=>p.map(w=>{
@@ -4642,7 +4687,7 @@ export default function App() {
       </Modal>
 
       {/* Transfer */}
-      <Modal open={isOpen("xfer")} onClose={()=>closeM("xfer")} title="⇄ Transfer Between Accounts">
+      <Modal open={isOpen("xfer")} onClose={()=>{closeM("xfer");setEditXferPairId(null);}} title={editXferPairId?"✏️ Edit Transfer":"⇄ Transfer Between Accounts"}>
         <Field label="From" value={fXfer.from} onChange={v=>{
           const newTo = fXfer.to===v ? (wallets.find(w=>w.id!==v)?.id||"") : fXfer.to;
           setFXfer({...fXfer,from:v,to:newTo});
@@ -4650,7 +4695,7 @@ export default function App() {
         <Field label="To" value={fXfer.to} onChange={v=>setFXfer({...fXfer,to:v})} options={wallets.filter(w=>w.id!==fXfer.from).map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))}/>
         <Field label="Amount" type="number" value={fXfer.amount} onChange={v=>setFXfer({...fXfer,amount:v})} placeholder="0.00" note="In source account's currency"/>
         <Field label="Note (optional)" value={fXfer.note} onChange={v=>setFXfer({...fXfer,note:v})} placeholder="e.g. Moving to savings"/>
-        <Btn onClick={doTransfer} style={{width:"100%",padding:13,fontSize:14}}>Transfer Funds</Btn>
+        <Btn onClick={doTransfer} style={{width:"100%",padding:13,fontSize:14}}>{editXferPairId?"Save Changes":"Transfer Funds"}</Btn>
       </Modal>
 
       {/* Allocate an account's balance across its linked categories */}
@@ -4841,6 +4886,7 @@ export default function App() {
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {!isT&&!isRefund&&<Btn onClick={()=>{openEditTx(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Transaction</Btn>}
+              {isT&&<Btn onClick={()=>{openEditTransfer(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Transfer</Btn>}
               {isRefund&&<Btn onClick={()=>{openEditRefundModal(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Refund</Btn>}
               {t.type==="expense"&&<Btn onClick={()=>{openRefundModal(t);setTxDetail(null);}} color="#9B59B6" style={{width:"100%",padding:14,fontSize:14}}>↩  Record Refund</Btn>}
               <Btn onClick={()=>{askConfirm(isT?"Delete Transfer":"Delete Transaction",isT?"Both sides of this transfer will be deleted and wallet balances reversed. This cannot be undone.":"This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",()=>{deleteTx(t.id);setTxDetail(null);});}} color={C.coral} outline style={{width:"100%",padding:14,fontSize:14}}>🗑  Delete</Btn>

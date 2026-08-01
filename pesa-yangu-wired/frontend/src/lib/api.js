@@ -102,6 +102,7 @@ export const txApi = {
   list:      (params)  => unwrap(client.get("/transactions", { params })),
   create:    (p)       => unwrap(client.post("/transactions", p)),
   update:    (id, p)   => unwrap(client.patch(`/transactions/${id}`, p)),
+  updateTransfer: (pairId, p) => unwrap(client.patch(`/transactions/transfer/${pairId}`, p)),
   remove:    (id)      => unwrap(client.delete(`/transactions/${id}`)),
   exportCSV: ()        => client.get("/transactions/export", { responseType: "blob" }),
   importCSV: (file)    => {

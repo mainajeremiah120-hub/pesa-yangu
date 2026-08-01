@@ -6,7 +6,7 @@
 const express = require("express");
 const multer  = require("multer");
 const { z }   = require("zod");
-const { GoogleGenAI } = require("@google/genai");
+const Anthropic = require("@anthropic-ai/sdk");
 const { query, withTransaction } = require("../models/db");
 const { requirePro } = require("../middleware/auth");
 const { getRates }   = require("../services/fx");
@@ -934,28 +934,28 @@ fxRouter.get("/", async (req,res,next)=>{
 // AI ADVICE
 // ══════════════════════════════════════════════════════════════════════════════
 const aiRouter  = express.Router();
-const GEMINI_MODEL = "gemini-3.5-flash"; // free-tier friendly — 2.5-flash is closed to new API keys; swap models by changing this one line
+const CLAUDE_MODEL = "claude-haiku-4-5-20251001"; // swap models by changing this one line
 
 // Only genuine auth/permission failures — NOT 400 (that's also "bad request",
-// e.g. an invalid model name or malformed prompt, which needs its own real
-// error message surfaced, not a misleading "check your API key").
+// e.g. a malformed prompt, which needs its own real error message surfaced,
+// not a misleading "check your API key").
 function isAiAuthError(e) {
   return e?.status===401 || e?.status===403 || /api[_ ]?key[_ ]?invalid|permission_denied|unauthenticated/i.test(e?.message||"");
 }
 
-// Free-tier Flash models occasionally come back 503 "model is overloaded" at
-// busy times — transient, not a real failure. One short retry clears most of
-// these rather than failing the user's message outright.
+// Claude occasionally comes back 529 "Overloaded" at busy times — transient,
+// not a real failure. One short retry clears most of these rather than
+// failing the user's message outright.
 function isAiOverloadedError(e) {
-  return e?.status===503 || /overloaded|unavailable/i.test(e?.message||"");
+  return e?.status===529 || e?.status===429 || /overloaded/i.test(e?.message||"");
 }
-async function generateWithRetry(aiClient, params) {
+async function createMessageWithRetry(aiClient, params) {
   try {
-    return await aiClient.models.generateContent(params);
+    return await aiClient.messages.create(params);
   } catch(e) {
     if (!isAiOverloadedError(e)) throw e;
     await new Promise(r=>setTimeout(r,1200));
-    return aiClient.models.generateContent(params);
+    return aiClient.messages.create(params);
   }
 }
 
@@ -972,18 +972,17 @@ const aiContextSchema = z.object({
 
 aiRouter.post("/advice", async (req,res,next)=>{
   try {
-    if(!process.env.GEMINI_API_KEY){
+    if(!process.env.ANTHROPIC_API_KEY){
       return res.status(503).json({error:"AI advisor is not configured. Please contact support."});
     }
     // Validate and sanitize context — reject arbitrary keys/values
     const context = aiContextSchema.parse(req.body.context ?? req.body);
-    const aiClient = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
-    const result = await generateWithRetry(aiClient, {
-      model: GEMINI_MODEL,
-      contents: [{ role:"user", parts:[{ text:`You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${context.baseCurrency}. Based on their data below, give 5 specific, numbered, actionable insights covering: spending vs budget, watched categories, goals progress, loan strategy, and one forward-looking prediction. Be direct and data-led. Data: ${JSON.stringify(context)}` }] }],
-      config: { maxOutputTokens: 1000 },
+    const aiClient = new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
+    const msg = await createMessageWithRetry(aiClient, {
+      model: CLAUDE_MODEL, max_tokens: 1000,
+      messages: [{ role:"user", content:`You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${context.baseCurrency}. Based on their data below, give 5 specific, numbered, actionable insights covering: spending vs budget, watched categories, goals progress, loan strategy, and one forward-looking prediction. Be direct and data-led. Data: ${JSON.stringify(context)}` }],
     });
-    res.json({advice:result.text||""});
+    res.json({advice:msg.content[0]?.text||""});
   } catch(e){
     if(e instanceof z.ZodError) return res.status(400).json({error:"Invalid context: "+e.errors[0].message});
     if(isAiAuthError(e)){
@@ -1079,7 +1078,7 @@ aiRouter.delete("/conversations/:id", async (req,res,next)=>{
 
 aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
   try {
-    if(!process.env.GEMINI_API_KEY){
+    if(!process.env.ANTHROPIC_API_KEY){
       return res.status(503).json({error:"AI advisor is not configured. Please contact support."});
     }
     const convo = await loadOwnedConversation(req.user.id, req.params.id);
@@ -1100,15 +1099,13 @@ aiRouter.post("/conversations/:id/messages", async (req,res,next)=>{
     const baseCurrency = context?.baseCurrency || "KES";
     const systemPrompt = `You are a sharp, warm personal finance advisor for a user in Kenya managing finances in ${baseCurrency}, chatting inside their finance app. Answer their questions directly and specifically, using the financial snapshot below when relevant — don't repeat it back verbatim, just use it to ground your answer. Keep replies conversational and reasonably concise unless they ask for detail. Snapshot: ${JSON.stringify(context || {})}`;
 
-    // Gemini uses role "model" for assistant turns (not "assistant") — translate
-    // only at the API boundary; we keep storing "assistant" in our own schema.
-    const aiClient = new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
-    const result = await generateWithRetry(aiClient, {
-      model: GEMINI_MODEL,
-      contents: history.map(m=>({ role: m.role==="assistant"?"model":"user", parts:[{ text:m.content }] })),
-      config: { systemInstruction: systemPrompt, maxOutputTokens: 1000 },
+    const aiClient = new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
+    const msg = await createMessageWithRetry(aiClient, {
+      model: CLAUDE_MODEL, max_tokens: 1000,
+      system: systemPrompt,
+      messages: history.map(m=>({ role:m.role, content:m.content })),
     });
-    const replyText = result.text || "";
+    const replyText = msg.content[0]?.text || "";
 
     const assistantMsg = (await query(
       "INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1,'assistant',$2) RETURNING *",

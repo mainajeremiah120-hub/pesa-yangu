@@ -2433,6 +2433,42 @@ export default function App() {
     openM("tx");
   };
 
+  // Duplicate an existing transaction as a starting point for a new one —
+  // same category/wallet/amount/note, but today's date so you can adjust
+  // whatever's different (usually just the date) rather than retyping it all.
+  const cloneTx = (t) => {
+    if (t.type?.startsWith("transfer")) {
+      const legs = txs.filter(x=>x.transfer_pair_id===t.transfer_pair_id);
+      const outLeg = legs.find(x=>x.type==="transfer_out");
+      const inLeg  = legs.find(x=>x.type==="transfer_in");
+      if(!outLeg||!inLeg) return;
+      const fromW = wallets.find(w=>w.id===(outLeg.wallet||outLeg.wallet_id));
+      setEditXferPairId(null);
+      setFXfer({
+        from:   outLeg.wallet||outLeg.wallet_id,
+        to:     inLeg.wallet||inLeg.wallet_id,
+        amount: String(fromKES(outLeg.amount ?? parseFloat(outLeg.amount_kes||0), fromW?.currency||"KES", currencies)),
+        note:   outLeg.note||"",
+      });
+      openM("xfer");
+      return;
+    }
+    setEditTx(null);
+    setFTx({
+      type:     t.type,
+      category: t.category || t.category_id || "",
+      amount:   String(t.amount || parseFloat(t.amount_kes || 0)),
+      wallet:   t.wallet || t.wallet_id || "",
+      note:     t.note || "",
+      merchant: t.merchant || "",
+      isRecurring: false,
+      freq: "monthly",
+      date: todayStr(),
+      time: nowTimeStr(),
+    });
+    openM("tx");
+  };
+
   const [allocateWallet, setAllocateWallet] = useState(null);
   const [expandedAllocWalletId, setExpandedAllocWalletId] = useState(null);
   const [newAllocCat,    setNewAllocCat]    = useState({ name:"", parentId:"" });
@@ -4938,6 +4974,7 @@ export default function App() {
               {isT&&<Btn onClick={()=>{openEditTransfer(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Transfer</Btn>}
               {isRefund&&<Btn onClick={()=>{openEditRefundModal(t);setTxDetail(null);}} style={{width:"100%",padding:14,fontSize:14}}>✏️  Edit Refund</Btn>}
               {t.type==="expense"&&<Btn onClick={()=>{openRefundModal(t);setTxDetail(null);}} color="#9B59B6" style={{width:"100%",padding:14,fontSize:14}}>↩  Record Refund</Btn>}
+              {!isRefund&&<Btn onClick={()=>{cloneTx(t);setTxDetail(null);}} outline color={C.textMuted} style={{width:"100%",padding:14,fontSize:14}}>⧉  Duplicate</Btn>}
               <Btn onClick={()=>{askConfirm(isT?"Delete Transfer":"Delete Transaction",isT?"Both sides of this transfer will be deleted and wallet balances reversed. This cannot be undone.":"This transaction will be permanently deleted and your account balance will be adjusted. This cannot be undone.",()=>{deleteTx(t.id);setTxDetail(null);});}} color={C.coral} outline style={{width:"100%",padding:14,fontSize:14}}>🗑  Delete</Btn>
             </div>
           </Modal>

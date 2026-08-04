@@ -1907,7 +1907,9 @@ export default function App() {
   const [editLoan,    setEditLoan]    = useState(null);
   const [editPolicy,  setEditPolicy]  = useState(null);
   const [editRepay,   setEditRepay]   = useState(null); // { loan, repayment }
-  const [savingRepayment, setSavingRepayment] = useState(false); // guards against double-tap/double-submit
+  const [savingRepayment, setSavingRepayment] = useState(false); // drives the button's disabled/"Saving…" UI
+  const savingRepaymentRef = useRef(false); // the actual guard — a ref updates instantly, unlike state which
+  // only takes effect after the next render, so two clicks fired faster than a re-render can both slip past a state check
   const [editRefund,  setEditRefund]  = useState(null);
   const [catHistory,  setCatHistory]  = useState(null); // { cat, type } — category records modal
   const [txDetail,    setTxDetail]    = useState(null); // transaction detail modal
@@ -2245,9 +2247,10 @@ export default function App() {
   };
 
   const addRepayment = async () => {
-    if (savingRepayment) return; // already submitting — ignore a double-tap or repeat click
+    if (savingRepaymentRef.current) return; // already submitting — ignore a double-tap or repeat click
     const total = parseFloat(fRepay.total); if(!total) return;
     const loan  = loans.find(l=>l.id===fRepay.loanId); if(!loan) return;
+    savingRepaymentRef.current = true;
     setSavingRepayment(true);
     try {
       const { repayment, transaction } = await loansApi.recordRepayment(loan.id, {
@@ -2269,7 +2272,7 @@ export default function App() {
       setFRepay(blankRepay); setStatementNotice(""); closeM("repay");
       showToast("Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
-    finally { setSavingRepayment(false); }
+    finally { savingRepaymentRef.current = false; setSavingRepayment(false); }
   };
 
   const addInvestment = async () => {
@@ -2701,9 +2704,10 @@ export default function App() {
   };
 
   const saveRepayment = async () => {
-    if (savingRepayment) return; // already submitting — ignore a double-tap or repeat click
+    if (savingRepaymentRef.current) return; // already submitting — ignore a double-tap or repeat click
     const total = parseFloat(fRepay.total); if (!total) return;
     if (editRepay) {
+      savingRepaymentRef.current = true;
       setSavingRepayment(true);
       try {
         const { repayment } = await loansApi.updateRepayment(editRepay.loan.id, editRepay.repayment.id, {
@@ -2744,7 +2748,7 @@ export default function App() {
         setEditRepay(null); setFRepay(blankRepay); closeM("repay");
         showToast("Repayment updated");
       } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
-      finally { setSavingRepayment(false); }
+      finally { savingRepaymentRef.current = false; setSavingRepayment(false); }
     } else {
       addRepayment();
     }

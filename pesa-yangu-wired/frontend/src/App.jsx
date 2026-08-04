@@ -1907,6 +1907,7 @@ export default function App() {
   const [editLoan,    setEditLoan]    = useState(null);
   const [editPolicy,  setEditPolicy]  = useState(null);
   const [editRepay,   setEditRepay]   = useState(null); // { loan, repayment }
+  const [savingRepayment, setSavingRepayment] = useState(false); // guards against double-tap/double-submit
   const [editRefund,  setEditRefund]  = useState(null);
   const [catHistory,  setCatHistory]  = useState(null); // { cat, type } — category records modal
   const [txDetail,    setTxDetail]    = useState(null); // transaction detail modal
@@ -2244,10 +2245,12 @@ export default function App() {
   };
 
   const addRepayment = async () => {
+    if (savingRepayment) return; // already submitting — ignore a double-tap or repeat click
     const total = parseFloat(fRepay.total); if(!total) return;
     const loan  = loans.find(l=>l.id===fRepay.loanId); if(!loan) return;
+    setSavingRepayment(true);
     try {
-      const { repayment } = await loansApi.recordRepayment(loan.id, {
+      const { repayment, transaction } = await loansApi.recordRepayment(loan.id, {
         wallet_id:    fRepay.wallet,
         total_kes:    toKES(total, loan.currency, currencies),
         principal_kes:toKES(parseFloat(fRepay.principal)||0, loan.currency, currencies),
@@ -2262,9 +2265,11 @@ export default function App() {
         return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{id:repayment.id,wallet:repayment.wallet_id,total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
       setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
+      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:(transaction.tx_date||"").slice(0,10)}, ...p]);
       setFRepay(blankRepay); setStatementNotice(""); closeM("repay");
       showToast("Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+    finally { setSavingRepayment(false); }
   };
 
   const addInvestment = async () => {
@@ -2696,8 +2701,10 @@ export default function App() {
   };
 
   const saveRepayment = async () => {
+    if (savingRepayment) return; // already submitting — ignore a double-tap or repeat click
     const total = parseFloat(fRepay.total); if (!total) return;
     if (editRepay) {
+      setSavingRepayment(true);
       try {
         const { repayment } = await loansApi.updateRepayment(editRepay.loan.id, editRepay.repayment.id, {
           wallet_id:    fRepay.wallet,
@@ -2709,14 +2716,19 @@ export default function App() {
         });
         setLoans(p => p.map(l => {
           if (l.id !== editRepay.loan.id) return l;
+          const isSimple = l.interest_type === "simple";
+          // Reverse what the old repayment reduced, then apply what the new one
+          // does — matching the backend's own math exactly, rather than
+          // recomputing "remaining" from scratch (which used the wrong field
+          // for simple-interest loans and ignored any manual balance edits).
+          const oldReduction = isSimple ? (editRepay.repayment.total||0) : (editRepay.repayment.principal||0);
+          const newReduction = isSimple ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
           const reps = l.repayments.map(r =>
             r.id === editRepay.repayment.id
-              ? { ...r, total:parseFloat(repayment.total_kes), principal:parseFloat(repayment.principal_kes), interest:parseFloat(repayment.interest_kes), date:repayment.payment_date, note:repayment.note }
+              ? { ...r, total:parseFloat(repayment.total_kes), principal:parseFloat(repayment.principal_kes), interest:parseFloat(repayment.interest_kes), wallet:repayment.wallet_id, date:repayment.payment_date, note:repayment.note }
               : r
           );
-          // Recalc remaining
-          const paidPrincipal = reps.reduce((s, r) => s + (r.principal || 0), 0);
-          return { ...l, repayments: reps, remaining: Math.max(0, l.principal - paidPrincipal) };
+          return { ...l, repayments: reps, remaining: Math.max(0, l.remaining + oldReduction - newReduction) };
         }));
         // Reverse the old debit (possibly on a different wallet) and apply the new one
         setWallets(p=>p.map(w=>{
@@ -2725,9 +2737,14 @@ export default function App() {
           if (w.id === fRepay.wallet) b -= parseFloat(repayment.total_kes||0);
           return (w.id === editRepay.repayment.wallet || w.id === fRepay.wallet) ? {...w, balance:b} : w;
         }));
+        setTxs(p=>p.map(t=>t.loan_repayment_id===editRepay.repayment.id
+          ? {...t, wallet:repayment.wallet_id, wallet_id:repayment.wallet_id, amount:parseFloat(repayment.total_kes), amount_kes:repayment.total_kes, date:(repayment.payment_date||"").slice(0,10), tx_date:repayment.payment_date, note:repayment.note, principal_paid:repayment.principal_kes, interest_paid:repayment.interest_kes}
+          : t
+        ));
         setEditRepay(null); setFRepay(blankRepay); closeM("repay");
         showToast("Repayment updated");
       } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
+      finally { setSavingRepayment(false); }
     } else {
       addRepayment();
     }
@@ -2952,6 +2969,15 @@ export default function App() {
   const deleteLoan = async (id) => {
     try {
       await loansApi.remove(id);
+      // The backend reverses every repayment's wallet deduction when a loan
+      // is deleted, but that never made it back into local state — wallet
+      // balances stayed stale (too low) until the next full reload.
+      const loan = loans.find(l=>l.id===id);
+      if (loan?.repayments?.length) {
+        const restoreByWallet = {};
+        loan.repayments.forEach(r=>{ if(r.wallet) restoreByWallet[r.wallet]=(restoreByWallet[r.wallet]||0)+(r.total||0); });
+        setWallets(p=>p.map(w=>restoreByWallet[w.id]?{...w,balance:parseFloat(w.balance)+restoreByWallet[w.id]}:w));
+      }
       setLoans(p=>p.filter(l=>l.id!==id));
       showToast("Loan deleted");
     } catch(err) { showToast("Failed to delete", C.coral); }
@@ -2979,11 +3005,18 @@ export default function App() {
       await loansApi.removeRepayment(loanId, repaymentId);
       setLoans(p=>p.map(l=>{
         if(l.id!==loanId) return l;
+        const deleted = l.repayments.find(r=>r.id===repaymentId);
         const reps = l.repayments.filter(r=>r.id!==repaymentId);
-        const paidPrincipal = reps.reduce((s,r)=>s+(r.principal||0),0);
-        return {...l, repayments:reps, remaining:Math.max(0,l.principal-paidPrincipal)};
+        // Add back exactly what this repayment reduced — simple-interest loans
+        // track total paid, compound loans track principal only — matching the
+        // backend's own restore math, rather than recomputing from scratch
+        // (which used the wrong field for simple loans and ignored any manual
+        // balance edits).
+        const restore = deleted ? (l.interest_type==="simple" ? (deleted.total||0) : (deleted.principal||0)) : 0;
+        return {...l, repayments:reps, remaining:l.remaining+restore};
       }));
       if (walletId) setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)+parseFloat(repaymentTotal||0)}:w));
+      setTxs(p=>p.filter(t=>t.loan_repayment_id!==repaymentId));
       showToast("Repayment deleted");
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete repayment", C.coral); }
   };
@@ -5236,7 +5269,7 @@ export default function App() {
           {parsingStatement&&<div style={{color:C.textMuted,fontSize:12,marginTop:-6,marginBottom:12}}>⏳ Reading statement…</div>}
           {!parsingStatement&&statementNotice&&<div style={{color:C.gold,fontSize:12,marginTop:-6,marginBottom:12}}>ℹ️ {statementNotice}</div>}
         </>}
-        <Btn onClick={saveRepayment} style={{width:"100%",padding:13,fontSize:14}}>{editRepay?"Save Changes":"Record Repayment"}</Btn>
+        <Btn onClick={saveRepayment} disabled={savingRepayment} style={{width:"100%",padding:13,fontSize:14}}>{savingRepayment?"Saving…":editRepay?"Save Changes":"Record Repayment"}</Btn>
       </Modal>
 
       {/* Add / Edit Investment */}

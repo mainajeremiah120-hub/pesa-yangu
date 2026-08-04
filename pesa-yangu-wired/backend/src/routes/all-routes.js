@@ -752,7 +752,17 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
     const d=z.object({wallet_id:z.string().uuid(),total_kes:z.number().positive(),principal_kes:z.number().min(0).default(0),interest_kes:z.number().min(0).default(0),payment_date:z.string().optional(),note:z.string().optional()}).parse({
       ...req.body, total_kes:parseFloat(req.body.total_kes), principal_kes:parseFloat(req.body.principal_kes||0), interest_kes:parseFloat(req.body.interest_kes||0)
     });
-    const rep=await withTransaction(async(client)=>{
+
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow attachment upload) creating two repayments for one real
+    // payment — reject an identical repayment recorded moments ago.
+    const {rows:dupe}=await query(
+      "SELECT id FROM loan_repayments WHERE loan_id=$1 AND wallet_id=$2 AND total_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [loan.id,d.wallet_id,d.total_kes]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."});
+
+    const {repayment:rep, transaction:tx}=await withTransaction(async(client)=>{
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.total_kes,d.wallet_id,req.user.id]);
       // Simple interest: reduce remaining by total paid (interest baked in at creation)
       // Compound: reduce remaining by principal portion only
@@ -761,11 +771,11 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
       const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Loan Repayment' AND type='expense' LIMIT 1",[req.user.id]);
-      await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8,$9,$10)",
-        [req.user.id,d.wallet_id,cats[0]?.id||null,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes]);
-      return rows[0];
+      const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,loan_repayment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+        [req.user.id,d.wallet_id,cats[0]?.id||null,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
+      return { repayment:rows[0], transaction:txRows[0] };
     });
-    res.status(201).json({repayment:rep});
+    res.status(201).json({repayment:rep, transaction:tx});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
@@ -830,11 +840,20 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
       // Apply new
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[newTotal,newWallet,req.user.id]);
       const newReduction = isSimple ? newTotal : newPrincipal;
-      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1) WHERE id=$2",[newReduction,req.params.id]);
+      await client.query(
+        "UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",
+        [newReduction,req.params.id]
+      );
 
       const {rows}=await client.query(
         `UPDATE loan_repayments SET wallet_id=$1,total_kes=$2,principal_kes=$3,interest_kes=$4,payment_date=$5,note=$6 WHERE id=$7 RETURNING *`,
         [newWallet,newTotal,newPrincipal,newInterest,newDate,newNote,req.params.rid]
+      );
+      // Keep the ledger entry this repayment created in sync — without this,
+      // Records would keep showing the old amount/wallet/date forever.
+      await client.query(
+        `UPDATE transactions SET wallet_id=$1,amount_kes=$2,note=$3,tx_date=$4,principal_paid=$5,interest_paid=$6 WHERE loan_repayment_id=$7`,
+        [newWallet,newTotal,newNote,newDate,newPrincipal,newInterest,req.params.rid]
       );
       return rows[0];
     });
@@ -855,7 +874,8 @@ loanRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
       if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(r.total_kes),r.wallet_id]);
       // Restore loan remaining — simple loans track total, compound loans track principal
       const restore = r.interest_type === "simple" ? parseFloat(r.total_kes) : parseFloat(r.principal_kes);
-      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[restore,req.params.id]);
+      await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1,is_settled=(remaining_kes+$1<=0) WHERE id=$2",[restore,req.params.id]);
+      // CASCADE (migration 028) removes the linked transaction along with the repayment
       await client.query("DELETE FROM loan_repayments WHERE id=$1",[r.id]);
     });
     res.json({ok:true});

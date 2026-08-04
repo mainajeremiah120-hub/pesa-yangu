@@ -1504,6 +1504,11 @@ export default function App() {
       wallet:    r.wallet_id,
       date:      (r.payment_date||r.date||"").slice(0,10),
     })),
+    interestAccruals: (l.interest_accruals||[]).map(a=>({
+      ...a,
+      amount: parseFloat(a.amount_kes||0),
+      date:   (a.period||"").slice(0,10),
+    })),
   });
   const normaliseRecurring = (r) => ({
     ...r,
@@ -4485,6 +4490,13 @@ export default function App() {
                       </div>
                     </div>)}
                   </div>}
+                  {l.interestAccruals?.length>0&&<div style={{marginTop:10}}>
+                    <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Interest Charged</div>
+                    {l.interestAccruals.map((a,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
+                      <div style={{fontSize:12,fontWeight:600}}>{fmtDate(a.date)} — {MONTH_NAMES[new Date(a.date).getMonth()]} interest</div>
+                      <Badge color={C.gold}>+{disp(a.amount)}</Badge>
+                    </div>)}
+                  </div>}
                   {!settled&&<div style={{marginTop:10}}><Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:l.id,wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>}
                 </Card>;
               };
@@ -5228,7 +5240,10 @@ export default function App() {
               📋 Simple interest: you will repay a fixed total of <strong style={{color:C.teal}}>{fLoan.currency} {total.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> ({fLoan.currency} {p.toLocaleString()} principal + {fLoan.currency} {(total-p).toLocaleString()} interest) — regardless of when you pay.
             </div>;
           }
-          return null;
+          const monthly=p*(r/100/12);
+          return <div style={{background:C.gold+"11",border:`1px solid ${C.gold}33`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
+            📈 Compound interest: about <strong style={{color:C.gold}}>{fLoan.currency} {monthly.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> is added to what you owe automatically at the end of every month you haven't paid it off, based on your remaining balance.
+          </div>;
         })()}
         <div className="grid-2">
           <Field label={`Monthly Payment (${fLoan.currency})`} type="number" value={fLoan.monthlyPayment} onChange={v=>setFLoan({...fLoan,monthlyPayment:v})} placeholder="0"/>

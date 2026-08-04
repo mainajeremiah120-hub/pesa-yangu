@@ -706,6 +706,14 @@ loanRouter.get("/", async (req,res,next)=>{
       const repaymentsByLoan={};
       allRepayments.forEach(r=>{ (repaymentsByLoan[r.loan_id]=repaymentsByLoan[r.loan_id]||[]).push(r); });
       loans.forEach(l=>{ l.repayments = repaymentsByLoan[l.id]||[]; });
+
+      const {rows:allAccruals}=await query(
+        "SELECT * FROM loan_interest_accruals WHERE loan_id = ANY($1) ORDER BY period DESC",
+        [loans.map(l=>l.id)]
+      );
+      const accrualsByLoan={};
+      allAccruals.forEach(a=>{ (accrualsByLoan[a.loan_id]=accrualsByLoan[a.loan_id]||[]).push(a); });
+      loans.forEach(l=>{ l.interest_accruals = accrualsByLoan[l.id]||[]; });
     }
     res.json({loans});
   } catch(e){next(e);}

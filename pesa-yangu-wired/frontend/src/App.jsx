@@ -1522,7 +1522,10 @@ export default function App() {
   // ── Derived values
   const totalBalance   = wallets.reduce((s,w)=>s+parseFloat(w.balance||0), 0);
   const totalIncome    = txs.filter(t=>t.type==="income"  && isCurrentMonth(t)).reduce((s,t)=>s+t.amount, 0);
-  const totalRefunds   = txs.filter(t=>t.type==="refund"  && isCurrentMonth(t)).reduce((s,t)=>s+t.amount, 0);
+  // A refund reduces the month its ORIGINAL expense happened in, not the
+  // month the refund itself was recorded — otherwise a refund processed the
+  // following month never corrects the month that's actually overstated.
+  const totalRefunds   = txs.filter(t=>t.type==="refund").reduce((s,t)=>{ const orig=txs.find(x=>x.id===t.refund_of); return (orig&&isCurrentMonth(orig)) ? s+t.amount : s; }, 0);
   const totalExpense   = Math.max(0, txs.filter(t=>t.type==="expense" && isCurrentMonth(t)).reduce((s,t)=>s+t.amount, 0) - totalRefunds);
   const portfolioValue = investments.reduce((s,i)=>s+i.units*i.currentPrice, 0);
   const totalDebt      = loans.reduce((s,l)=>s+l.remaining, 0);
@@ -1555,7 +1558,11 @@ export default function App() {
     const m={};
     expCats.forEach(c=>m[c.id]=0);
     txs.filter(t=>t.type==="expense" && isCurrentMonth(t)).forEach(t=>{ const key=t.category||t.category_id; m[key]=(m[key]||0)+t.amount; });
-    txs.filter(t=>t.type==="refund" && isCurrentMonth(t)).forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) m[key]=Math.max(0,(m[key]||0)-t.amount); });
+    // A refund belongs to the month its ORIGINAL expense happened in, not the
+    // month it was recorded in — otherwise a refund processed in a later
+    // month than the purchase never reduces the month that's actually
+    // overstated, and gets silently clamped to zero here instead.
+    txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); if(!orig||!isCurrentMonth(orig)) return; const key=orig.category||orig.category_id; if(key) m[key]=Math.max(0,(m[key]||0)-t.amount); });
     return m;
   }, [txs, expCats]);
 
@@ -4115,7 +4122,10 @@ export default function App() {
           const bmTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===budgetYear && d.getMonth()+1===budgetMonth; });
           const bmSpend = {}; expCats.forEach(c=>bmSpend[c.id]=0);
           bmTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; bmSpend[key]=(bmSpend[key]||0)+t.amount; });
-          bmTxs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) bmSpend[key]=Math.max(0,(bmSpend[key]||0)-t.amount); });
+          // Attribute a refund to the month its original expense happened in
+          // (not the month the refund itself was recorded) — see spendByCat.
+          const bmMatch = (d) => d.getFullYear()===budgetYear && d.getMonth()+1===budgetMonth;
+          txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); if(!orig||!bmMatch(new Date(orig.date||orig.tx_date))) return; const key=orig.category||orig.category_id; if(key) bmSpend[key]=Math.max(0,(bmSpend[key]||0)-t.amount); });
           const bmEarn = {}; incCats.forEach(c=>bmEarn[c.id]=0);
           bmTxs.filter(t=>t.type==="income").forEach(t=>{ const key=t.category||t.category_id; bmEarn[key]=(bmEarn[key]||0)+t.amount; });
           // Bottom-up actual spend for the SELECTED month (mirrors usedById, but scoped to bmSpend
@@ -4135,7 +4145,11 @@ export default function App() {
           })();
           const bmOver = expCats.filter(c=>(capById[c.id]||0)>0 && (bmUsedById[c.id]||0)>(capById[c.id]||0) && !c.linkedWalletId);
           const bmTotalIncome  = bmTxs.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
-          const bmTotalExpense = Math.max(0, bmTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0) - bmTxs.filter(t=>t.type==="refund").reduce((s,t)=>s+t.amount,0));
+          // Refunds credited back here must be the ones whose ORIGINAL expense
+          // falls in this month (bmMatch, defined above) — not ones merely
+          // recorded in this month — so this total stays consistent with bmSpend.
+          const bmRefundsForMonth = txs.filter(t=>t.type==="refund").reduce((s,t)=>{ const orig=txs.find(x=>x.id===t.refund_of); return (orig&&bmMatch(new Date(orig.date||orig.tx_date))) ? s+t.amount : s; },0);
+          const bmTotalExpense = Math.max(0, bmTxs.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0) - bmRefundsForMonth);
           const isCurrentBM = budgetYear===new Date().getFullYear() && budgetMonth===new Date().getMonth()+1;
           const bq = budgetSearch.trim().toLowerCase();
           const manualExpCats = expCats.filter(c=>c.allocationType!=="percent");
@@ -4800,7 +4814,10 @@ export default function App() {
           const srTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===spendReportYear && d.getMonth()+1===spendReportMonth; });
           const srSpend = {};
           srTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; srSpend[key]=(srSpend[key]||0)+(t.amount||parseFloat(t.amount_kes||0)); });
-          srTxs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); const key=orig?(orig.category||orig.category_id):null; if(key) srSpend[key]=Math.max(0,(srSpend[key]||0)-(t.amount||parseFloat(t.amount_kes||0))); });
+          // Attribute a refund to the month its original expense happened in
+          // (not the month the refund itself was recorded) — see spendByCat.
+          const srMatch = (d) => d.getFullYear()===spendReportYear && d.getMonth()+1===spendReportMonth;
+          txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); if(!orig||!srMatch(new Date(orig.date||orig.tx_date))) return; const key=orig.category||orig.category_id; if(key) srSpend[key]=Math.max(0,(srSpend[key]||0)-(t.amount||parseFloat(t.amount_kes||0))); });
           const rows = expCats.filter(c=>(srSpend[c.id]||0)>0).sort((a,b)=>(srSpend[b.id]||0)-(srSpend[a.id]||0));
           const total = rows.reduce((s,c)=>s+(srSpend[c.id]||0),0);
           return <>

@@ -64,11 +64,16 @@ router.delete("/:id", async (req, res, next) => {
         (SELECT COUNT(*) FROM goals               WHERE wallet_id=$1)::int AS goals,
         (SELECT COUNT(*) FROM investments         WHERE wallet_id=$1)::int AS investments,
         (SELECT COUNT(*) FROM loan_repayments     WHERE wallet_id=$1)::int AS loan_repayments,
-        (SELECT COUNT(*) FROM investment_returns  WHERE wallet_id=$1)::int AS investment_returns`,
+        (SELECT COUNT(*) FROM investment_returns  WHERE wallet_id=$1)::int AS investment_returns,
+        (SELECT COUNT(*) FROM categories          WHERE linked_wallet_id=$1)::int AS linked_categories,
+        (SELECT COUNT(*) FROM insurance_policies  WHERE wallet_id=$1)::int AS insurance_policies,
+        (SELECT COUNT(*) FROM premium_payments    WHERE wallet_id=$1)::int AS premium_payments,
+        (SELECT COUNT(*) FROM goal_contributions  WHERE from_wallet_id=$1 OR to_wallet_id=$1)::int AS goal_contributions`,
       [req.params.id]
     );
     const c = counts[0];
-    const total = c.transactions + c.recurring + c.goals + c.investments + c.loan_repayments + c.investment_returns;
+    const total = c.transactions + c.recurring + c.goals + c.investments + c.loan_repayments + c.investment_returns
+                + c.linked_categories + c.insurance_policies + c.premium_payments + c.goal_contributions;
     if (total > 0) {
       return res.status(409).json({
         error: "Wallet has linked records and cannot be deleted.",

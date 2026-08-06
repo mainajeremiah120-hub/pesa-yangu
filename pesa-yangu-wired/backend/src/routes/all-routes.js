@@ -1207,6 +1207,16 @@ reconcileRouter.post("/parse", upload.single("file"), async (req,res,next)=>{
   try {
     if(!req.file) return res.status(400).json({error:"No file uploaded"});
     const {walletId}=z.object({walletId:z.string().uuid()}).parse(req.body);
+    const {rows:wr}=await query("SELECT currency FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.user.id]);
+    if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+    // Statement amounts are in the account's own currency, but amount_kes is
+    // always KES internally — same conversion every other money-entry path
+    // (Add Transaction, Transfer, Loan Repayment, ...) already applies.
+    let rate = 1;
+    if (wr[0].currency !== "KES") {
+      const rates = await getRates();
+      rate = rates[wr[0].currency] || 1;
+    }
     const lines=req.file.buffer.toString("utf-8").trim().split("\n").filter(l=>l.trim());
     if(lines.length<2) return res.status(400).json({error:"File appears empty"});
     const hdrs=lines[0].split(",").map(h=>h.trim().toLowerCase().replace(/["']/g,""));
@@ -1217,7 +1227,8 @@ reconcileRouter.post("/parse", upload.single("file"), async (req,res,next)=>{
       const desc=get(v,["description","narration","details","merchant","reference","particulars"]);
       const debit=parseFloat(get(v,["debit","withdrawal","dr"])||"0")||0;
       const credit=parseFloat(get(v,["credit","deposit","cr"])||"0")||0;
-      return {date,desc,amount:credit>0?credit:(debit>0?-debit:0)};
+      const amount=(credit>0?credit:(debit>0?-debit:0))*rate;
+      return {date,desc,amount};
     }).filter(r=>r.date&&r.amount!==0);
 
     const {rows:existing}=await query("SELECT amount_kes,tx_date FROM transactions WHERE wallet_id=$1 AND user_id=$2",[walletId,req.user.id]);

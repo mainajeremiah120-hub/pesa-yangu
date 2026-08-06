@@ -2927,6 +2927,10 @@ export default function App() {
         if (counts.investments)       parts.push(`${counts.investments} investment${counts.investments !== 1 ? "s" : ""}`);
         if (counts.loan_repayments)   parts.push(`${counts.loan_repayments} loan repayment${counts.loan_repayments !== 1 ? "s" : ""}`);
         if (counts.investment_returns) parts.push(`${counts.investment_returns} investment return${counts.investment_returns !== 1 ? "s" : ""}`);
+        if (counts.linked_categories)  parts.push(`${counts.linked_categories} categor${counts.linked_categories !== 1 ? "ies" : "y"} using it as their linked account`);
+        if (counts.insurance_policies) parts.push(`${counts.insurance_policies} insurance polic${counts.insurance_policies !== 1 ? "ies" : "y"} using it as the payment account`);
+        if (counts.premium_payments)   parts.push(`${counts.premium_payments} premium payment${counts.premium_payments !== 1 ? "s" : ""}`);
+        if (counts.goal_contributions) parts.push(`${counts.goal_contributions} goal contribution${counts.goal_contributions !== 1 ? "s" : ""}`);
         showToast(`Can't delete — this account has ${parts.join(", ")} linked to it. Remove those first.`, C.coral, 6000);
       } else {
         showToast(err?.response?.data?.error || "Failed to delete", C.coral);

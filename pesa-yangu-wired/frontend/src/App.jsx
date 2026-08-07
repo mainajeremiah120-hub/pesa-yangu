@@ -3188,23 +3188,42 @@ export default function App() {
     if (!valid.length) return;
     setImportBusy(true);
     try {
-      // Build a CSV from only valid rows and send to backend
-      const headers = ["date","time","type","category","amount_kes","merchant","note","wallet","from_wallet","to_wallet"];
-      const validRows = valid.map(r => ({
-        date:        r._date,
-        time:        r._time || "00:00",
-        type:        r._type === "transfer" ? "transfer_out" : r._type,
-        category:    r.category || "",
-        amount_kes:  r._amount,
-        merchant:    r.merchant || "",
-        note:        r.note || "",
-        wallet:      r.wallet || (r._type === "transfer" ? r.from_wallet : ""),
-        from_wallet: r.from_wallet || "",
-        to_wallet:   r.to_wallet || "",
-      }));
-      const csvBlob = new Blob([toCSV(headers, validRows)]);
-      const file = new File([csvBlob], "import.csv", { type: "text/csv" });
-      const { imported } = await txApi.importCSV(file);
+      // Transfer rows can't go through the generic bulk CSV importer below —
+      // that endpoint inserts single rows with no concept of a paired
+      // transfer_out/transfer_in leg, so a "transfer" row imported that way
+      // would debit the source wallet and never credit the destination
+      // (money vanishes). Each valid transfer row is sent individually
+      // through the same atomic /wallets/transfer endpoint the Transfer
+      // modal uses instead, which creates both legs together.
+      const transferRows = valid.filter(r => r._type === "transfer");
+      const otherRows    = valid.filter(r => r._type !== "transfer");
+      let transferFailures = 0;
+      for (const r of transferRows) {
+        try {
+          await walletsApi.transfer({ from_wallet_id: r._fromWalletId, to_wallet_id: r._toWalletId, amount_kes: r._amount, note: r.note || undefined });
+        } catch { transferFailures++; }
+      }
+
+      let imported = transferRows.length - transferFailures;
+      if (otherRows.length) {
+        // Build a CSV from only the non-transfer valid rows and send to backend
+        const headers = ["date","time","type","category","amount_kes","merchant","note","wallet"];
+        const validRows = otherRows.map(r => ({
+          date:        r._date,
+          time:        r._time || "00:00",
+          type:        r._type,
+          category:    r.category || "",
+          amount_kes:  r._amount,
+          merchant:    r.merchant || "",
+          note:        r.note || "",
+          wallet:      r.wallet || "",
+        }));
+        const csvBlob = new Blob([toCSV(headers, validRows)]);
+        const file = new File([csvBlob], "import.csv", { type: "text/csv" });
+        const res = await txApi.importCSV(file);
+        imported += res.imported;
+      }
+      if (transferFailures) showToast(`${transferFailures} transfer row${transferFailures!==1?"s":""} failed (e.g. insufficient balance) and were skipped`, C.coral, 6000);
       // Reload transactions
       const { transactions: fresh } = await txApi.list({ limit:500 });
       setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) })));
@@ -3983,7 +4002,24 @@ export default function App() {
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {modes.map(([v,label])=>{
                           const active=compareMode===v;
-                          return <button key={v} onClick={()=>{setCompareMode(v); if(v==="custom"&&txPeriod==="month"&&!compareCustom.month) setCompareCustom(c=>({...c,month:lastMonthStr()}));}}
+                          return <button key={v} onClick={()=>{
+                            setCompareMode(v);
+                            if (v!=="custom") return;
+                            const now = new Date();
+                            if (txPeriod==="month" && !compareCustom.month) setCompareCustom(c=>({...c,month:lastMonthStr()}));
+                            if (txPeriod==="quarter") {
+                              const curQ = Math.floor(now.getMonth()/3)+1;
+                              // Only override the default if it would otherwise compare the
+                              // current quarter against itself (0% everywhere, no warning).
+                              if (compareCustom.quarter===curQ && compareCustom.year===now.getFullYear()) {
+                                const [pq,py] = curQ===1 ? [4, now.getFullYear()-1] : [curQ-1, now.getFullYear()];
+                                setCompareCustom(c=>({...c,quarter:pq,year:py}));
+                              }
+                            }
+                            if (txPeriod==="year" && compareCustom.year===now.getFullYear()) {
+                              setCompareCustom(c=>({...c,year:now.getFullYear()-1}));
+                            }
+                          }}
                             style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${active?C.gold:C.navyLight}`,background:active?C.gold+"22":C.navyMid,color:active?C.gold:C.textMuted,fontWeight:active?700:500,fontSize:11,cursor:"pointer"}}>{label}</button>;
                         })}
                       </div>

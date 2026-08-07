@@ -1289,6 +1289,28 @@ export default function App() {
   const writeCache = (data) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {} };
   const readCache  = () => { try { const s = localStorage.getItem(CACHE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
 
+  // The backend hard-caps a single /transactions request at 1000 rows
+  // regardless of what's asked for. A flat single fetch silently dropped
+  // everything past the first page for any user with more history than
+  // that — Records, the Year filter, Compare-to-Last-Year and CSV export
+  // would all quietly work off an incomplete list with no indication
+  // anything was missing. This fetches every page (offset-based) until a
+  // page comes back short, which for the common case (under 1000
+  // transactions) is still just one request — no cost added for most users.
+  const fetchAllTransactions = async () => {
+    const PAGE = 1000;
+    const MAX_PAGES = 50; // 50,000 transactions — a sane ceiling against a runaway loop, not a real-world limit
+    let all = [];
+    let offset = 0;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { transactions } = await txApi.list({ limit: PAGE, offset });
+      all = all.concat(transactions || []);
+      if (!transactions || transactions.length < PAGE) break;
+      offset += PAGE;
+    }
+    return { transactions: all };
+  };
+
   const applyData = useCallback(([w, t, c, g, inv, l, r, fx, ins]) => {
     setWallets(w.wallets || []);
     setTxs((t.transactions || []).map(tx => ({
@@ -1335,7 +1357,7 @@ export default function App() {
     // 2. Always fetch fresh data in background
     Promise.all([
       walletsApi.list(),
-      txApi.list({ limit:500 }),
+      fetchAllTransactions(),
       catsApi.list(),
       goalsApi.list(),
       invsApi.list(),
@@ -3225,7 +3247,7 @@ export default function App() {
       }
       if (transferFailures) showToast(`${transferFailures} transfer row${transferFailures!==1?"s":""} failed (e.g. insufficient balance) and were skipped`, C.coral, 6000);
       // Reload transactions
-      const { transactions: fresh } = await txApi.list({ limit:500 });
+      const { transactions: fresh } = await fetchAllTransactions();
       setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) })));
       // Reload wallet balances
       const { wallets: freshW } = await walletsApi.list();

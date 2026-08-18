@@ -599,11 +599,14 @@ investmentRouter.get("/", async (req,res,next)=>{
 
 investmentRouter.post("/", async (req,res,next)=>{
   try {
-    const d=z.object({wallet_id:z.string().uuid(),name:z.string().min(1).max(100).trim(),ticker:z.string().max(20).optional(),type:z.string().max(50).default("Stock"),currency:z.string().length(3).default("KES"),units:z.number().positive().max(1e9),buy_price_kes:z.number().positive().max(1e12),current_price_kes:z.number().positive().max(1e12).optional()}).parse(req.body);
+    const d=z.object({wallet_id:z.string().uuid(),name:z.string().min(1).max(100).trim(),ticker:z.string().max(20).optional(),type:z.string().max(50).default("Stock"),currency:z.string().length(3).default("KES"),units:z.number().positive().max(1e9),buy_price_kes:z.number().positive().max(1e12),current_price_kes:z.number().positive().max(1e12).optional(),category_id:z.string().uuid().optional()}).parse(req.body);
     const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
-    const {rows}=await query("INSERT INTO investments (user_id,wallet_id,name,ticker,type,currency,units,buy_price_kes,current_price_kes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
-      [req.user.id,d.wallet_id,d.name,d.ticker||null,d.type,d.currency,d.units,d.buy_price_kes,d.current_price_kes||d.buy_price_kes]);
+    // Returns are income, so a linked category must be one of the user's
+    // own INCOME categories (e.g. "Safaricom Dividends"), not an expense one.
+    const categoryId = await resolveIncomeCategoryLink(req.user.id, d.category_id);
+    const {rows}=await query("INSERT INTO investments (user_id,wallet_id,name,ticker,type,currency,units,buy_price_kes,current_price_kes,category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
+      [req.user.id,d.wallet_id,d.name,d.ticker||null,d.type,d.currency,d.units,d.buy_price_kes,d.current_price_kes||d.buy_price_kes,categoryId]);
     res.status(201).json({investment:{...rows[0],returns:[]}});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
@@ -619,14 +622,16 @@ investmentRouter.patch("/:id", async (req,res,next)=>{
       buy_price_kes:     z.number().positive().optional(),
       current_price_kes: z.number().positive().optional(),
       wallet_id:         z.string().uuid().optional(),
+      category_id:       z.string().uuid().nullable().optional(),
     }).parse(req.body);
-    const allowed=["name","ticker","type","currency","units","buy_price_kes","current_price_kes","wallet_id"];
+    const allowed=["name","ticker","type","currency","units","buy_price_kes","current_price_kes","wallet_id","category_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     if(updates.wallet_id) {
       const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[updates.wallet_id,req.user.id]);
       if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     }
+    if (updates.category_id) updates.category_id = await resolveIncomeCategoryLink(req.user.id, updates.category_id);
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE investments SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
@@ -680,10 +685,18 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
       const {rows}=await client.query("INSERT INTO investment_returns (investment_id,user_id,wallet_id,return_type,amount_kes,return_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
         [inv.id,req.user.id,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[d.amount_kes,d.wallet_id,req.user.id]);
-      const catMap={interest:"Interest",dividend:"Dividend",capital_gain:"Investment Return",coupon:"Interest",other:"Other Income"};
-      const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name=$2 AND type='income' LIMIT 1",[req.user.id,catMap[d.return_type]||"Investment Return"]);
+      // Use the investment's own linked category if it has one (e.g. a
+      // "Safaricom Dividends" category on that specific holding), so
+      // different investments' returns don't all pile into one bucket per
+      // return type ("Dividend", "Interest", ...).
+      let categoryId = inv.category_id;
+      if (!categoryId) {
+        const catMap={interest:"Interest",dividend:"Dividend",capital_gain:"Investment Return",coupon:"Interest",other:"Other Income"};
+        const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name=$2 AND type='income' LIMIT 1",[req.user.id,catMap[d.return_type]||"Investment Return"]);
+        categoryId = cats[0]?.id||null;
+      }
       const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,investment_return_id) VALUES ($1,$2,$3,'income',$4,$5,$6,$7,$8) RETURNING *",
-        [req.user.id,d.wallet_id,cats[0]?.id||null,d.amount_kes,inv.name,d.note||null,d.return_date||new Date(),rows[0].id]);
+        [req.user.id,d.wallet_id,categoryId,d.amount_kes,inv.name,d.note||null,d.return_date||new Date(),rows[0].id]);
       return {...rows[0], transaction: txRows[0]};
     });
     res.status(201).json({return:ret});
@@ -719,6 +732,22 @@ loanRouter.get("/", async (req,res,next)=>{
   } catch(e){next(e);}
 });
 
+// A category linked here must be one of the user's own EXPENSE categories —
+// repayments are money leaving the account, matching what every other
+// expense entry point (Add Transaction, etc.) requires.
+async function resolveExpenseCategoryLink(userId, categoryId) {
+  if (!categoryId) return null;
+  const {rows} = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2 AND type='expense'", [categoryId, userId]);
+  if (!rows.length) throw Object.assign(new Error("Category not found"), {status:400});
+  return categoryId;
+}
+async function resolveIncomeCategoryLink(userId, categoryId) {
+  if (!categoryId) return null;
+  const {rows} = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2 AND type='income'", [categoryId, userId]);
+  if (!rows.length) throw Object.assign(new Error("Category not found"), {status:400});
+  return categoryId;
+}
+
 loanRouter.post("/", async (req,res,next)=>{
   try {
     const d=z.object({
@@ -728,15 +757,17 @@ loanRouter.post("/", async (req,res,next)=>{
       interest_type:z.enum(["simple","compound"]).default("compound"),
       term_months:z.number().int().min(1).max(600).optional(),
       monthly_payment_kes:z.number().min(0).max(1e12).default(0), next_due_date:z.string().max(20).optional(), note:z.string().max(500).optional(),
+      category_id:z.string().uuid().optional(),
     }).parse(req.body);
     // Simple interest: fix total = principal × (1 + rate/100) at creation time
     const defaultRemaining = d.interest_type === "simple"
       ? d.principal_kes * (1 + d.interest_rate / 100)
       : d.principal_kes;
     const remaining_kes = d.remaining_kes ?? defaultRemaining;
+    const categoryId = await resolveExpenseCategoryLink(req.user.id, d.category_id);
     const {rows}=await query(
-      "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,monthly_payment_kes,next_due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
-      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.monthly_payment_kes,d.next_due_date||null,d.note||null]);
+      "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,monthly_payment_kes,next_due_date,note,category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *",
+      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.monthly_payment_kes,d.next_due_date||null,d.note||null,categoryId]);
     res.status(201).json({loan:{...rows[0],repayments:[]}});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
@@ -778,9 +809,16 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",[reduction,loan.id]);
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
-      const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Loan Repayment' AND type='expense' LIMIT 1",[req.user.id]);
+      // Use the loan's own linked category if it has one (e.g. a "HELB Loan"
+      // category set on the HELB loan itself), so repayments for different
+      // loans don't all pile into one generic "Loan Repayment" bucket.
+      let categoryId = loan.category_id;
+      if (!categoryId) {
+        const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Loan Repayment' AND type='expense' LIMIT 1",[req.user.id]);
+        categoryId = cats[0]?.id||null;
+      }
       const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,loan_repayment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-        [req.user.id,d.wallet_id,cats[0]?.id||null,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
+        [req.user.id,d.wallet_id,categoryId,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
       return { repayment:rows[0], transaction:txRows[0] };
     });
     res.status(201).json({repayment:rep, transaction:tx});
@@ -801,10 +839,12 @@ loanRouter.patch("/:id", async (req,res,next)=>{
       monthly_payment_kes: z.number().min(0).optional(),
       next_due_date:       z.string().max(20).nullable().optional(),
       note:                z.string().max(500).nullable().optional(),
+      category_id:         z.string().uuid().nullable().optional(),
     }).parse(req.body);
-    const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","interest_type","term_months","monthly_payment_kes","next_due_date","note"];
+    const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","interest_type","term_months","monthly_payment_kes","next_due_date","note","category_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
+    if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.user.id, updates.category_id);
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE loans SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
@@ -1302,6 +1342,7 @@ const insuranceSchema = z.object({
   currency:           z.string().length(3).default("KES"),
   notes:              z.string().max(2000).optional(),
   is_active:          z.boolean().default(true),
+  category_id:        z.string().uuid().nullable().optional(),
 });
 
 insuranceRouter.get("/", async (req,res,next) => {
@@ -1323,10 +1364,11 @@ insuranceRouter.get("/", async (req,res,next) => {
 insuranceRouter.post("/", async (req,res,next) => {
   try {
     const d = insuranceSchema.parse(req.body);
+    const categoryId = await resolveExpenseCategoryLink(req.user.id, d.category_id);
     const {rows} = await query(
-      `INSERT INTO insurance_policies (user_id,name,provider,policy_type,policy_number,premium_amount,premium_frequency,start_date,end_date,sum_assured,surrender_value,amount_paid,beneficiary,wallet_id,currency,notes,is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-      [req.user.id,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.amount_paid??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active]
+      `INSERT INTO insurance_policies (user_id,name,provider,policy_type,policy_number,premium_amount,premium_frequency,start_date,end_date,sum_assured,surrender_value,amount_paid,beneficiary,wallet_id,currency,notes,is_active,category_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      [req.user.id,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.amount_paid??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active,categoryId]
     );
     res.status(201).json({policy:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -1335,9 +1377,10 @@ insuranceRouter.post("/", async (req,res,next) => {
 insuranceRouter.patch("/:id", async (req,res,next) => {
   try {
     const d = insuranceSchema.partial().parse(req.body);
-    const allowed=["name","provider","policy_type","policy_number","premium_amount","premium_frequency","start_date","end_date","sum_assured","surrender_value","amount_paid","beneficiary","wallet_id","currency","notes","is_active"];
+    const allowed=["name","provider","policy_type","policy_number","premium_amount","premium_frequency","start_date","end_date","sum_assured","surrender_value","amount_paid","beneficiary","wallet_id","currency","notes","is_active","category_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
+    if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.user.id, updates.category_id);
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(
       `UPDATE insurance_policies SET ${sets.join(",")},updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING *`,
@@ -1381,10 +1424,17 @@ insuranceRouter.post("/:id/payments", async (req,res,next) => {
         [policy.id, req.user.id, d.wallet_id, d.amount_kes, d.payment_date||new Date(), d.note||null]
       );
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.amount_kes, d.wallet_id, req.user.id]);
-      const {rows:cats} = await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Premium' AND type='expense' LIMIT 1",[req.user.id]);
+      // Use the policy's own linked category if it has one (e.g. a "My Son's
+      // Education Policy" category), so premiums for different policies
+      // don't all pile into one generic "Premium" bucket.
+      let categoryId = policy.category_id;
+      if (!categoryId) {
+        const {rows:cats} = await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Premium' AND type='expense' LIMIT 1",[req.user.id]);
+        categoryId = cats[0]?.id||null;
+      }
       const {rows:txRows} = await client.query(
         "INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,premium_payment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8) RETURNING *",
-        [req.user.id, d.wallet_id, cats[0]?.id||null, d.amount_kes, policy.name, d.note||null, d.payment_date||new Date(), rows[0].id]
+        [req.user.id, d.wallet_id, categoryId, d.amount_kes, policy.name, d.note||null, d.payment_date||new Date(), rows[0].id]
       );
       return {...rows[0], transaction: txRows[0]};
     });

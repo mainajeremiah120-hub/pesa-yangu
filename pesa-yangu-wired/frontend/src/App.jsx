@@ -1509,6 +1509,7 @@ export default function App() {
     buyPrice:     parseFloat(i.buy_price_kes||0),
     currentPrice: parseFloat(i.current_price_kes||0),
     wallet:       i.wallet_id,
+    categoryId:   i.category_id || null,
     returns:      (i.returns||[]).map(r=>({...r, amount:parseFloat(r.amount_kes||0)})),
   });
   const normaliseLoan = (l) => ({
@@ -1518,6 +1519,7 @@ export default function App() {
     termMonths:     l.term_months ? parseInt(l.term_months) : null,
     monthlyPayment: parseFloat(l.monthly_payment_kes||0),
     nextDue:        (l.next_due_date||"").slice(0,10)||null,
+    categoryId:     l.category_id || null,
     repayments:     (l.repayments||[]).map(r=>({
       ...r,
       total:     parseFloat(r.total_kes||0),
@@ -1903,10 +1905,10 @@ export default function App() {
   const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null, kind:"spending", windfallPercent:"", goalTarget:"", goalDeadline:"" };
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"", everyMonth:true };
-  const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES" };
-  const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"" };
+  const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES", categoryId:"" };
+  const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"", categoryId:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
-  const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"" };
+  const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"", categoryId:"" };
   const blankRet   = { investmentId:"", type:"interest", amount:"", wallet:"", date:todayStr(), note:"" };
   const blankGoal  = { name:"", icon:"🎯", target:"", wallet:"", deadline:"", color:C.teal, openingBalance:"" };
   const blankRecur = { type:"expense", category:"", amount:"", wallet:"", merchant:"", note:"", freq:"monthly", nextDate:"" };
@@ -2255,6 +2257,7 @@ export default function App() {
         term_months: fLoan.termMonths ? parseInt(fLoan.termMonths) : undefined,
         monthly_payment_kes: toKES(parseFloat(fLoan.monthlyPayment)||0, fLoan.currency, currencies),
         next_due_date: fLoan.nextDue||undefined,
+        category_id: fLoan.categoryId||undefined,
       });
       setLoans(p=>[...p, normaliseLoan(loan)]);
       setFLoan(blankLoan); closeM("loan");
@@ -2322,6 +2325,7 @@ export default function App() {
         units,
         buy_price_kes:     toKES(price, fInv.currency, currencies),
         current_price_kes: toKES(price, fInv.currency, currencies),
+        category_id:       fInv.categoryId||undefined,
       });
       setInvestments(p=>[...p, normaliseInv({...inv,returns:[]})]);
       setFInv(blankInv); closeM("inv");
@@ -2572,6 +2576,7 @@ export default function App() {
       currency:  inv.currency || "KES",
       wallet:    inv.wallet || inv.wallet_id || "",
       currentPrice: String(inv.currentPrice || inv.current_price_kes || ""),
+      categoryId: inv.categoryId || inv.category_id || "",
     });
     openM("inv");
   };
@@ -2588,6 +2593,7 @@ export default function App() {
       monthlyPayment: String(l.monthlyPayment || l.monthly_payment_kes || ""),
       nextDue:        l.nextDue || l.next_due_date || "",
       currency:       l.currency || "KES",
+      categoryId:     l.categoryId || l.category_id || "",
     });
     openM("loan");
   };
@@ -2704,6 +2710,7 @@ export default function App() {
         if (price)             payload.buy_price_kes      = toKES(price, fInv.currency, currencies);
         if (fInv.currentPrice) payload.current_price_kes  = toKES(parseFloat(fInv.currentPrice), fInv.currency, currencies);
         if (fInv.wallet)       payload.wallet_id          = fInv.wallet;
+        payload.category_id = fInv.categoryId || null;
         const { investment: inv } = await invsApi.update(editInv.id, payload);
         setInvestments(p => p.map(i => i.id === editInv.id ? normaliseInv({ ...inv, returns: editInv.returns || [] }) : i));
         setEditInv(null); setFInv(blankInv); closeM("inv");
@@ -2727,6 +2734,7 @@ export default function App() {
         payload.term_months = fLoan.termMonths ? parseInt(fLoan.termMonths) : null;
         if (fLoan.monthlyPayment) payload.monthly_payment_kes = toKES(parseFloat(fLoan.monthlyPayment), fLoan.currency, currencies);
         if (fLoan.nextDue)        payload.next_due_date       = fLoan.nextDue;
+        payload.category_id = fLoan.categoryId || null;
         const { loan } = await loansApi.update(editLoan.id, payload);
         setLoans(p => p.map(l => l.id === editLoan.id ? { ...normaliseLoan(loan), repayments: editLoan.repayments } : l));
         setEditLoan(null); setFLoan(blankLoan); closeM("loan");
@@ -2807,6 +2815,7 @@ export default function App() {
       wallet_id:         fPolicy.walletId||undefined,
       currency:          fPolicy.currency,
       notes:             fPolicy.notes||undefined,
+      category_id:       fPolicy.categoryId||null,
     };
     try {
       if (editPolicy) {
@@ -2848,6 +2857,7 @@ export default function App() {
       walletId:       p.wallet_id||"",
       currency:       p.currency||"KES",
       notes:          p.notes||"",
+      categoryId:     p.category_id||"",
     });
     openM("policy");
   };
@@ -5282,6 +5292,7 @@ export default function App() {
         <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note="Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
         <Field label="Linked Account (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
+        <Field label="Expense Category" value={fPolicy.categoryId} onChange={v=>setFPolicy({...fPolicy,categoryId:v})} options={[{value:"",label:"None — use the generic 'Premium' category"},...expCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every premium you pay for this policy files under this category instead of a generic bucket shared by all policies."/>
         <Field label="Currency" value={fPolicy.currency} onChange={v=>setFPolicy({...fPolicy,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <Field label="Notes (optional)" value={fPolicy.notes} onChange={v=>setFPolicy({...fPolicy,notes:v})} placeholder="Any extra details"/>
         <Btn onClick={savePolicy} style={{width:"100%",padding:13,fontSize:14}}>{editPolicy?"Save Changes":"Add Policy"}</Btn>
@@ -5301,6 +5312,7 @@ export default function App() {
         <Field label="Loan Name" value={fLoan.name}   onChange={v=>setFLoan({...fLoan,name:v})}   placeholder="e.g. KCB Personal Loan"/>
         <Field label="Lender"    value={fLoan.lender} onChange={v=>setFLoan({...fLoan,lender:v})} placeholder="e.g. KCB Bank"/>
         <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
+        <Field label="Expense Category" value={fLoan.categoryId} onChange={v=>setFLoan({...fLoan,categoryId:v})} options={[{value:"",label:"None — use the generic 'Loan Repayment' category"},...expCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every repayment on this loan files under this category instead of a generic bucket shared by all loans."/>
         <div className="grid-2">
           <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v,currentBalance:v})} placeholder="e.g. 500000"/>
           <Field label="Rate (%)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 10"/>
@@ -5384,6 +5396,7 @@ export default function App() {
         </div>
         {editInv&&<Field label={`Current Price (${fInv.currency})`} type="number" value={fInv.currentPrice||""} onChange={v=>setFInv({...fInv,currentPrice:v})} placeholder="e.g. 24.00" note="Updates portfolio value"/>}
         <Field label="Linked Account" value={fInv.wallet} onChange={v=>setFInv({...fInv,wallet:v})} options={wOpts}/>
+        <Field label="Income Category" value={fInv.categoryId} onChange={v=>setFInv({...fInv,categoryId:v})} options={[{value:"",label:"None — use the generic category per return type (Interest, Dividend, ...)"},...incCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every return recorded for this investment files under this category instead of a generic bucket shared by all investments."/>
         <Btn onClick={saveInvestment} style={{width:"100%",padding:13,fontSize:14}}>{editInv?"Save Changes":"Add Investment"}</Btn>
       </Modal>
 

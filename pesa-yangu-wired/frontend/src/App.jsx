@@ -1718,12 +1718,13 @@ export default function App() {
   const [txSearch,       setTxSearch]       = useState("");
   const [txWalletFilter, setTxWalletFilter] = useState("");
   const [txTypeFilter,   setTxTypeFilter]   = useState("all");   // "all"|"income"|"expense"
-  const [txPeriod,       setTxPeriod]       = useState("all");   // "all"|"today"|"week"|"month"|"quarter"|"year"|"custom"
+  const [txPeriod,       setTxPeriod]       = useState("all");   // "all"|"today"|"week"|"month"|"quarter"|"year"|"date"|"custom"
   const [txCompare,      setTxCompare]      = useState(false);
   const [compareMode,    setCompareMode]    = useState("previous"); // "previous"|"lastYear"|"custom"
   const [compareCustom,  setCompareCustom]  = useState({ month:"", quarter:1, year:new Date().getFullYear() });
   const [txDateFrom,     setTxDateFrom]     = useState("");
   const [txDateTo,       setTxDateTo]       = useState("");
+  const [txSpecificDate, setTxSpecificDate] = useState(todayStr());
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
   const [budgetSearch,   setBudgetSearch]   = useState("");
@@ -1795,6 +1796,12 @@ export default function App() {
           return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth() / 3) === q;
         }
         if (txPeriod === "year")   return d.getFullYear() === now.getFullYear();
+        if (txPeriod === "date") {
+          if (!txSpecificDate) return true;
+          const picked = new Date(txSpecificDate);
+          const pickedDay = new Date(picked.getFullYear(), picked.getMonth(), picked.getDate());
+          return day.getTime() === pickedDay.getTime();
+        }
         if (txPeriod === "custom") {
           const from = txDateFrom ? new Date(txDateFrom) : null;
           const to   = txDateTo   ? new Date(txDateTo)   : null;
@@ -4000,7 +4007,7 @@ export default function App() {
 
             {/* ── Period filter ── */}
             {(()=>{
-              const periods=[["all","All time"],["today","Today"],["week","This week"],["month","This month"],["quarter","This quarter"],["year","This year"],["custom","Custom"]];
+              const periods=[["all","All time"],["today","Today"],["week","This week"],["month","This month"],["quarter","This quarter"],["year","This year"],["date","Specific Date"],["custom","Custom"]];
               const comparable = ["today","week","month","quarter","year"].includes(txPeriod);
               return(<>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
@@ -4010,6 +4017,14 @@ export default function App() {
                   })}
                   {comparable&&<button onClick={()=>setTxCompare(c=>!c)} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${txCompare?C.gold:C.navyLight}`,background:txCompare?C.gold+"22":"none",color:txCompare?C.gold:C.textMuted,fontWeight:txCompare?700:500,fontSize:12,cursor:"pointer",transition:"all 0.15s"}}>📊 Compare</button>}
                 </div>
+                {txPeriod==="date"&&(
+                  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:12,color:C.textMuted,whiteSpace:"nowrap"}}>Date</span>
+                      <input type="date" value={txSpecificDate} onChange={e=>setTxSpecificDate(e.target.value)} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textPrimary,padding:"7px 10px",fontSize:12,outline:"none",cursor:"pointer"}}/>
+                    </div>
+                  </div>
+                )}
                 {txPeriod==="custom"&&(
                   <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -4128,7 +4143,7 @@ export default function App() {
                   <div style={{color:C.textMuted,fontSize:12,marginBottom:14}}>
                     {txSearch.trim()?<>No transactions match <strong>"{txSearch}"</strong></>:"No transactions match the current filters."}
                   </div>
-                  <Btn onClick={()=>{setTxSearch("");setTxTypeFilter("all");setTxPeriod("all");setTxDateFrom("");setTxDateTo("");}} outline color={C.textMuted} small>Clear all filters</Btn>
+                  <Btn onClick={()=>{setTxSearch("");setTxTypeFilter("all");setTxPeriod("all");setTxDateFrom("");setTxDateTo("");setTxSpecificDate(todayStr());}} outline color={C.textMuted} small>Clear all filters</Btn>
                 </div>
               ) : filteredTxs.map((t,i,arr)=>{
                 const isT=t.type==="transfer_out"||t.type==="transfer_in";

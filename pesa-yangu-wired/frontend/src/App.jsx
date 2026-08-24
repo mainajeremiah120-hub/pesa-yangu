@@ -16,7 +16,7 @@ import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
-  budgetsApi,
+  budgetsApi, getLastMutationAt,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 import { ChatWidget } from "./components/ChatWidget.jsx";
@@ -1355,6 +1355,7 @@ export default function App() {
     setDataError("");
 
     // 2. Always fetch fresh data in background
+    const loadStartedAt = Date.now();
     Promise.all([
       walletsApi.list(),
       fetchAllTransactions(),
@@ -1367,6 +1368,12 @@ export default function App() {
       insuranceApi.list(),
     ])
     .then((results) => {
+      // If the user made a change (e.g. a transfer) while this fetch was
+      // still in flight, this snapshot was taken before that change and is
+      // now stale — applying it would silently revert wallet balances and
+      // make the new transaction rows disappear. Local state from the
+      // mutation is already correct, so just drop this refresh.
+      if (getLastMutationAt() > loadStartedAt) return;
       applyData(results);
       writeCache(results); // save for next visit
     })

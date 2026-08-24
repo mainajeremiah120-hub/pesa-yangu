@@ -27,8 +27,20 @@ client.interceptors.request.use((config) => {
 let refreshing = false;
 let waitQueue  = [];
 
+// Timestamp of the last successful write (POST/PATCH/PUT/DELETE). Lets a
+// slow background refresh (see App.jsx loadData) detect that the user made
+// a change — e.g. a transfer — while the refresh was still in flight, so it
+// can discard its now-stale snapshot instead of overwriting newer local
+// state and silently reverting the change.
+let lastMutationAt = 0;
+export const getLastMutationAt = () => lastMutationAt;
+
 client.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const method = res.config?.method?.toLowerCase();
+    if (method && method !== "get") lastMutationAt = Date.now();
+    return res;
+  },
   async (err) => {
     const original = err.config;
     if (err.response?.status === 401 && !original._retry) {

@@ -1932,6 +1932,8 @@ export default function App() {
   const [fTx,     setFTx]    = useState(blankTx);
   const [fXfer,   setFXfer]  = useState(blankXfer);
   const [editXferPairId, setEditXferPairId] = useState(null);
+  const [xferBusy, setXferBusy] = useState(false);
+  const xferInFlightRef = useRef(false);
   const [fWindfall, setFWindfall] = useState(blankWindfall);
   const [fWal,    setFWal]   = useState(blankWal);
   const [fExpCat, setFExpCat]= useState(blankExpCat);
@@ -2040,54 +2042,68 @@ export default function App() {
   };
 
   const doTransfer = async () => {
+    // Guards against a double-submit (fast double-tap, or a tap registering
+    // twice on some mobile browsers) firing this twice while the first
+    // request is still in flight — each call is independently valid, so
+    // without this the same transfer gets recorded and moved multiple times.
+    // The ref check is synchronous so it also blocks a second call that
+    // arrives before the setXferBusy(true) re-render has landed.
+    if (xferInFlightRef.current) return;
     const amt = parseFloat(fXfer.amount); if(!amt) return;
     const fromW = wallets.find(w=>w.id===fXfer.from);
     const amtKES = toKES(amt, fromW?.currency||"KES", currencies);
 
-    if (editXferPairId) {
-      try {
-        const oldOut = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_out");
-        const oldIn  = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_in");
-        const { transfer_out, transfer_in } = await txApi.updateTransfer(editXferPairId, {
-          from_wallet_id: fXfer.from, to_wallet_id: fXfer.to, amount_kes: amtKES, note: fXfer.note||undefined,
-        });
-        setTxs(p=>p.map(t=>{
-          if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:(transfer_out.tx_date||"").slice(0,10)};
-          if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:(transfer_in.tx_date||"").slice(0,10)};
-          return t;
-        }));
-        setWallets(p=>p.map(w=>{
-          let bal = parseFloat(w.balance);
-          if(oldOut && w.id===(oldOut.wallet||oldOut.wallet_id)) bal += parseFloat(oldOut.amount ?? oldOut.amount_kes ?? 0);
-          if(oldIn  && w.id===(oldIn.wallet||oldIn.wallet_id))   bal -= parseFloat(oldIn.amount ?? oldIn.amount_kes ?? 0);
-          if(w.id===fXfer.from) bal -= amtKES;
-          if(w.id===fXfer.to)   bal += amtKES;
-          return {...w, balance:bal};
-        }));
-        setFXfer(blankXfer); setEditXferPairId(null); closeM("xfer");
-        showToast("Transfer updated");
-      } catch(err) { showToast(err?.response?.data?.error||"Failed to update transfer", C.coral); }
-      return;
-    }
-
+    xferInFlightRef.current = true;
+    setXferBusy(true);
     try {
-      await walletsApi.transfer({ from_wallet_id:fXfer.from, to_wallet_id:fXfer.to, amount_kes:amtKES, note:fXfer.note||undefined });
-      setWallets(p=>p.map(w=>{
-        if(w.id===fXfer.from) return{...w,balance:parseFloat(w.balance)-amtKES};
-        if(w.id===fXfer.to)   return{...w,balance:parseFloat(w.balance)+amtKES};
-        return w;
-      }));
-      // Fetch the two transfer transaction records so they appear in Records tab immediately
-      const { transactions: fresh } = await txApi.list({ limit: 10 });
-      if (fresh?.length) {
-        const newTxs = fresh
-          .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
-          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
-        if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
+      if (editXferPairId) {
+        try {
+          const oldOut = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_out");
+          const oldIn  = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_in");
+          const { transfer_out, transfer_in } = await txApi.updateTransfer(editXferPairId, {
+            from_wallet_id: fXfer.from, to_wallet_id: fXfer.to, amount_kes: amtKES, note: fXfer.note||undefined,
+          });
+          setTxs(p=>p.map(t=>{
+            if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:(transfer_out.tx_date||"").slice(0,10)};
+            if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:(transfer_in.tx_date||"").slice(0,10)};
+            return t;
+          }));
+          setWallets(p=>p.map(w=>{
+            let bal = parseFloat(w.balance);
+            if(oldOut && w.id===(oldOut.wallet||oldOut.wallet_id)) bal += parseFloat(oldOut.amount ?? oldOut.amount_kes ?? 0);
+            if(oldIn  && w.id===(oldIn.wallet||oldIn.wallet_id))   bal -= parseFloat(oldIn.amount ?? oldIn.amount_kes ?? 0);
+            if(w.id===fXfer.from) bal -= amtKES;
+            if(w.id===fXfer.to)   bal += amtKES;
+            return {...w, balance:bal};
+          }));
+          setFXfer(blankXfer); setEditXferPairId(null); closeM("xfer");
+          showToast("Transfer updated");
+        } catch(err) { showToast(err?.response?.data?.error||"Failed to update transfer", C.coral); }
+        return;
       }
-      setFXfer(blankXfer); closeM("xfer");
-      showToast("Transfer complete");
-    } catch(err) { showToast(err?.response?.data?.error||"Transfer failed", C.coral); }
+
+      try {
+        await walletsApi.transfer({ from_wallet_id:fXfer.from, to_wallet_id:fXfer.to, amount_kes:amtKES, note:fXfer.note||undefined });
+        setWallets(p=>p.map(w=>{
+          if(w.id===fXfer.from) return{...w,balance:parseFloat(w.balance)-amtKES};
+          if(w.id===fXfer.to)   return{...w,balance:parseFloat(w.balance)+amtKES};
+          return w;
+        }));
+        // Fetch the two transfer transaction records so they appear in Records tab immediately
+        const { transactions: fresh } = await txApi.list({ limit: 10 });
+        if (fresh?.length) {
+          const newTxs = fresh
+            .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
+            .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
+          if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
+        }
+        setFXfer(blankXfer); closeM("xfer");
+        showToast("Transfer complete");
+      } catch(err) { showToast(err?.response?.data?.error||"Transfer failed", C.coral); }
+    } finally {
+      xferInFlightRef.current = false;
+      setXferBusy(false);
+    }
   };
 
   // Sets how much of an account's balance (or, for a sub-category, how much
@@ -4894,7 +4910,7 @@ export default function App() {
         <Field label="To" value={fXfer.to} onChange={v=>setFXfer({...fXfer,to:v})} options={wallets.filter(w=>w.id!==fXfer.from).map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))}/>
         <Field label="Amount" type="number" value={fXfer.amount} onChange={v=>setFXfer({...fXfer,amount:v})} placeholder="0.00" note="In source account's currency"/>
         <Field label="Note (optional)" value={fXfer.note} onChange={v=>setFXfer({...fXfer,note:v})} placeholder="e.g. Moving to savings"/>
-        <Btn onClick={doTransfer} style={{width:"100%",padding:13,fontSize:14}}>{editXferPairId?"Save Changes":"Transfer Funds"}</Btn>
+        <Btn onClick={doTransfer} disabled={xferBusy} style={{width:"100%",padding:13,fontSize:14}}>{xferBusy?"Please wait…":editXferPairId?"Save Changes":"Transfer Funds"}</Btn>
       </Modal>
 
       {/* Monthly Spending — every category and what was spent, for any month, without wading through Budgets */}

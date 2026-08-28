@@ -36,13 +36,34 @@ router.patch("/:id", async (req, res, next) => {
     if (!Object.keys(updates).length) return res.status(400).json({ error: "No valid fields" });
     if (updates.balance !== undefined) updates.balance = parseFloat(updates.balance);
     if (updates.opening_balance !== undefined) updates.opening_balance = parseFloat(updates.opening_balance);
-    const sets = Object.keys(updates).map((k, i) => `${k}=$${i + 3}`);
-    const { rows } = await query(
-      `UPDATE wallets SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,
-      [req.params.id, req.user.id, ...Object.values(updates)]
-    );
-    if (!rows.length) return res.status(404).json({ error: "Not found" });
-    res.json({ wallet: rows[0] });
+
+    const result = await withTransaction(async (client) => {
+      // A direct balance edit isn't backed by a real transaction, so it
+      // can't be reconstructed from history the way everything else can —
+      // auto-log the delta as a "Balance Adjustment" transaction instead of
+      // letting the raw number silently change with no trail.
+      let adjustment = null;
+      if (updates.balance !== undefined) {
+        const { rows: cur } = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE", [req.params.id, req.user.id]);
+        if (!cur.length) throw Object.assign(new Error("Not found"), { status: 404 });
+        const delta = updates.balance - parseFloat(cur[0].balance);
+        if (Math.abs(delta) > 0.001) {
+          const { rows: txRows } = await client.query(
+            `INSERT INTO transactions (user_id,wallet_id,type,amount_kes,note,tx_date) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+            [req.user.id, req.params.id, delta > 0 ? "income" : "expense", Math.abs(delta), "Balance adjustment", new Date()]
+          );
+          adjustment = txRows[0];
+        }
+      }
+      const sets = Object.keys(updates).map((k, i) => `${k}=$${i + 3}`);
+      const { rows } = await client.query(
+        `UPDATE wallets SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,
+        [req.params.id, req.user.id, ...Object.values(updates)]
+      );
+      if (!rows.length) throw Object.assign(new Error("Not found"), { status: 404 });
+      return { wallet: rows[0], adjustment };
+    });
+    res.json(result);
   } catch(e) { next(e); }
 });
 
@@ -81,7 +102,7 @@ router.delete("/:id", async (req, res, next) => {
       });
     }
 
-    await query("DELETE FROM wallets WHERE id=$1", [req.params.id]);
+    await query("DELETE FROM wallets WHERE id=$1 AND user_id=$2", [req.params.id, req.user.id]);
     res.json({ ok: true });
   } catch(e) {
     if (e.code === "23503") {

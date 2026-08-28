@@ -1,6 +1,7 @@
 "use strict";
 const express = require("express");
 const multer  = require("multer");
+const crypto  = require("crypto");
 const { z }   = require("zod");
 const { query, withTransaction } = require("../models/db");
 const router  = express.Router();
@@ -65,6 +66,15 @@ router.post("/", async (req, res, next) => {
       if(!rr.length) return res.status(400).json({error:"Original transaction not found"});
     }
 
+    // Guard against accidental double-submission (double-tap, or a retry
+    // from a second browser tab/device) recording the same transaction
+    // twice — reject an identical one created moments ago.
+    const {rows:dupe}=await query(
+      "SELECT id FROM transactions WHERE user_id=$1 AND wallet_id=$2 AND type=$3 AND amount_kes=$4 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [req.user.id,d.wallet_id,d.type,d.amount_kes]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a transaction you just added — check Records before submitting again."});
+
     const tx = await withTransaction(async(client)=>{
       const {rows}=await client.query(
         `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,refund_of)
@@ -82,13 +92,6 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
   try {
-    const { rows: existing } = await query(
-      "SELECT * FROM transactions WHERE id=$1 AND user_id=$2",
-      [req.params.id, req.user.id]
-    );
-    if (!existing.length) return res.status(404).json({ error: "Not found" });
-    const old = existing[0];
-
     const d = z.object({
       wallet_id:   z.string().uuid().optional(),
       category_id: z.string().uuid().nullable().optional(),
@@ -99,24 +102,36 @@ router.patch("/:id", async (req, res, next) => {
       tx_date:     z.string().optional(),
     }).parse(req.body);
 
-    const newWalletId   = d.wallet_id   ?? old.wallet_id;
-    const newType       = d.type        ?? old.type;
-    const newAmount     = d.amount_kes  ?? parseFloat(old.amount_kes);
-    const newCategoryId = Object.prototype.hasOwnProperty.call(d, "category_id") ? d.category_id : old.category_id;
-    const newMerchant   = d.merchant    ?? old.merchant;
-    const newNote       = Object.prototype.hasOwnProperty.call(d, "note") ? d.note : old.note;
-    const newDate       = d.tx_date     ?? old.tx_date;
-
     if (d.wallet_id) {
       const { rows: wr } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [d.wallet_id, req.user.id]);
       if (!wr.length) return res.status(400).json({ error: "Wallet not found" });
     }
-    if (newCategoryId) {
-      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [newCategoryId, req.user.id]);
+    if (Object.prototype.hasOwnProperty.call(d, "category_id") && d.category_id) {
+      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [d.category_id, req.user.id]);
       if (!cr.length) return res.status(400).json({ error: "Category not found" });
     }
 
     const tx = await withTransaction(async (client) => {
+      // Lock the row so a second, near-simultaneous edit of the SAME
+      // transaction (double-tap, or a retry) waits for this one to commit
+      // and reverses against the row's now-current state, instead of both
+      // reading the same pre-edit snapshot and each reversing the original
+      // amount — which would double-credit the wallet.
+      const { rows: existing } = await client.query(
+        "SELECT * FROM transactions WHERE id=$1 AND user_id=$2 FOR UPDATE",
+        [req.params.id, req.user.id]
+      );
+      if (!existing.length) throw Object.assign(new Error("Not found"), { status: 404 });
+      const old = existing[0];
+
+      const newWalletId   = d.wallet_id   ?? old.wallet_id;
+      const newType       = d.type        ?? old.type;
+      const newAmount     = d.amount_kes  ?? parseFloat(old.amount_kes);
+      const newCategoryId = Object.prototype.hasOwnProperty.call(d, "category_id") ? d.category_id : old.category_id;
+      const newMerchant   = d.merchant    ?? old.merchant;
+      const newNote       = Object.prototype.hasOwnProperty.call(d, "note") ? d.note : old.note;
+      const newDate       = d.tx_date     ?? old.tx_date;
+
       const isCredit = (t) => t === "income" || t === "transfer_in" || t === "refund";
       const oldDelta = isCredit(old.type) ? -parseFloat(old.amount_kes) : parseFloat(old.amount_kes);
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [oldDelta, old.wallet_id, req.user.id]);
@@ -255,6 +270,17 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
     const lines=raw.trim().split("\n").filter(l=>l.trim());
     if(lines.length<2) return res.status(400).json({error:"File appears empty"});
     if(lines.length>5001) return res.status(400).json({error:"File too large — maximum 5000 rows per import"});
+
+    // Guard against re-uploading the same file (a UI timeout, a re-click,
+    // a retry) silently double-importing every row and double-applying
+    // every wallet balance change — reject an exact repeat of a file this
+    // user just imported.
+    const fileHash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+    const {rows:dupeBatch} = await query(
+      "SELECT id FROM import_batches WHERE user_id=$1 AND file_hash=$2 AND created_at > NOW() - INTERVAL '10 minutes'",
+      [req.user.id, fileHash]
+    );
+    if (dupeBatch.length) return res.status(409).json({error:"This looks like the same file you just imported — check Records before importing it again."});
     const hdrs=lines[0].split(",").map(h=>h.trim().toLowerCase().replace(/["']/g,""));
     const idx=(n)=>hdrs.indexOf(n);
     const {rows:cats}=await query("SELECT id,name,type FROM categories WHERE user_id=$1",[req.user.id]);
@@ -272,7 +298,7 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
       const tx_date = dateStr.includes("T") ? dateStr : `${dateStr}T${timeStr}:00`;
       return {
         tx_date,
-        type:     ["expense","income","transfer_in","transfer_out"].includes(type)?type:"expense",
+        type:     ["expense","income","transfer_in","transfer_out","refund"].includes(type)?type:"expense",
         cat_id:   catMap[`${cat}:${type}`]||null,
         amount:   parseFloat(v[idx("amount_kes")]||v[idx("amount")]||"0")||0,
         merchant: v[idx("merchant")]||null,
@@ -299,12 +325,16 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
       );
       const deltaByWallet={};
       for(const r of toInsert){
-        const delta=(r.type==="income"||r.type==="transfer_in")?r.amount:-r.amount;
+        const delta=(r.type==="income"||r.type==="transfer_in"||r.type==="refund")?r.amount:-r.amount;
         deltaByWallet[r.wallet_id]=(deltaByWallet[r.wallet_id]||0)+delta;
       }
       for(const [walletId,delta] of Object.entries(deltaByWallet)){
         await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.user.id]);
       }
+      await client.query(
+        "INSERT INTO import_batches (user_id,file_hash,row_count) VALUES ($1,$2,$3)",
+        [req.user.id, fileHash, toInsert.length]
+      );
       imported=toInsert.length;
     });
     res.json({ok:true,imported});

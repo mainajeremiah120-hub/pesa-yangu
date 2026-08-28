@@ -94,6 +94,17 @@ const txTime = (tx) => {
   const h = d.getHours(), m = d.getMinutes();
   return (h === 0 && m === 0) ? "" : String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
 };
+// tx_date is stored as a UTC instant (TIMESTAMPTZ). Slicing the raw ISO
+// string takes the UTC calendar date, not the local one — for Kenya
+// (UTC+3), a transaction entered locally between 00:00-02:59 is still on
+// the previous day in UTC, so it silently lands under the wrong date in
+// Records and every date filter. This uses local getters (like todayStr)
+// so the date always matches the day it was actually entered on.
+const txLocalDate = (tx) => {
+  const ts = tx?.tx_date; if (!ts) return "";
+  const d = new Date(ts); if (isNaN(d)) return "";
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
 const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const fmtDate = (d) => {
   if (!d) return "—";
@@ -716,6 +727,10 @@ function GoalCard({ g, wallets, disp, fmtDate, onFund, onEdit, onDelete, onEditC
   const [busy,     setBusy]     = useState(false);
   const [editingId,setEditingId]= useState(null);
   const [showHistory,setShowHistory] = useState(false);
+  // Synchronous guard alongside `busy` — `busy` disables the button, but a
+  // ref is needed too since two clicks fired faster than a re-render can
+  // both slip past a state check (same pattern as the Transfer fix).
+  const fundInFlightRef = useRef(false);
 
   // If wallets loaded after first render, pick the first one that isn't the receiving account
   useEffect(() => {
@@ -734,7 +749,8 @@ function GoalCard({ g, wallets, disp, fmtDate, onFund, onEdit, onDelete, onEditC
   const resetForm = () => { setAmt(""); setNote(""); setDate(todayStr()); setEditingId(null); };
 
   const handle = async () => {
-    if (!canAdd) return;
+    if (!canAdd || fundInFlightRef.current) return;
+    fundInFlightRef.current = true;
     setBusy(true);
     try {
       if (editingId) {
@@ -743,7 +759,7 @@ function GoalCard({ g, wallets, disp, fmtDate, onFund, onEdit, onDelete, onEditC
         await onFund(g.id, parseFloat(amt), fromWal, { note, date });
       }
       resetForm();
-    } finally { setBusy(false); }
+    } finally { fundInFlightRef.current = false; setBusy(false); }
   };
 
   const startEdit = (c) => {
@@ -1318,7 +1334,7 @@ export default function App() {
       wallet:        tx.wallet_id,
       category:      tx.category_id,
       amount:        parseFloat(tx.amount_kes),
-      date:          (tx.tx_date||'').slice(0,10),
+      date:          txLocalDate(tx),
       loanId:        tx.loan_id,
       principalPaid: tx.principal_paid ? parseFloat(tx.principal_paid) : undefined,
       interestPaid:  tx.interest_paid  ? parseFloat(tx.interest_paid)  : undefined,
@@ -1934,6 +1950,18 @@ export default function App() {
   const [editXferPairId, setEditXferPairId] = useState(null);
   const [xferBusy, setXferBusy] = useState(false);
   const xferInFlightRef = useRef(false);
+  // Same double-submit guard pattern as transfers, applied to every other
+  // form that moves money — a ref (synchronous) blocks a second call that
+  // arrives before the busy state's disabled-button re-render has landed.
+  const [txBusy, setTxBusy] = useState(false);
+  const txInFlightRef = useRef(false);
+  const [premiumBusy, setPremiumBusy] = useState(false);
+  const premiumInFlightRef = useRef(false);
+  const [returnBusy, setReturnBusy] = useState(false);
+  const returnInFlightRef = useRef(false);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const refundInFlightRef = useRef(false);
+  const deleteTxInFlightRef = useRef(new Set());
   const [fWindfall, setFWindfall] = useState(blankWindfall);
   const [fWal,    setFWal]   = useState(blankWal);
   const [fExpCat, setFExpCat]= useState(blankExpCat);
@@ -2008,7 +2036,7 @@ export default function App() {
     };
     try {
       const { transaction: tx } = await txApi.create(payload);
-      setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+      setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }, ...p]);
       setWallets(p=>p.map(w=>w.id===wid?{...w,balance:parseFloat(w.balance)+(fTx.type==="income"?amtKES:-amtKES)}:w));
       if(fTx.isRecurring) {
         const { recurring: r } = await recurApi.create({
@@ -2064,8 +2092,8 @@ export default function App() {
             from_wallet_id: fXfer.from, to_wallet_id: fXfer.to, amount_kes: amtKES, note: fXfer.note||undefined,
           });
           setTxs(p=>p.map(t=>{
-            if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:(transfer_out.tx_date||"").slice(0,10)};
-            if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:(transfer_in.tx_date||"").slice(0,10)};
+            if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:txLocalDate(transfer_out)};
+            if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:txLocalDate(transfer_in)};
             return t;
           }));
           setWallets(p=>p.map(w=>{
@@ -2094,7 +2122,7 @@ export default function App() {
         if (fresh?.length) {
           const newTxs = fresh
             .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
-            .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
+            .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }));
           if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
         }
         setFXfer(blankXfer); closeM("xfer");
@@ -2163,7 +2191,7 @@ export default function App() {
       if (fresh?.length) {
         const newTxs = fresh
           .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
-          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
+          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }));
         if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
       }
       setFWindfall(blankWindfall); closeM("windfall");
@@ -2320,7 +2348,7 @@ export default function App() {
     savingRepaymentRef.current = true;
     setSavingRepayment(true);
     try {
-      const { repayment, transaction } = await loansApi.recordRepayment(loan.id, {
+      const { repayment, transaction, excess_kes } = await loansApi.recordRepayment(loan.id, {
         wallet_id:    fRepay.wallet,
         total_kes:    toKES(total, loan.currency, currencies),
         principal_kes:toKES(parseFloat(fRepay.principal)||0, loan.currency, currencies),
@@ -2335,9 +2363,9 @@ export default function App() {
         return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{id:repayment.id,wallet:repayment.wallet_id,total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
       setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
-      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:(transaction.tx_date||"").slice(0,10)}, ...p]);
+      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:txLocalDate(transaction)}, ...p]);
       setFRepay(blankRepay); setStatementNotice(""); closeM("repay");
-      showToast("Repayment recorded");
+      showToast(excess_kes ? `Repayment recorded — loan was already settled, ${disp(excess_kes)} was extra` : "Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
     finally { savingRepaymentRef.current = false; setSavingRepayment(false); }
   };
@@ -2364,8 +2392,11 @@ export default function App() {
   };
 
   const addReturn = async () => {
+    if (returnInFlightRef.current) return;
     const amt = parseFloat(fRet.amount); if(!amt) return;
     const inv  = investments.find(i=>i.id===fRet.investmentId); if(!inv) return;
+    returnInFlightRef.current = true;
+    setReturnBusy(true);
     try {
       const { return: ret } = await invsApi.recordReturn(inv.id, {
         wallet_id:   fRet.wallet,
@@ -2378,11 +2409,12 @@ export default function App() {
       setWallets(p=>p.map(w=>w.id===fRet.wallet?{...w,balance:parseFloat(w.balance)+parseFloat(ret.amount_kes||0)}:w));
       if (ret.transaction) {
         const tx = ret.transaction;
-        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }, ...p]);
       }
       setFRet(blankRet); closeM("ret");
       showToast("Return recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+    finally { returnInFlightRef.current = false; setReturnBusy(false); }
   };
 
   const addGoal = async () => {
@@ -2416,7 +2448,7 @@ export default function App() {
         return w;
       }));
       if (transactions?.length) {
-        setTxs(p=>[...transactions.map(tx=>({...tx, wallet:tx.wallet_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10)})), ...p]);
+        setTxs(p=>[...transactions.map(tx=>({...tx, wallet:tx.wallet_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx)})), ...p]);
       }
       showToast(`Added ${disp(amt)} to goal`);
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -2503,7 +2535,7 @@ export default function App() {
       merchant: tx.merchant || "",
       isRecurring: false,
       freq: "monthly",
-      date: tx.date || (tx.tx_date||"").slice(0,10) || todayStr(),
+      date: tx.date || txLocalDate(tx) || todayStr(),
       time: (() => { const d = tx.tx_date ? new Date(tx.tx_date) : new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); })(),
     });
     openM("tx");
@@ -2645,39 +2677,47 @@ export default function App() {
 
   // Save edits
   const saveTx = async () => {
+    if (txInFlightRef.current) return;
     const amt = parseFloat(fTx.amount); if (!amt) return;
     const wid = fTx.wallet;
     const amtKES = toKES(amt, walletCur(wid), currencies);
-    if (editTx) {
-      // EDIT mode
-      try {
-        const { transaction: tx } = await txApi.update(editTx.id, {
-          wallet_id:   wid,
-          category_id: fTx.category || undefined,
-          type:        fTx.type,
-          amount_kes:  amtKES,
-          merchant:    fTx.merchant || undefined,
-          note:        fTx.note || undefined,
-          tx_date:     localDateTimeToISO(fTx.date, fTx.time),
-        });
-        const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
-        setTxs(p => p.map(t => t.id === editTx.id ? norm : t));
-        // Recalculate wallet balances: reverse old, apply new
-        const oldAmt   = editTx.amount || parseFloat(editTx.amount_kes || 0);
-        const oldIsIn  = editTx.type === "income" || editTx.type === "transfer_in";
-        const newIsIn  = fTx.type === "income" || fTx.type === "transfer_in";
-        const oldWid   = editTx.wallet || editTx.wallet_id;
-        setWallets(p => p.map(w => {
-          let bal = parseFloat(w.balance);
-          if (w.id === oldWid) bal += oldIsIn ? -oldAmt : oldAmt;
-          if (w.id === wid)    bal += newIsIn ?  amtKES : -amtKES;
-          return w.id === oldWid || w.id === wid ? { ...w, balance: bal } : w;
-        }));
-        setEditTx(null); setFTx(blankTx); closeM("tx");
-        showToast("Transaction updated");
-      } catch(err) { showToast(err?.response?.data?.error || "Failed to update", C.coral); }
-    } else {
-      addTx();
+    txInFlightRef.current = true;
+    setTxBusy(true);
+    try {
+      if (editTx) {
+        // EDIT mode
+        try {
+          const { transaction: tx } = await txApi.update(editTx.id, {
+            wallet_id:   wid,
+            category_id: fTx.category || undefined,
+            type:        fTx.type,
+            amount_kes:  amtKES,
+            merchant:    fTx.merchant || undefined,
+            note:        fTx.note || undefined,
+            tx_date:     localDateTimeToISO(fTx.date, fTx.time),
+          });
+          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) };
+          setTxs(p => p.map(t => t.id === editTx.id ? norm : t));
+          // Recalculate wallet balances: reverse old, apply new
+          const oldAmt   = editTx.amount || parseFloat(editTx.amount_kes || 0);
+          const oldIsIn  = editTx.type === "income" || editTx.type === "transfer_in";
+          const newIsIn  = fTx.type === "income" || fTx.type === "transfer_in";
+          const oldWid   = editTx.wallet || editTx.wallet_id;
+          setWallets(p => p.map(w => {
+            let bal = parseFloat(w.balance);
+            if (w.id === oldWid) bal += oldIsIn ? -oldAmt : oldAmt;
+            if (w.id === wid)    bal += newIsIn ?  amtKES : -amtKES;
+            return w.id === oldWid || w.id === wid ? { ...w, balance: bal } : w;
+          }));
+          setEditTx(null); setFTx(blankTx); closeM("tx");
+          showToast("Transaction updated");
+        } catch(err) { showToast(err?.response?.data?.error || "Failed to update", C.coral); }
+      } else {
+        await addTx();
+      }
+    } finally {
+      txInFlightRef.current = false;
+      setTxBusy(false);
     }
   };
 
@@ -2687,16 +2727,27 @@ export default function App() {
       try {
         const curBal = toKES(parseFloat(fWal.currentBalance) || 0, fWal.currency, currencies);
         const openBal = toKES(parseFloat(fWal.openingBalance) || 0, fWal.currency, currencies);
-        const { wallet } = await walletsApi.update(editWal.id, {
+        // Only send balance/opening_balance if the user actually changed
+        // them from what was loaded when this edit started — otherwise an
+        // edit that only touches the name/color would resend a snapshot
+        // that's gone stale (e.g. a transaction landed elsewhere while the
+        // modal was open) and silently roll the real balance back.
+        const origBal     = parseFloat(editWal.balance ?? 0);
+        const origOpenBal = parseFloat(editWal.opening_balance ?? editWal.balance ?? 0);
+        const payload = {
           name:            fWal.name,
           account_type:    fWal.accountType,
           currency:        fWal.currency,
-          balance:         curBal,
-          opening_balance: openBal,
           color:           fWal.color,
           icon:            fWal.icon,
-        });
+        };
+        if (Math.abs(curBal - origBal) > 0.001)         payload.balance = curBal;
+        if (Math.abs(openBal - origOpenBal) > 0.001)    payload.opening_balance = openBal;
+        const { wallet, adjustment } = await walletsApi.update(editWal.id, payload);
         setWallets(p => p.map(w => w.id === editWal.id ? wallet : w));
+        if (adjustment) {
+          setTxs(p=>[{ ...adjustment, wallet:adjustment.wallet_id, category:adjustment.category_id, amount:parseFloat(adjustment.amount_kes), date:txLocalDate(adjustment) }, ...p]);
+        }
         setEditWal(null); setFWal(blankWal); closeM("wallet");
         showToast("Account updated");
       } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
@@ -2758,8 +2809,17 @@ export default function App() {
         const payload = { name: fLoan.name };
         if (fLoan.lender)         payload.lender              = fLoan.lender;
         if (fLoan.currency)       payload.currency            = fLoan.currency;
-        if (fLoan.principal)      payload.principal_kes       = toKES(parseFloat(fLoan.principal), fLoan.currency, currencies);
-        if (fLoan.currentBalance !== "") payload.remaining_kes = toKES(parseFloat(fLoan.currentBalance)||0, fLoan.currency, currencies);
+        // Only send principal/remaining if the user actually changed them
+        // from what was loaded when this edit started — `fLoan.principal`
+        // and `fLoan.currentBalance` are always non-empty for an existing
+        // loan, so unconditionally sending them here would resend a
+        // snapshot that's gone stale (e.g. a repayment landed elsewhere
+        // while the modal was open) and silently roll the real balance
+        // back, exactly like the wallet edit bug.
+        const newPrincipal = fLoan.principal ? toKES(parseFloat(fLoan.principal), fLoan.currency, currencies) : null;
+        if (newPrincipal !== null && Math.abs(newPrincipal - parseFloat(editLoan.principal_kes||0)) > 0.001) payload.principal_kes = newPrincipal;
+        const newRemaining = fLoan.currentBalance !== "" ? toKES(parseFloat(fLoan.currentBalance)||0, fLoan.currency, currencies) : null;
+        if (newRemaining !== null && Math.abs(newRemaining - parseFloat(editLoan.remaining_kes||0)) > 0.001) payload.remaining_kes = newRemaining;
         if (fLoan.rate)           payload.interest_rate       = parseFloat(fLoan.rate);
         payload.term_months = fLoan.termMonths ? parseInt(fLoan.termMonths) : null;
         if (fLoan.monthlyPayment) payload.monthly_payment_kes = toKES(parseFloat(fLoan.monthlyPayment), fLoan.currency, currencies);
@@ -2829,6 +2889,12 @@ export default function App() {
   // ── Insurance handlers ───────────────────────────────────────────────────────
   const savePolicy = async () => {
     if (!fPolicy.name || !fPolicy.provider) return showToast("Policy name and provider are required", C.coral);
+    // amount_paid is a one-time opening figure the server locks once real
+    // payments exist — only include it when there's still something for it
+    // to mean (a new policy, or an existing one with no payments yet), so
+    // editing an unrelated field (like the name) on a tracked policy never
+    // trips that server-side rejection.
+    const hasRealPayments = !!editPolicy?.payments?.length;
     const payload = {
       name:              fPolicy.name,
       provider:          fPolicy.provider,
@@ -2840,7 +2906,7 @@ export default function App() {
       end_date:          fPolicy.endDate||undefined,
       sum_assured:       fPolicy.sumAssured?parseFloat(fPolicy.sumAssured):undefined,
       surrender_value:   fPolicy.surrenderValue?parseFloat(fPolicy.surrenderValue):undefined,
-      amount_paid:       fPolicy.amountPaid?parseFloat(fPolicy.amountPaid):undefined,
+      amount_paid:       hasRealPayments ? undefined : (fPolicy.amountPaid?parseFloat(fPolicy.amountPaid):undefined),
       beneficiary:       fPolicy.beneficiary||undefined,
       wallet_id:         fPolicy.walletId||undefined,
       currency:          fPolicy.currency,
@@ -2893,7 +2959,10 @@ export default function App() {
   };
 
   const recordPremiumPayment = async () => {
+    if (premiumInFlightRef.current) return;
     const amt = parseFloat(fPremiumPayment.amount); if(!amt || !fPremiumPayment.policyId || !fPremiumPayment.wallet) return;
+    premiumInFlightRef.current = true;
+    setPremiumBusy(true);
     try {
       const { payment } = await insuranceApi.recordPayment(fPremiumPayment.policyId, {
         wallet_id: fPremiumPayment.wallet, amount_kes: amt,
@@ -2903,11 +2972,12 @@ export default function App() {
       setWallets(p => p.map(w => w.id===fPremiumPayment.wallet ? {...w, balance:parseFloat(w.balance)-amt} : w));
       if (payment.transaction) {
         const tx = payment.transaction;
-        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }, ...p]);
       }
       setFPremiumPayment(blankPremiumPayment); closeM("premiumPayment");
       showToast("Payment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+    finally { premiumInFlightRef.current = false; setPremiumBusy(false); }
   };
 
   const deletePremiumPayment = async (policyId, paymentId, amount, walletId) => {
@@ -2934,28 +3004,33 @@ export default function App() {
   };
 
   const saveRefund = async () => {
+    if (refundInFlightRef.current) return;
     const amt = parseFloat(fRefund.amount); if(!amt||!fRefund.refundOf||!fRefund.wallet) return;
     const amtKES = toKES(amt, walletCur(fRefund.wallet), currencies);
-    if (editRefund) {
-      try {
-        const { transaction: tx } = await txApi.update(editRefund.id, { wallet_id:fRefund.wallet, amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
-        const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
-        setTxs(p=>p.map(t=>t.id===editRefund.id?norm:t));
-        const oldAmt=editRefund.amount||parseFloat(editRefund.amount_kes||0), oldWid=editRefund.wallet||editRefund.wallet_id;
-        setWallets(p=>p.map(w=>{ let b=parseFloat(w.balance); if(w.id===oldWid) b-=oldAmt; if(w.id===fRefund.wallet) b+=amtKES; return (w.id===oldWid||w.id===fRefund.wallet)?{...w,balance:b}:w; }));
-        setEditRefund(null); setFRefund(blankRefund); closeM("refund");
-        showToast("Refund updated");
-      } catch(err) { showToast(err?.response?.data?.error||"Failed to update refund", C.coral); }
-    } else {
-      try {
-        const { transaction: tx } = await txApi.create({ wallet_id:fRefund.wallet, type:"refund", amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
-        const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
-        setTxs(p=>[norm,...p]);
-        setWallets(p=>p.map(w=>w.id===fRefund.wallet?{...w,balance:parseFloat(w.balance)+amtKES}:w));
-        setFRefund(blankRefund); closeM("refund");
-        showToast("Refund recorded");
-      } catch(err) { showToast(err?.response?.data?.error||"Failed to record refund", C.coral); }
-    }
+    refundInFlightRef.current = true;
+    setRefundBusy(true);
+    try {
+      if (editRefund) {
+        try {
+          const { transaction: tx } = await txApi.update(editRefund.id, { wallet_id:fRefund.wallet, amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
+          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) };
+          setTxs(p=>p.map(t=>t.id===editRefund.id?norm:t));
+          const oldAmt=editRefund.amount||parseFloat(editRefund.amount_kes||0), oldWid=editRefund.wallet||editRefund.wallet_id;
+          setWallets(p=>p.map(w=>{ let b=parseFloat(w.balance); if(w.id===oldWid) b-=oldAmt; if(w.id===fRefund.wallet) b+=amtKES; return (w.id===oldWid||w.id===fRefund.wallet)?{...w,balance:b}:w; }));
+          setEditRefund(null); setFRefund(blankRefund); closeM("refund");
+          showToast("Refund updated");
+        } catch(err) { showToast(err?.response?.data?.error||"Failed to update refund", C.coral); }
+      } else {
+        try {
+          const { transaction: tx } = await txApi.create({ wallet_id:fRefund.wallet, type:"refund", amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
+          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) };
+          setTxs(p=>[norm,...p]);
+          setWallets(p=>p.map(w=>w.id===fRefund.wallet?{...w,balance:parseFloat(w.balance)+amtKES}:w));
+          setFRefund(blankRefund); closeM("refund");
+          showToast("Refund recorded");
+        } catch(err) { showToast(err?.response?.data?.error||"Failed to record refund", C.coral); }
+      }
+    } finally { refundInFlightRef.current = false; setRefundBusy(false); }
   };
 
   const toggleRecurring = async (id) => {
@@ -2967,6 +3042,8 @@ export default function App() {
 
   // ── Delete handlers ──────────────────────────────────────────────────────────
   const deleteTx = async (id) => {
+    if (deleteTxInFlightRef.current.has(id)) return;
+    deleteTxInFlightRef.current.add(id);
     try {
       await txApi.remove(id);
       const tx = txs.find(t=>t.id===id);
@@ -2979,6 +3056,7 @@ export default function App() {
       setTxs(p=>p.filter(t=>t.id!==id));
       showToast("Transaction deleted");
     } catch(err) { showToast("Failed to delete", C.coral); }
+    finally { deleteTxInFlightRef.current.delete(id); }
   };
 
   const deleteWallet = async (id) => {
@@ -3142,7 +3220,7 @@ export default function App() {
       const w   = wallets.find(w=>w.id===(t.wallet||t.wallet_id));
       const dt  = t.tx_date ? new Date(t.tx_date) : null;
       const timeStr = dt ? String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0") : "00:00";
-      return { date:(t.date||(t.tx_date||"").slice(0,10)), time:timeStr, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
+      return { date:(t.date||txLocalDate(t)), time:timeStr, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
     });
     downloadBlob(new Blob([toCSV(txHeaders, txRows)]), `pesa-yangu-transactions-${todayStr()}.csv`);
 
@@ -3288,7 +3366,7 @@ export default function App() {
       if (transferFailures) showToast(`${transferFailures} transfer row${transferFailures!==1?"s":""} failed (e.g. insufficient balance) and were skipped`, C.coral, 6000);
       // Reload transactions
       const { transactions: fresh } = await fetchAllTransactions();
-      setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) })));
+      setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) })));
       // Reload wallet balances
       const { wallets: freshW } = await walletsApi.list();
       setWallets(freshW || []);
@@ -4898,7 +4976,7 @@ export default function App() {
           <label htmlFor="isRecurChk" style={{color:C.textMuted,fontSize:13,cursor:"pointer"}}>🔁 Make recurring</label>
         </div>
         {fTx.isRecurring&&<Field label="Frequency" value={fTx.freq} onChange={v=>setFTx({...fTx,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>}</>}
-        <Btn onClick={saveTx} style={{width:"100%",padding:13,fontSize:14}}>{editTx?"Save Changes":`Add ${fTx.type==="income"?"Income":"Expense"}`}</Btn>
+        <Btn onClick={saveTx} disabled={txBusy} style={{width:"100%",padding:13,fontSize:14}}>{txBusy?"Please wait…":editTx?"Save Changes":`Add ${fTx.type==="income"?"Income":"Expense"}`}</Btn>
       </Modal>
 
       {/* Transfer */}
@@ -5327,7 +5405,7 @@ export default function App() {
           <Field label={`Sum Assured (${fPolicy.currency})`} type="number" value={fPolicy.sumAssured} onChange={v=>setFPolicy({...fPolicy,sumAssured:v})} placeholder="Payout on maturity/claim"/>
           <Field label={`Surrender Value (${fPolicy.currency})`} type="number" value={fPolicy.surrenderValue} onChange={v=>setFPolicy({...fPolicy,surrenderValue:v})} placeholder="Current cash-out value"/>
         </div>
-        <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note="Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."/>
+        <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note={editPolicy?.payments?.length ? "This policy already has recorded payments, so this opening figure is locked and won't be changed by saving — use Record Payment for anything new." : "Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."}/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
         <Field label="Linked Account (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
         <Field label="Expense Category" value={fPolicy.categoryId} onChange={v=>setFPolicy({...fPolicy,categoryId:v})} options={[{value:"",label:"None — use the generic 'Premium' category"},...expCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every premium you pay for this policy files under this category instead of a generic bucket shared by all policies."/>
@@ -5342,7 +5420,7 @@ export default function App() {
         <Field label="Amount" type="number" value={fPremiumPayment.amount} onChange={v=>setFPremiumPayment({...fPremiumPayment,amount:v})} placeholder="e.g. 5000"/>
         <Field label="Payment Date" type="date" value={fPremiumPayment.date} onChange={v=>setFPremiumPayment({...fPremiumPayment,date:v})}/>
         <Field label="Note (optional)" value={fPremiumPayment.note} onChange={v=>setFPremiumPayment({...fPremiumPayment,note:v})} placeholder="e.g. July premium"/>
-        <Btn onClick={recordPremiumPayment} style={{width:"100%",padding:13,fontSize:14}}>Record Payment</Btn>
+        <Btn onClick={recordPremiumPayment} disabled={premiumBusy} style={{width:"100%",padding:13,fontSize:14}}>{premiumBusy?"Please wait…":"Record Payment"}</Btn>
       </Modal>
 
       {/* Add / Edit Loan */}
@@ -5448,7 +5526,7 @@ export default function App() {
         </div>
         <Field label="Credit to Account" value={fRet.wallet} onChange={v=>setFRet({...fRet,wallet:v})} options={wOpts}/>
         <Field label="Note (optional)" value={fRet.note} onChange={v=>setFRet({...fRet,note:v})} placeholder="e.g. Q2 dividend"/>
-        <Btn onClick={addReturn} style={{width:"100%",padding:13,fontSize:14}}>Record Return</Btn>
+        <Btn onClick={addReturn} disabled={returnBusy} style={{width:"100%",padding:13,fontSize:14}}>{returnBusy?"Please wait…":"Record Return"}</Btn>
       </Modal>
 
       {/* New / Edit Goal */}
@@ -5506,8 +5584,8 @@ export default function App() {
         <div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:11,color:C.textMuted,lineHeight:1.7}}>
           ↩ Refund will be <strong style={{color:C.teal}}>credited to your wallet</strong> and <strong style={{color:C.teal}}>deducted from category spend</strong>.
         </div>
-        <Btn onClick={saveRefund} disabled={!fRefund.refundOf||!fRefund.amount||!fRefund.wallet} style={{width:"100%",padding:13,fontSize:14}}>
-          {editRefund?"Save Changes":"Record Refund"}
+        <Btn onClick={saveRefund} disabled={!fRefund.refundOf||!fRefund.amount||!fRefund.wallet||refundBusy} style={{width:"100%",padding:13,fontSize:14}}>
+          {refundBusy?"Please wait…":editRefund?"Save Changes":"Record Refund"}
         </Btn>
       </Modal>
 

@@ -62,51 +62,60 @@ categoryRouter.get("/", async (req,res,next)=>{
 categoryRouter.patch("/:id/allocate", async (req,res,next)=>{
   try {
     const { amount_kes } = z.object({ amount_kes: z.number().min(0).max(1e12) }).parse(req.body);
-    const {rows:cr} = await query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id, req.user.id]);
-    if(!cr.length) return res.status(404).json({error:"Category not found"});
-    const cat = cr[0];
 
-    let pool, siblingsSum;
-    if (cat.linked_wallet_id) {
-      const {rows:wr} = await query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2",[cat.linked_wallet_id, req.user.id]);
-      if(!wr.length) return res.status(400).json({error:"Linked account not found"});
-      pool = parseFloat(wr[0].balance);
-      const {rows:sibs} = await query(
-        "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND linked_wallet_id=$2 AND id<>$3",
-        [req.user.id, cat.linked_wallet_id, cat.id]
+    const category = await withTransaction(async (client) => {
+      const {rows:cr} = await client.query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id, req.user.id]);
+      if(!cr.length) throw Object.assign(new Error("Category not found"),{status:404});
+      const cat = cr[0];
+
+      // Lock the pool (the linked wallet, or the parent category) so a
+      // second, near-simultaneous allocation against the same pool waits
+      // for this one to commit and re-reads the now-current siblings sum —
+      // without this, two sibling categories could each read the same
+      // stale sum, both pass the pool check, and together exceed it.
+      let pool, siblingsSum;
+      if (cat.linked_wallet_id) {
+        const {rows:wr} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[cat.linked_wallet_id, req.user.id]);
+        if(!wr.length) throw Object.assign(new Error("Linked account not found"),{status:400});
+        pool = parseFloat(wr[0].balance);
+        const {rows:sibs} = await client.query(
+          "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND linked_wallet_id=$2 AND id<>$3",
+          [req.user.id, cat.linked_wallet_id, cat.id]
+        );
+        siblingsSum = parseFloat(sibs[0].s);
+      } else if (cat.parent_id) {
+        const {rows:pr} = await client.query("SELECT account_allocated_kes FROM categories WHERE id=$1 AND user_id=$2 FOR UPDATE",[cat.parent_id, req.user.id]);
+        if(!pr.length) throw Object.assign(new Error("Parent category not found"),{status:400});
+        pool = parseFloat(pr[0].account_allocated_kes);
+        const {rows:sibs} = await client.query(
+          "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2 AND id<>$3",
+          [req.user.id, cat.parent_id, cat.id]
+        );
+        siblingsSum = parseFloat(sibs[0].s);
+      } else {
+        throw Object.assign(new Error("This category isn't linked to an account, directly or through a parent"),{status:400});
+      }
+
+      if (siblingsSum + amount_kes > pool + 0.01) {
+        throw Object.assign(new Error(`Only ${(pool - siblingsSum).toFixed(2)} available to allocate here`),{status:400});
+      }
+
+      // Can't shrink below what's already committed to this category's own
+      // children — e.g. Housing can't drop to 25 while Nanny Wages + Food
+      // Ingredients already add up to 30 of it.
+      const {rows:childSum} = await client.query(
+        "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2",
+        [req.user.id, cat.id]
       );
-      siblingsSum = parseFloat(sibs[0].s);
-    } else if (cat.parent_id) {
-      const {rows:pr} = await query("SELECT account_allocated_kes FROM categories WHERE id=$1 AND user_id=$2",[cat.parent_id, req.user.id]);
-      if(!pr.length) return res.status(400).json({error:"Parent category not found"});
-      pool = parseFloat(pr[0].account_allocated_kes);
-      const {rows:sibs} = await query(
-        "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2 AND id<>$3",
-        [req.user.id, cat.parent_id, cat.id]
-      );
-      siblingsSum = parseFloat(sibs[0].s);
-    } else {
-      return res.status(400).json({error:"This category isn't linked to an account, directly or through a parent"});
-    }
+      const childrenTotal = parseFloat(childSum[0].s);
+      if (childrenTotal > amount_kes + 0.01) {
+        throw Object.assign(new Error(`Its sub-categories already use ${childrenTotal.toFixed(2)} — reduce or reassign them first`),{status:400});
+      }
 
-    if (siblingsSum + amount_kes > pool + 0.01) {
-      return res.status(400).json({error:`Only ${(pool - siblingsSum).toFixed(2)} available to allocate here`});
-    }
-
-    // Can't shrink below what's already committed to this category's own
-    // children — e.g. Housing can't drop to 25 while Nanny Wages + Food
-    // Ingredients already add up to 30 of it.
-    const {rows:childSum} = await query(
-      "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2",
-      [req.user.id, cat.id]
-    );
-    const childrenTotal = parseFloat(childSum[0].s);
-    if (childrenTotal > amount_kes + 0.01) {
-      return res.status(400).json({error:`Its sub-categories already use ${childrenTotal.toFixed(2)} — reduce or reassign them first`});
-    }
-
-    const {rows} = await query("UPDATE categories SET account_allocated_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[amount_kes, cat.id, req.user.id]);
-    res.json({category:rows[0]});
+      const {rows} = await client.query("UPDATE categories SET account_allocated_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[amount_kes, cat.id, req.user.id]);
+      return rows[0];
+    });
+    res.json({category});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
@@ -167,13 +176,34 @@ categoryRouter.patch("/:id", async (req,res,next)=>{
     if("allocation_type" in u && !["fixed","percent"].includes(u.allocation_type)) return res.status(400).json({error:"Invalid allocation_type"});
     if(u.allocation_type==="percent" && u.percent_of_parent==null) return res.status(400).json({error:"percent_of_parent is required when allocation_type is 'percent'"});
     if("windfall_percent" in u && u.windfall_percent!=null && (u.windfall_percent<0 || u.windfall_percent>100)) return res.status(400).json({error:"windfall_percent must be between 0 and 100"});
+
+    const {rows:existingRows}=await query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    if(!existingRows.length) return res.status(404).json({error:"Not found"});
+    const existing = existingRows[0];
+
     if("parent_id" in u && u.parent_id) {
       if(await wouldCreateCycle(req.user.id, req.params.id, u.parent_id)) return res.status(400).json({error:"That would create a circular category hierarchy"});
+      // POST / already enforces a new category's type matches its parent's
+      // — reparenting via PATCH skipped this, letting an expense category
+      // move under an income parent (or vice versa).
+      const {rows:pr}=await query("SELECT type FROM categories WHERE id=$1 AND user_id=$2",[u.parent_id,req.user.id]);
+      if(!pr.length) return res.status(400).json({error:"Parent category not found"});
+      if(pr[0].type !== existing.type) return res.status(400).json({error:"Can't move this under a category of a different type (income/expense)"});
     }
     if("linked_wallet_id" in u && u.linked_wallet_id) {
       const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[u.linked_wallet_id,req.user.id]);
       if(!wr.length) return res.status(400).json({error:"Linked wallet not found"});
     }
+
+    // Clearing what this category's allocation was measured against — its
+    // linked account, or its parent's own allocation — leaves
+    // account_allocated_kes pointing at a pool that no longer exists. Zero
+    // it in the same edit instead of leaving a dangling, orphaned number.
+    if (("linked_wallet_id" in u && !u.linked_wallet_id && existing.linked_wallet_id)
+      || ("parent_id" in u && !u.parent_id && existing.parent_id)) {
+      u.account_allocated_kes = 0;
+    }
+
     const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE categories SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
@@ -422,6 +452,14 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
 
     const toAdd=Math.min(d.amount,parseFloat(g.target_kes)-parseFloat(g.saved_kes));
     if(toAdd<=0) return res.status(400).json({error:"Goal already reached"});
+
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow request) creating two contributions for one real top-up.
+    const {rows:dupe}=await query(
+      "SELECT id FROM goal_contributions WHERE goal_id=$1 AND from_wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [g.id,fromWalletId,toAdd]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a contribution you just made — check the goal's history before submitting again."});
 
     const result=await withTransaction(async(client)=>{
       const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[fromWalletId,req.user.id]);
@@ -681,6 +719,15 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
     const d=z.object({wallet_id:z.string().uuid(),return_type:z.enum(["interest","dividend","capital_gain","coupon","other"]),amount_kes:z.number().positive(),return_date:z.string().optional(),note:z.string().optional()}).parse(req.body);
     const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow request) creating two returns for one real payout.
+    const {rows:dupe}=await query(
+      "SELECT id FROM investment_returns WHERE investment_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [inv.id,d.wallet_id,d.amount_kes]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a return you just recorded — check the return list before submitting again."});
+
     const ret=await withTransaction(async(client)=>{
       const {rows}=await client.query("INSERT INTO investment_returns (investment_id,user_id,wallet_id,return_type,amount_kes,return_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
         [inv.id,req.user.id,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
@@ -792,6 +839,15 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       ...req.body, total_kes:parseFloat(req.body.total_kes), principal_kes:parseFloat(req.body.principal_kes||0), interest_kes:parseFloat(req.body.interest_kes||0)
     });
 
+    // For a compound loan only principal_kes reduces remaining_kes (see
+    // `reduction` below) — if principal+interest doesn't add up to the
+    // total paid, the wallet gets debited the full total but the loan
+    // balance silently doesn't reflect it. Simple loans reduce by
+    // total_kes regardless of the split, so this doesn't apply to them.
+    if (loan.interest_type === "compound" && Math.abs((d.principal_kes + d.interest_kes) - d.total_kes) > 0.01) {
+      return res.status(400).json({error:"Principal + interest must add up to the total amount paid"});
+    }
+
     // Guard against accidental double-submission (double-tap, or a retry
     // after a slow attachment upload) creating two repayments for one real
     // payment — reject an identical repayment recorded moments ago.
@@ -801,12 +857,22 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
     );
     if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."});
 
-    const {repayment:rep, transaction:tx}=await withTransaction(async(client)=>{
+    const {repayment:rep, transaction:tx, excessKes}=await withTransaction(async(client)=>{
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
+      if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
+      if(parseFloat(wr[0].balance)<d.total_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.total_kes,d.wallet_id,req.user.id]);
       // Simple interest: reduce remaining by total paid (interest baked in at creation)
       // Compound: reduce remaining by principal portion only
       const reduction = loan.interest_type === "simple" ? d.total_kes : d.principal_kes;
-      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",[reduction,loan.id]);
+      const {rows:loanLock}=await client.query("SELECT remaining_kes FROM loans WHERE id=$1 FOR UPDATE",[loan.id]);
+      const remainingBefore = parseFloat(loanLock[0].remaining_kes);
+      const newRemaining = Math.max(0, remainingBefore - reduction);
+      // A repayment can exceed what's actually owed (last payment rounds
+      // up, or a mistaken over-entry) — the loan balance still just clamps
+      // to 0, but the excess used to be silently swallowed with no trace.
+      const excessKes = reduction > remainingBefore ? +(reduction - remainingBefore).toFixed(2) : 0;
+      await client.query("UPDATE loans SET remaining_kes=$1,is_settled=($1<=0) WHERE id=$2",[newRemaining,loan.id]);
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
       // Use the loan's own linked category if it has one (e.g. a "HELB Loan"
@@ -819,9 +885,9 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       }
       const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,loan_repayment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
         [req.user.id,d.wallet_id,categoryId,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
-      return { repayment:rows[0], transaction:txRows[0] };
+      return { repayment:rows[0], transaction:txRows[0], excessKes };
     });
-    res.status(201).json({repayment:rep, transaction:tx});
+    res.status(201).json({repayment:rep, transaction:tx, excess_kes: excessKes || undefined});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
@@ -854,9 +920,6 @@ loanRouter.patch("/:id", async (req,res,next)=>{
 
 loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
   try {
-    const {rows:rr}=await query("SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",[req.params.rid,req.params.id,req.user.id]);
-    if(!rr.length) return res.status(404).json({error:"Repayment not found"});
-    const old=rr[0];
     const d=z.object({
       wallet_id:    z.string().uuid().optional(),
       total_kes:    z.number().positive().optional(),
@@ -866,20 +929,33 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
       note:         z.string().nullable().optional(),
     }).parse(req.body);
 
-    const newTotal    = d.total_kes     ?? parseFloat(old.total_kes);
-    const newPrincipal= d.principal_kes ?? parseFloat(old.principal_kes);
-    const newInterest = d.interest_kes  ?? parseFloat(old.interest_kes);
-    const newWallet   = d.wallet_id     ?? old.wallet_id;
-    const newDate     = d.payment_date  ?? old.payment_date;
-    const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
-    const isSimple    = old.interest_type === "simple";
-
     if (d.wallet_id) {
       const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
       if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     }
 
     const repayment = await withTransaction(async(client)=>{
+      // Lock the repayment row so a second, near-simultaneous edit of the
+      // SAME repayment (double-tap, or a retry) waits for this one to
+      // commit and then reverses against the row's now-current state,
+      // instead of both reading the same pre-edit snapshot and each
+      // reversing the original amount — which would double-credit the
+      // wallet and loan balance.
+      const {rows:rr}=await client.query(
+        "SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3 FOR UPDATE OF r",
+        [req.params.rid,req.params.id,req.user.id]
+      );
+      if(!rr.length) throw Object.assign(new Error("Repayment not found"),{status:404});
+      const old=rr[0];
+
+      const newTotal    = d.total_kes     ?? parseFloat(old.total_kes);
+      const newPrincipal= d.principal_kes ?? parseFloat(old.principal_kes);
+      const newInterest = d.interest_kes  ?? parseFloat(old.interest_kes);
+      const newWallet   = d.wallet_id     ?? old.wallet_id;
+      const newDate     = d.payment_date  ?? old.payment_date;
+      const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
+      const isSimple    = old.interest_type === "simple";
+
       // Reverse old wallet debit and loan remaining effect
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(old.total_kes),old.wallet_id,req.user.id]);
       const oldReduction = isSimple ? parseFloat(old.total_kes) : parseFloat(old.principal_kes);
@@ -1381,6 +1457,17 @@ insuranceRouter.patch("/:id", async (req,res,next) => {
     const updates=Object.fromEntries(Object.entries(d).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.user.id, updates.category_id);
+
+    // amount_paid is meant as a one-time "premiums paid before you started
+    // tracking here" opening figure — once real payments exist in the
+    // premium_payments ledger, editing it further would let it silently
+    // drift out of sync with what's actually been recorded, with no trail
+    // explaining the change.
+    if (Object.prototype.hasOwnProperty.call(updates,"amount_paid")) {
+      const {rows:existingPays} = await query("SELECT id FROM premium_payments WHERE policy_id=$1 LIMIT 1",[req.params.id]);
+      if (existingPays.length) return res.status(400).json({error:"This policy already has recorded payments — amount paid is tracked from those and can no longer be edited directly."});
+    }
+
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(
       `UPDATE insurance_policies SET ${sets.join(",")},updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING *`,
@@ -1418,7 +1505,20 @@ insuranceRouter.post("/:id/payments", async (req,res,next) => {
     }).parse(req.body);
     const {rows:wr} = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id, req.user.id]);
     if (!wr.length) return res.status(400).json({error:"Wallet not found"});
+
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow request) creating two payments for one real premium —
+    // reject an identical payment recorded moments ago.
+    const {rows:dupe} = await query(
+      "SELECT id FROM premium_payments WHERE policy_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [policy.id, d.wallet_id, d.amount_kes]
+    );
+    if (dupe.length) return res.status(409).json({error:"This looks like a duplicate of a payment you just recorded — check the payment list before submitting again."});
+
     const payment = await withTransaction(async(client)=>{
+      const {rows:wbal} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id, req.user.id]);
+      if (!wbal.length) throw Object.assign(new Error("Wallet not found"),{status:404});
+      if (parseFloat(wbal[0].balance) < d.amount_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
       const {rows} = await client.query(
         "INSERT INTO premium_payments (policy_id,user_id,wallet_id,amount_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
         [policy.id, req.user.id, d.wallet_id, d.amount_kes, d.payment_date||new Date(), d.note||null]

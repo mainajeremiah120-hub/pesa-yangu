@@ -94,6 +94,17 @@ const txTime = (tx) => {
   const h = d.getHours(), m = d.getMinutes();
   return (h === 0 && m === 0) ? "" : String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
 };
+// tx_date is stored as a UTC instant (TIMESTAMPTZ). Slicing the raw ISO
+// string takes the UTC calendar date, not the local one — for Kenya
+// (UTC+3), a transaction entered locally between 00:00-02:59 is still on
+// the previous day in UTC, so it silently lands under the wrong date in
+// Records and every date filter. This uses local getters (like todayStr)
+// so the date always matches the day it was actually entered on.
+const txLocalDate = (tx) => {
+  const ts = tx?.tx_date; if (!ts) return "";
+  const d = new Date(ts); if (isNaN(d)) return "";
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
 const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const fmtDate = (d) => {
   if (!d) return "—";
@@ -1323,7 +1334,7 @@ export default function App() {
       wallet:        tx.wallet_id,
       category:      tx.category_id,
       amount:        parseFloat(tx.amount_kes),
-      date:          (tx.tx_date||'').slice(0,10),
+      date:          txLocalDate(tx),
       loanId:        tx.loan_id,
       principalPaid: tx.principal_paid ? parseFloat(tx.principal_paid) : undefined,
       interestPaid:  tx.interest_paid  ? parseFloat(tx.interest_paid)  : undefined,
@@ -2025,7 +2036,7 @@ export default function App() {
     };
     try {
       const { transaction: tx } = await txApi.create(payload);
-      setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+      setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }, ...p]);
       setWallets(p=>p.map(w=>w.id===wid?{...w,balance:parseFloat(w.balance)+(fTx.type==="income"?amtKES:-amtKES)}:w));
       if(fTx.isRecurring) {
         const { recurring: r } = await recurApi.create({
@@ -2081,8 +2092,8 @@ export default function App() {
             from_wallet_id: fXfer.from, to_wallet_id: fXfer.to, amount_kes: amtKES, note: fXfer.note||undefined,
           });
           setTxs(p=>p.map(t=>{
-            if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:(transfer_out.tx_date||"").slice(0,10)};
-            if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:(transfer_in.tx_date||"").slice(0,10)};
+            if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:txLocalDate(transfer_out)};
+            if(t.id===transfer_in.id)  return {...t, ...transfer_in,  wallet:transfer_in.wallet_id,  amount:parseFloat(transfer_in.amount_kes),  date:txLocalDate(transfer_in)};
             return t;
           }));
           setWallets(p=>p.map(w=>{
@@ -2111,7 +2122,7 @@ export default function App() {
         if (fresh?.length) {
           const newTxs = fresh
             .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
-            .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
+            .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }));
           if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
         }
         setFXfer(blankXfer); closeM("xfer");
@@ -2180,7 +2191,7 @@ export default function App() {
       if (fresh?.length) {
         const newTxs = fresh
           .filter(tx => tx.transfer_pair_id && !txs.find(t=>t.id===tx.id))
-          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||"").slice(0,10) }));
+          .map(tx => ({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }));
         if (newTxs.length) setTxs(p=>[...newTxs, ...p]);
       }
       setFWindfall(blankWindfall); closeM("windfall");
@@ -2352,7 +2363,7 @@ export default function App() {
         return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{id:repayment.id,wallet:repayment.wallet_id,total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note,attachments:[]}]};
       }));
       setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
-      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:(transaction.tx_date||"").slice(0,10)}, ...p]);
+      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:txLocalDate(transaction)}, ...p]);
       setFRepay(blankRepay); setStatementNotice(""); closeM("repay");
       showToast("Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -2398,7 +2409,7 @@ export default function App() {
       setWallets(p=>p.map(w=>w.id===fRet.wallet?{...w,balance:parseFloat(w.balance)+parseFloat(ret.amount_kes||0)}:w));
       if (ret.transaction) {
         const tx = ret.transaction;
-        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }, ...p]);
       }
       setFRet(blankRet); closeM("ret");
       showToast("Return recorded");
@@ -2437,7 +2448,7 @@ export default function App() {
         return w;
       }));
       if (transactions?.length) {
-        setTxs(p=>[...transactions.map(tx=>({...tx, wallet:tx.wallet_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10)})), ...p]);
+        setTxs(p=>[...transactions.map(tx=>({...tx, wallet:tx.wallet_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx)})), ...p]);
       }
       showToast(`Added ${disp(amt)} to goal`);
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
@@ -2524,7 +2535,7 @@ export default function App() {
       merchant: tx.merchant || "",
       isRecurring: false,
       freq: "monthly",
-      date: tx.date || (tx.tx_date||"").slice(0,10) || todayStr(),
+      date: tx.date || txLocalDate(tx) || todayStr(),
       time: (() => { const d = tx.tx_date ? new Date(tx.tx_date) : new Date(); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); })(),
     });
     openM("tx");
@@ -2685,7 +2696,7 @@ export default function App() {
             note:        fTx.note || undefined,
             tx_date:     localDateTimeToISO(fTx.date, fTx.time),
           });
-          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
+          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) };
           setTxs(p => p.map(t => t.id === editTx.id ? norm : t));
           // Recalculate wallet balances: reverse old, apply new
           const oldAmt   = editTx.amount || parseFloat(editTx.amount_kes || 0);
@@ -2935,7 +2946,7 @@ export default function App() {
       setWallets(p => p.map(w => w.id===fPremiumPayment.wallet ? {...w, balance:parseFloat(w.balance)-amt} : w));
       if (payment.transaction) {
         const tx = payment.transaction;
-        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) }, ...p]);
+        setTxs(p=>[{ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) }, ...p]);
       }
       setFPremiumPayment(blankPremiumPayment); closeM("premiumPayment");
       showToast("Payment recorded");
@@ -2976,7 +2987,7 @@ export default function App() {
       if (editRefund) {
         try {
           const { transaction: tx } = await txApi.update(editRefund.id, { wallet_id:fRefund.wallet, amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
-          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
+          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) };
           setTxs(p=>p.map(t=>t.id===editRefund.id?norm:t));
           const oldAmt=editRefund.amount||parseFloat(editRefund.amount_kes||0), oldWid=editRefund.wallet||editRefund.wallet_id;
           setWallets(p=>p.map(w=>{ let b=parseFloat(w.balance); if(w.id===oldWid) b-=oldAmt; if(w.id===fRefund.wallet) b+=amtKES; return (w.id===oldWid||w.id===fRefund.wallet)?{...w,balance:b}:w; }));
@@ -2986,7 +2997,7 @@ export default function App() {
       } else {
         try {
           const { transaction: tx } = await txApi.create({ wallet_id:fRefund.wallet, type:"refund", amount_kes:amtKES, note:fRefund.note||undefined, tx_date:localDateTimeToISO(fRefund.date, nowTimeStr()), refund_of:fRefund.refundOf });
-          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) };
+          const norm = { ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) };
           setTxs(p=>[norm,...p]);
           setWallets(p=>p.map(w=>w.id===fRefund.wallet?{...w,balance:parseFloat(w.balance)+amtKES}:w));
           setFRefund(blankRefund); closeM("refund");
@@ -3183,7 +3194,7 @@ export default function App() {
       const w   = wallets.find(w=>w.id===(t.wallet||t.wallet_id));
       const dt  = t.tx_date ? new Date(t.tx_date) : null;
       const timeStr = dt ? String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0") : "00:00";
-      return { date:(t.date||(t.tx_date||"").slice(0,10)), time:timeStr, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
+      return { date:(t.date||txLocalDate(t)), time:timeStr, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
     });
     downloadBlob(new Blob([toCSV(txHeaders, txRows)]), `pesa-yangu-transactions-${todayStr()}.csv`);
 
@@ -3329,7 +3340,7 @@ export default function App() {
       if (transferFailures) showToast(`${transferFailures} transfer row${transferFailures!==1?"s":""} failed (e.g. insufficient balance) and were skipped`, C.coral, 6000);
       // Reload transactions
       const { transactions: fresh } = await fetchAllTransactions();
-      setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:(tx.tx_date||'').slice(0,10) })));
+      setTxs((fresh||[]).map(tx=>({ ...tx, wallet:tx.wallet_id, category:tx.category_id, amount:parseFloat(tx.amount_kes), date:txLocalDate(tx) })));
       // Reload wallet balances
       const { wallets: freshW } = await walletsApi.list();
       setWallets(freshW || []);

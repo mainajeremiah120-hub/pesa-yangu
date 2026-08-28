@@ -2727,16 +2727,27 @@ export default function App() {
       try {
         const curBal = toKES(parseFloat(fWal.currentBalance) || 0, fWal.currency, currencies);
         const openBal = toKES(parseFloat(fWal.openingBalance) || 0, fWal.currency, currencies);
-        const { wallet } = await walletsApi.update(editWal.id, {
+        // Only send balance/opening_balance if the user actually changed
+        // them from what was loaded when this edit started — otherwise an
+        // edit that only touches the name/color would resend a snapshot
+        // that's gone stale (e.g. a transaction landed elsewhere while the
+        // modal was open) and silently roll the real balance back.
+        const origBal     = parseFloat(editWal.balance ?? 0);
+        const origOpenBal = parseFloat(editWal.opening_balance ?? editWal.balance ?? 0);
+        const payload = {
           name:            fWal.name,
           account_type:    fWal.accountType,
           currency:        fWal.currency,
-          balance:         curBal,
-          opening_balance: openBal,
           color:           fWal.color,
           icon:            fWal.icon,
-        });
+        };
+        if (Math.abs(curBal - origBal) > 0.001)         payload.balance = curBal;
+        if (Math.abs(openBal - origOpenBal) > 0.001)    payload.opening_balance = openBal;
+        const { wallet, adjustment } = await walletsApi.update(editWal.id, payload);
         setWallets(p => p.map(w => w.id === editWal.id ? wallet : w));
+        if (adjustment) {
+          setTxs(p=>[{ ...adjustment, wallet:adjustment.wallet_id, category:adjustment.category_id, amount:parseFloat(adjustment.amount_kes), date:txLocalDate(adjustment) }, ...p]);
+        }
         setEditWal(null); setFWal(blankWal); closeM("wallet");
         showToast("Account updated");
       } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
@@ -2798,8 +2809,17 @@ export default function App() {
         const payload = { name: fLoan.name };
         if (fLoan.lender)         payload.lender              = fLoan.lender;
         if (fLoan.currency)       payload.currency            = fLoan.currency;
-        if (fLoan.principal)      payload.principal_kes       = toKES(parseFloat(fLoan.principal), fLoan.currency, currencies);
-        if (fLoan.currentBalance !== "") payload.remaining_kes = toKES(parseFloat(fLoan.currentBalance)||0, fLoan.currency, currencies);
+        // Only send principal/remaining if the user actually changed them
+        // from what was loaded when this edit started — `fLoan.principal`
+        // and `fLoan.currentBalance` are always non-empty for an existing
+        // loan, so unconditionally sending them here would resend a
+        // snapshot that's gone stale (e.g. a repayment landed elsewhere
+        // while the modal was open) and silently roll the real balance
+        // back, exactly like the wallet edit bug.
+        const newPrincipal = fLoan.principal ? toKES(parseFloat(fLoan.principal), fLoan.currency, currencies) : null;
+        if (newPrincipal !== null && Math.abs(newPrincipal - parseFloat(editLoan.principal_kes||0)) > 0.001) payload.principal_kes = newPrincipal;
+        const newRemaining = fLoan.currentBalance !== "" ? toKES(parseFloat(fLoan.currentBalance)||0, fLoan.currency, currencies) : null;
+        if (newRemaining !== null && Math.abs(newRemaining - parseFloat(editLoan.remaining_kes||0)) > 0.001) payload.remaining_kes = newRemaining;
         if (fLoan.rate)           payload.interest_rate       = parseFloat(fLoan.rate);
         payload.term_months = fLoan.termMonths ? parseInt(fLoan.termMonths) : null;
         if (fLoan.monthlyPayment) payload.monthly_payment_kes = toKES(parseFloat(fLoan.monthlyPayment), fLoan.currency, currencies);

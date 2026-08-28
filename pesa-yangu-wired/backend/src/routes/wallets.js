@@ -102,7 +102,7 @@ router.delete("/:id", async (req, res, next) => {
       });
     }
 
-    await query("DELETE FROM wallets WHERE id=$1", [req.params.id]);
+    await query("DELETE FROM wallets WHERE id=$1 AND user_id=$2", [req.params.id, req.user.id]);
     res.json({ ok: true });
   } catch(e) {
     if (e.code === "23503") {

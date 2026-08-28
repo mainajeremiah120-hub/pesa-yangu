@@ -809,6 +809,15 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       ...req.body, total_kes:parseFloat(req.body.total_kes), principal_kes:parseFloat(req.body.principal_kes||0), interest_kes:parseFloat(req.body.interest_kes||0)
     });
 
+    // For a compound loan only principal_kes reduces remaining_kes (see
+    // `reduction` below) — if principal+interest doesn't add up to the
+    // total paid, the wallet gets debited the full total but the loan
+    // balance silently doesn't reflect it. Simple loans reduce by
+    // total_kes regardless of the split, so this doesn't apply to them.
+    if (loan.interest_type === "compound" && Math.abs((d.principal_kes + d.interest_kes) - d.total_kes) > 0.01) {
+      return res.status(400).json({error:"Principal + interest must add up to the total amount paid"});
+    }
+
     // Guard against accidental double-submission (double-tap, or a retry
     // after a slow attachment upload) creating two repayments for one real
     // payment — reject an identical repayment recorded moments ago.
@@ -818,7 +827,7 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
     );
     if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."});
 
-    const {repayment:rep, transaction:tx}=await withTransaction(async(client)=>{
+    const {repayment:rep, transaction:tx, excessKes}=await withTransaction(async(client)=>{
       const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
       if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
       if(parseFloat(wr[0].balance)<d.total_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
@@ -826,7 +835,14 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       // Simple interest: reduce remaining by total paid (interest baked in at creation)
       // Compound: reduce remaining by principal portion only
       const reduction = loan.interest_type === "simple" ? d.total_kes : d.principal_kes;
-      await client.query("UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",[reduction,loan.id]);
+      const {rows:loanLock}=await client.query("SELECT remaining_kes FROM loans WHERE id=$1 FOR UPDATE",[loan.id]);
+      const remainingBefore = parseFloat(loanLock[0].remaining_kes);
+      const newRemaining = Math.max(0, remainingBefore - reduction);
+      // A repayment can exceed what's actually owed (last payment rounds
+      // up, or a mistaken over-entry) — the loan balance still just clamps
+      // to 0, but the excess used to be silently swallowed with no trace.
+      const excessKes = reduction > remainingBefore ? +(reduction - remainingBefore).toFixed(2) : 0;
+      await client.query("UPDATE loans SET remaining_kes=$1,is_settled=($1<=0) WHERE id=$2",[newRemaining,loan.id]);
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
       // Use the loan's own linked category if it has one (e.g. a "HELB Loan"
@@ -839,9 +855,9 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       }
       const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,loan_repayment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
         [req.user.id,d.wallet_id,categoryId,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
-      return { repayment:rows[0], transaction:txRows[0] };
+      return { repayment:rows[0], transaction:txRows[0], excessKes };
     });
-    res.status(201).json({repayment:rep, transaction:tx});
+    res.status(201).json({repayment:rep, transaction:tx, excess_kes: excessKes || undefined});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 

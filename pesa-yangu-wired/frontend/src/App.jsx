@@ -2348,7 +2348,7 @@ export default function App() {
     savingRepaymentRef.current = true;
     setSavingRepayment(true);
     try {
-      const { repayment, transaction } = await loansApi.recordRepayment(loan.id, {
+      const { repayment, transaction, excess_kes } = await loansApi.recordRepayment(loan.id, {
         wallet_id:    fRepay.wallet,
         total_kes:    toKES(total, loan.currency, currencies),
         principal_kes:toKES(parseFloat(fRepay.principal)||0, loan.currency, currencies),
@@ -2365,7 +2365,7 @@ export default function App() {
       setWallets(p=>p.map(w=>w.id===fRepay.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(repayment.total_kes||0)}:w));
       if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:txLocalDate(transaction)}, ...p]);
       setFRepay(blankRepay); setStatementNotice(""); closeM("repay");
-      showToast("Repayment recorded");
+      showToast(excess_kes ? `Repayment recorded — loan was already settled, ${disp(excess_kes)} was extra` : "Repayment recorded");
     } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
     finally { savingRepaymentRef.current = false; setSavingRepayment(false); }
   };

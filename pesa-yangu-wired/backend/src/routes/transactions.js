@@ -66,16 +66,21 @@ router.post("/", async (req, res, next) => {
       if(!rr.length) return res.status(400).json({error:"Original transaction not found"});
     }
 
-    // Guard against accidental double-submission (double-tap, or a retry
-    // from a second browser tab/device) recording the same transaction
-    // twice — reject an identical one created moments ago.
-    const {rows:dupe}=await query(
-      "SELECT id FROM transactions WHERE user_id=$1 AND wallet_id=$2 AND type=$3 AND amount_kes=$4 AND created_at > NOW() - INTERVAL '10 seconds'",
-      [req.user.id,d.wallet_id,d.type,d.amount_kes]
-    );
-    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a transaction you just added — check Records before submitting again."});
-
     const tx = await withTransaction(async(client)=>{
+      // Guard against accidental double-submission (double-tap, or a retry
+      // from a second browser tab/device) recording the same transaction
+      // twice. The advisory lock serializes two truly-simultaneous requests
+      // for the same wallet+type+amount — without it, both could run this
+      // check before either commits, see nothing, and both insert; with it,
+      // the second one waits for the first to finish and then correctly
+      // sees its row.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`tx:${req.user.id}:${d.wallet_id}:${d.type}:${d.amount_kes}`]);
+      const {rows:dupe}=await client.query(
+        "SELECT id FROM transactions WHERE user_id=$1 AND wallet_id=$2 AND type=$3 AND amount_kes=$4 AND created_at > NOW() - INTERVAL '10 seconds'",
+        [req.user.id,d.wallet_id,d.type,d.amount_kes]
+      );
+      if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a transaction you just added — check Records before submitting again."),{status:409});
+
       const {rows}=await client.query(
         `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,refund_of)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,

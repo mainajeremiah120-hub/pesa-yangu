@@ -453,15 +453,19 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
     const toAdd=Math.min(d.amount,parseFloat(g.target_kes)-parseFloat(g.saved_kes));
     if(toAdd<=0) return res.status(400).json({error:"Goal already reached"});
 
-    // Guard against accidental double-submission (double-tap, or a retry
-    // after a slow request) creating two contributions for one real top-up.
-    const {rows:dupe}=await query(
-      "SELECT id FROM goal_contributions WHERE goal_id=$1 AND from_wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
-      [g.id,fromWalletId,toAdd]
-    );
-    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a contribution you just made — check the goal's history before submitting again."});
-
     const result=await withTransaction(async(client)=>{
+      // Guard against accidental double-submission (double-tap, or a retry
+      // after a slow request) creating two contributions for one real
+      // top-up. The advisory lock serializes two truly-simultaneous
+      // requests for the same goal+wallet+amount so the second always sees
+      // the first's committed row instead of both passing the check at once.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`goalfund:${g.id}:${fromWalletId}:${toAdd}`]);
+      const {rows:dupe}=await client.query(
+        "SELECT id FROM goal_contributions WHERE goal_id=$1 AND from_wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+        [g.id,fromWalletId,toAdd]
+      );
+      if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a contribution you just made — check the goal's history before submitting again."),{status:409});
+
       const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[fromWalletId,req.user.id]);
       if(!wr.length) throw Object.assign(new Error("Source account not found"),{status:404});
       if(parseFloat(wr[0].balance)<toAdd) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
@@ -720,15 +724,19 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
     const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
 
-    // Guard against accidental double-submission (double-tap, or a retry
-    // after a slow request) creating two returns for one real payout.
-    const {rows:dupe}=await query(
-      "SELECT id FROM investment_returns WHERE investment_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
-      [inv.id,d.wallet_id,d.amount_kes]
-    );
-    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a return you just recorded — check the return list before submitting again."});
-
     const ret=await withTransaction(async(client)=>{
+      // Guard against accidental double-submission (double-tap, or a retry
+      // after a slow request) creating two returns for one real payout.
+      // The advisory lock serializes two truly-simultaneous requests for
+      // the same investment+wallet+amount so the second always sees the
+      // first's committed row instead of both passing the check at once.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`invret:${inv.id}:${d.wallet_id}:${d.amount_kes}`]);
+      const {rows:dupe}=await client.query(
+        "SELECT id FROM investment_returns WHERE investment_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+        [inv.id,d.wallet_id,d.amount_kes]
+      );
+      if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a return you just recorded — check the return list before submitting again."),{status:409});
+
       const {rows}=await client.query("INSERT INTO investment_returns (investment_id,user_id,wallet_id,return_type,amount_kes,return_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
         [inv.id,req.user.id,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[d.amount_kes,d.wallet_id,req.user.id]);
@@ -848,16 +856,19 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       return res.status(400).json({error:"Principal + interest must add up to the total amount paid"});
     }
 
-    // Guard against accidental double-submission (double-tap, or a retry
-    // after a slow attachment upload) creating two repayments for one real
-    // payment — reject an identical repayment recorded moments ago.
-    const {rows:dupe}=await query(
-      "SELECT id FROM loan_repayments WHERE loan_id=$1 AND wallet_id=$2 AND total_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
-      [loan.id,d.wallet_id,d.total_kes]
-    );
-    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."});
-
     const {repayment:rep, transaction:tx, excessKes}=await withTransaction(async(client)=>{
+      // Guard against accidental double-submission (double-tap, or a retry
+      // after a slow attachment upload) creating two repayments for one
+      // real payment. The advisory lock serializes two truly-simultaneous
+      // requests for the same loan+wallet+amount so the second always sees
+      // the first's committed row instead of both passing the check at once.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`loanrepay:${loan.id}:${d.wallet_id}:${d.total_kes}`]);
+      const {rows:dupe}=await client.query(
+        "SELECT id FROM loan_repayments WHERE loan_id=$1 AND wallet_id=$2 AND total_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+        [loan.id,d.wallet_id,d.total_kes]
+      );
+      if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."),{status:409});
+
       const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
       if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
       if(parseFloat(wr[0].balance)<d.total_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
@@ -1506,16 +1517,19 @@ insuranceRouter.post("/:id/payments", async (req,res,next) => {
     const {rows:wr} = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id, req.user.id]);
     if (!wr.length) return res.status(400).json({error:"Wallet not found"});
 
-    // Guard against accidental double-submission (double-tap, or a retry
-    // after a slow request) creating two payments for one real premium —
-    // reject an identical payment recorded moments ago.
-    const {rows:dupe} = await query(
-      "SELECT id FROM premium_payments WHERE policy_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
-      [policy.id, d.wallet_id, d.amount_kes]
-    );
-    if (dupe.length) return res.status(409).json({error:"This looks like a duplicate of a payment you just recorded — check the payment list before submitting again."});
-
     const payment = await withTransaction(async(client)=>{
+      // Guard against accidental double-submission (double-tap, or a retry
+      // after a slow request) creating two payments for one real premium.
+      // The advisory lock serializes two truly-simultaneous requests for
+      // the same policy+wallet+amount so the second always sees the
+      // first's committed row instead of both passing the check at once.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`premium:${policy.id}:${d.wallet_id}:${d.amount_kes}`]);
+      const {rows:dupe} = await client.query(
+        "SELECT id FROM premium_payments WHERE policy_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+        [policy.id, d.wallet_id, d.amount_kes]
+      );
+      if (dupe.length) throw Object.assign(new Error("This looks like a duplicate of a payment you just recorded — check the payment list before submitting again."),{status:409});
+
       const {rows:wbal} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id, req.user.id]);
       if (!wbal.length) throw Object.assign(new Error("Wallet not found"),{status:404});
       if (parseFloat(wbal[0].balance) < d.amount_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});

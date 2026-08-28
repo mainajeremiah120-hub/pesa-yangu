@@ -423,6 +423,14 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
     const toAdd=Math.min(d.amount,parseFloat(g.target_kes)-parseFloat(g.saved_kes));
     if(toAdd<=0) return res.status(400).json({error:"Goal already reached"});
 
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow request) creating two contributions for one real top-up.
+    const {rows:dupe}=await query(
+      "SELECT id FROM goal_contributions WHERE goal_id=$1 AND from_wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [g.id,fromWalletId,toAdd]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a contribution you just made — check the goal's history before submitting again."});
+
     const result=await withTransaction(async(client)=>{
       const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[fromWalletId,req.user.id]);
       if(!wr.length) throw Object.assign(new Error("Source account not found"),{status:404});
@@ -681,6 +689,15 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
     const d=z.object({wallet_id:z.string().uuid(),return_type:z.enum(["interest","dividend","capital_gain","coupon","other"]),amount_kes:z.number().positive(),return_date:z.string().optional(),note:z.string().optional()}).parse(req.body);
     const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
+
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow request) creating two returns for one real payout.
+    const {rows:dupe}=await query(
+      "SELECT id FROM investment_returns WHERE investment_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [inv.id,d.wallet_id,d.amount_kes]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a return you just recorded — check the return list before submitting again."});
+
     const ret=await withTransaction(async(client)=>{
       const {rows}=await client.query("INSERT INTO investment_returns (investment_id,user_id,wallet_id,return_type,amount_kes,return_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
         [inv.id,req.user.id,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
@@ -854,9 +871,6 @@ loanRouter.patch("/:id", async (req,res,next)=>{
 
 loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
   try {
-    const {rows:rr}=await query("SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",[req.params.rid,req.params.id,req.user.id]);
-    if(!rr.length) return res.status(404).json({error:"Repayment not found"});
-    const old=rr[0];
     const d=z.object({
       wallet_id:    z.string().uuid().optional(),
       total_kes:    z.number().positive().optional(),
@@ -866,20 +880,33 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
       note:         z.string().nullable().optional(),
     }).parse(req.body);
 
-    const newTotal    = d.total_kes     ?? parseFloat(old.total_kes);
-    const newPrincipal= d.principal_kes ?? parseFloat(old.principal_kes);
-    const newInterest = d.interest_kes  ?? parseFloat(old.interest_kes);
-    const newWallet   = d.wallet_id     ?? old.wallet_id;
-    const newDate     = d.payment_date  ?? old.payment_date;
-    const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
-    const isSimple    = old.interest_type === "simple";
-
     if (d.wallet_id) {
       const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
       if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     }
 
     const repayment = await withTransaction(async(client)=>{
+      // Lock the repayment row so a second, near-simultaneous edit of the
+      // SAME repayment (double-tap, or a retry) waits for this one to
+      // commit and then reverses against the row's now-current state,
+      // instead of both reading the same pre-edit snapshot and each
+      // reversing the original amount — which would double-credit the
+      // wallet and loan balance.
+      const {rows:rr}=await client.query(
+        "SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3 FOR UPDATE OF r",
+        [req.params.rid,req.params.id,req.user.id]
+      );
+      if(!rr.length) throw Object.assign(new Error("Repayment not found"),{status:404});
+      const old=rr[0];
+
+      const newTotal    = d.total_kes     ?? parseFloat(old.total_kes);
+      const newPrincipal= d.principal_kes ?? parseFloat(old.principal_kes);
+      const newInterest = d.interest_kes  ?? parseFloat(old.interest_kes);
+      const newWallet   = d.wallet_id     ?? old.wallet_id;
+      const newDate     = d.payment_date  ?? old.payment_date;
+      const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
+      const isSimple    = old.interest_type === "simple";
+
       // Reverse old wallet debit and loan remaining effect
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(old.total_kes),old.wallet_id,req.user.id]);
       const oldReduction = isSimple ? parseFloat(old.total_kes) : parseFloat(old.principal_kes);
@@ -1418,6 +1445,16 @@ insuranceRouter.post("/:id/payments", async (req,res,next) => {
     }).parse(req.body);
     const {rows:wr} = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id, req.user.id]);
     if (!wr.length) return res.status(400).json({error:"Wallet not found"});
+
+    // Guard against accidental double-submission (double-tap, or a retry
+    // after a slow request) creating two payments for one real premium —
+    // reject an identical payment recorded moments ago.
+    const {rows:dupe} = await query(
+      "SELECT id FROM premium_payments WHERE policy_id=$1 AND wallet_id=$2 AND amount_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [policy.id, d.wallet_id, d.amount_kes]
+    );
+    if (dupe.length) return res.status(409).json({error:"This looks like a duplicate of a payment you just recorded — check the payment list before submitting again."});
+
     const payment = await withTransaction(async(client)=>{
       const {rows} = await client.query(
         "INSERT INTO premium_payments (policy_id,user_id,wallet_id,amount_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",

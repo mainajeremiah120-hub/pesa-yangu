@@ -65,6 +65,15 @@ router.post("/", async (req, res, next) => {
       if(!rr.length) return res.status(400).json({error:"Original transaction not found"});
     }
 
+    // Guard against accidental double-submission (double-tap, or a retry
+    // from a second browser tab/device) recording the same transaction
+    // twice — reject an identical one created moments ago.
+    const {rows:dupe}=await query(
+      "SELECT id FROM transactions WHERE user_id=$1 AND wallet_id=$2 AND type=$3 AND amount_kes=$4 AND created_at > NOW() - INTERVAL '10 seconds'",
+      [req.user.id,d.wallet_id,d.type,d.amount_kes]
+    );
+    if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a transaction you just added — check Records before submitting again."});
+
     const tx = await withTransaction(async(client)=>{
       const {rows}=await client.query(
         `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,refund_of)
@@ -82,13 +91,6 @@ router.post("/", async (req, res, next) => {
 
 router.patch("/:id", async (req, res, next) => {
   try {
-    const { rows: existing } = await query(
-      "SELECT * FROM transactions WHERE id=$1 AND user_id=$2",
-      [req.params.id, req.user.id]
-    );
-    if (!existing.length) return res.status(404).json({ error: "Not found" });
-    const old = existing[0];
-
     const d = z.object({
       wallet_id:   z.string().uuid().optional(),
       category_id: z.string().uuid().nullable().optional(),
@@ -99,24 +101,36 @@ router.patch("/:id", async (req, res, next) => {
       tx_date:     z.string().optional(),
     }).parse(req.body);
 
-    const newWalletId   = d.wallet_id   ?? old.wallet_id;
-    const newType       = d.type        ?? old.type;
-    const newAmount     = d.amount_kes  ?? parseFloat(old.amount_kes);
-    const newCategoryId = Object.prototype.hasOwnProperty.call(d, "category_id") ? d.category_id : old.category_id;
-    const newMerchant   = d.merchant    ?? old.merchant;
-    const newNote       = Object.prototype.hasOwnProperty.call(d, "note") ? d.note : old.note;
-    const newDate       = d.tx_date     ?? old.tx_date;
-
     if (d.wallet_id) {
       const { rows: wr } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [d.wallet_id, req.user.id]);
       if (!wr.length) return res.status(400).json({ error: "Wallet not found" });
     }
-    if (newCategoryId) {
-      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [newCategoryId, req.user.id]);
+    if (Object.prototype.hasOwnProperty.call(d, "category_id") && d.category_id) {
+      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [d.category_id, req.user.id]);
       if (!cr.length) return res.status(400).json({ error: "Category not found" });
     }
 
     const tx = await withTransaction(async (client) => {
+      // Lock the row so a second, near-simultaneous edit of the SAME
+      // transaction (double-tap, or a retry) waits for this one to commit
+      // and reverses against the row's now-current state, instead of both
+      // reading the same pre-edit snapshot and each reversing the original
+      // amount — which would double-credit the wallet.
+      const { rows: existing } = await client.query(
+        "SELECT * FROM transactions WHERE id=$1 AND user_id=$2 FOR UPDATE",
+        [req.params.id, req.user.id]
+      );
+      if (!existing.length) throw Object.assign(new Error("Not found"), { status: 404 });
+      const old = existing[0];
+
+      const newWalletId   = d.wallet_id   ?? old.wallet_id;
+      const newType       = d.type        ?? old.type;
+      const newAmount     = d.amount_kes  ?? parseFloat(old.amount_kes);
+      const newCategoryId = Object.prototype.hasOwnProperty.call(d, "category_id") ? d.category_id : old.category_id;
+      const newMerchant   = d.merchant    ?? old.merchant;
+      const newNote       = Object.prototype.hasOwnProperty.call(d, "note") ? d.note : old.note;
+      const newDate       = d.tx_date     ?? old.tx_date;
+
       const isCredit = (t) => t === "income" || t === "transfer_in" || t === "refund";
       const oldDelta = isCredit(old.type) ? -parseFloat(old.amount_kes) : parseFloat(old.amount_kes);
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [oldDelta, old.wallet_id, req.user.id]);

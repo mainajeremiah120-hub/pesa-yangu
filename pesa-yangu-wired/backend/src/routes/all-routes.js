@@ -872,7 +872,7 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       // up, or a mistaken over-entry) — the loan balance still just clamps
       // to 0, but the excess used to be silently swallowed with no trace.
       const excessKes = reduction > remainingBefore ? +(reduction - remainingBefore).toFixed(2) : 0;
-      await client.query("UPDATE loans SET remaining_kes=$1,is_settled=($1<=0) WHERE id=$2",[newRemaining,loan.id]);
+      await client.query("UPDATE loans SET remaining_kes=$1,is_settled=($1::numeric<=0) WHERE id=$2",[newRemaining,loan.id]);
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
       // Use the loan's own linked category if it has one (e.g. a "HELB Loan"

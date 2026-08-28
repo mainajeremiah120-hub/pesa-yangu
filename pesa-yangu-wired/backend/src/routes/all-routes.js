@@ -819,6 +819,9 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
     if(dupe.length) return res.status(409).json({error:"This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."});
 
     const {repayment:rep, transaction:tx}=await withTransaction(async(client)=>{
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
+      if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
+      if(parseFloat(wr[0].balance)<d.total_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.total_kes,d.wallet_id,req.user.id]);
       // Simple interest: reduce remaining by total paid (interest baked in at creation)
       // Compound: reduce remaining by principal portion only
@@ -1456,6 +1459,9 @@ insuranceRouter.post("/:id/payments", async (req,res,next) => {
     if (dupe.length) return res.status(409).json({error:"This looks like a duplicate of a payment you just recorded — check the payment list before submitting again."});
 
     const payment = await withTransaction(async(client)=>{
+      const {rows:wbal} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id, req.user.id]);
+      if (!wbal.length) throw Object.assign(new Error("Wallet not found"),{status:404});
+      if (parseFloat(wbal[0].balance) < d.amount_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
       const {rows} = await client.query(
         "INSERT INTO premium_payments (policy_id,user_id,wallet_id,amount_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
         [policy.id, req.user.id, d.wallet_id, d.amount_kes, d.payment_date||new Date(), d.note||null]

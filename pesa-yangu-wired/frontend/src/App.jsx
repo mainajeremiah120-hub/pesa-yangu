@@ -2869,6 +2869,12 @@ export default function App() {
   // ── Insurance handlers ───────────────────────────────────────────────────────
   const savePolicy = async () => {
     if (!fPolicy.name || !fPolicy.provider) return showToast("Policy name and provider are required", C.coral);
+    // amount_paid is a one-time opening figure the server locks once real
+    // payments exist — only include it when there's still something for it
+    // to mean (a new policy, or an existing one with no payments yet), so
+    // editing an unrelated field (like the name) on a tracked policy never
+    // trips that server-side rejection.
+    const hasRealPayments = !!editPolicy?.payments?.length;
     const payload = {
       name:              fPolicy.name,
       provider:          fPolicy.provider,
@@ -2880,7 +2886,7 @@ export default function App() {
       end_date:          fPolicy.endDate||undefined,
       sum_assured:       fPolicy.sumAssured?parseFloat(fPolicy.sumAssured):undefined,
       surrender_value:   fPolicy.surrenderValue?parseFloat(fPolicy.surrenderValue):undefined,
-      amount_paid:       fPolicy.amountPaid?parseFloat(fPolicy.amountPaid):undefined,
+      amount_paid:       hasRealPayments ? undefined : (fPolicy.amountPaid?parseFloat(fPolicy.amountPaid):undefined),
       beneficiary:       fPolicy.beneficiary||undefined,
       wallet_id:         fPolicy.walletId||undefined,
       currency:          fPolicy.currency,
@@ -5379,7 +5385,7 @@ export default function App() {
           <Field label={`Sum Assured (${fPolicy.currency})`} type="number" value={fPolicy.sumAssured} onChange={v=>setFPolicy({...fPolicy,sumAssured:v})} placeholder="Payout on maturity/claim"/>
           <Field label={`Surrender Value (${fPolicy.currency})`} type="number" value={fPolicy.surrenderValue} onChange={v=>setFPolicy({...fPolicy,surrenderValue:v})} placeholder="Current cash-out value"/>
         </div>
-        <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note="Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."/>
+        <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note={editPolicy?.payments?.length ? "This policy already has recorded payments, so this opening figure is locked and won't be changed by saving — use Record Payment for anything new." : "Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."}/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
         <Field label="Linked Account (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
         <Field label="Expense Category" value={fPolicy.categoryId} onChange={v=>setFPolicy({...fPolicy,categoryId:v})} options={[{value:"",label:"None — use the generic 'Premium' category"},...expCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every premium you pay for this policy files under this category instead of a generic bucket shared by all policies."/>

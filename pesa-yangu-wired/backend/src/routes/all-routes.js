@@ -1427,6 +1427,17 @@ insuranceRouter.patch("/:id", async (req,res,next) => {
     const updates=Object.fromEntries(Object.entries(d).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.user.id, updates.category_id);
+
+    // amount_paid is meant as a one-time "premiums paid before you started
+    // tracking here" opening figure — once real payments exist in the
+    // premium_payments ledger, editing it further would let it silently
+    // drift out of sync with what's actually been recorded, with no trail
+    // explaining the change.
+    if (Object.prototype.hasOwnProperty.call(updates,"amount_paid")) {
+      const {rows:existingPays} = await query("SELECT id FROM premium_payments WHERE policy_id=$1 LIMIT 1",[req.params.id]);
+      if (existingPays.length) return res.status(400).json({error:"This policy already has recorded payments — amount paid is tracked from those and can no longer be edited directly."});
+    }
+
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(
       `UPDATE insurance_policies SET ${sets.join(",")},updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING *`,

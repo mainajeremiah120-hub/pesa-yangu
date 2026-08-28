@@ -1,6 +1,7 @@
 "use strict";
 const express = require("express");
 const multer  = require("multer");
+const crypto  = require("crypto");
 const { z }   = require("zod");
 const { query, withTransaction } = require("../models/db");
 const router  = express.Router();
@@ -269,6 +270,17 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
     const lines=raw.trim().split("\n").filter(l=>l.trim());
     if(lines.length<2) return res.status(400).json({error:"File appears empty"});
     if(lines.length>5001) return res.status(400).json({error:"File too large — maximum 5000 rows per import"});
+
+    // Guard against re-uploading the same file (a UI timeout, a re-click,
+    // a retry) silently double-importing every row and double-applying
+    // every wallet balance change — reject an exact repeat of a file this
+    // user just imported.
+    const fileHash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+    const {rows:dupeBatch} = await query(
+      "SELECT id FROM import_batches WHERE user_id=$1 AND file_hash=$2 AND created_at > NOW() - INTERVAL '10 minutes'",
+      [req.user.id, fileHash]
+    );
+    if (dupeBatch.length) return res.status(409).json({error:"This looks like the same file you just imported — check Records before importing it again."});
     const hdrs=lines[0].split(",").map(h=>h.trim().toLowerCase().replace(/["']/g,""));
     const idx=(n)=>hdrs.indexOf(n);
     const {rows:cats}=await query("SELECT id,name,type FROM categories WHERE user_id=$1",[req.user.id]);
@@ -286,7 +298,7 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
       const tx_date = dateStr.includes("T") ? dateStr : `${dateStr}T${timeStr}:00`;
       return {
         tx_date,
-        type:     ["expense","income","transfer_in","transfer_out"].includes(type)?type:"expense",
+        type:     ["expense","income","transfer_in","transfer_out","refund"].includes(type)?type:"expense",
         cat_id:   catMap[`${cat}:${type}`]||null,
         amount:   parseFloat(v[idx("amount_kes")]||v[idx("amount")]||"0")||0,
         merchant: v[idx("merchant")]||null,
@@ -313,12 +325,16 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
       );
       const deltaByWallet={};
       for(const r of toInsert){
-        const delta=(r.type==="income"||r.type==="transfer_in")?r.amount:-r.amount;
+        const delta=(r.type==="income"||r.type==="transfer_in"||r.type==="refund")?r.amount:-r.amount;
         deltaByWallet[r.wallet_id]=(deltaByWallet[r.wallet_id]||0)+delta;
       }
       for(const [walletId,delta] of Object.entries(deltaByWallet)){
         await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.user.id]);
       }
+      await client.query(
+        "INSERT INTO import_batches (user_id,file_hash,row_count) VALUES ($1,$2,$3)",
+        [req.user.id, fileHash, toInsert.length]
+      );
       imported=toInsert.length;
     });
     res.json({ok:true,imported});

@@ -3202,6 +3202,79 @@ export default function App() {
     } catch(err) { showToast("Failed to deactivate", C.coral); }
   };
 
+  // Shared by the on-screen Monthly Spending modal and its PDF/Excel
+  // downloads, so both always agree on the same numbers — including the
+  // refund-attributed-to-original-month adjustment, which is easy to get
+  // subtly wrong if reimplemented twice.
+  const getMonthlySpendReport = (year, month) => {
+    const srTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===year && d.getMonth()+1===month; });
+    const srSpend = {};
+    srTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; srSpend[key]=(srSpend[key]||0)+(t.amount||parseFloat(t.amount_kes||0)); });
+    const srMatch = (d) => d.getFullYear()===year && d.getMonth()+1===month;
+    txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); if(!orig||!srMatch(new Date(orig.date||orig.tx_date))) return; const key=orig.category||orig.category_id; if(key) srSpend[key]=Math.max(0,(srSpend[key]||0)-(t.amount||parseFloat(t.amount_kes||0))); });
+    const rows = expCats.filter(c=>(srSpend[c.id]||0)>0).sort((a,b)=>(srSpend[b.id]||0)-(srSpend[a.id]||0));
+    const total = rows.reduce((s,c)=>s+(srSpend[c.id]||0),0);
+    return { rows, total, srSpend };
+  };
+
+  // jsPDF/jspdf-autotable/exceljs are dynamically imported so their weight
+  // is only paid when someone actually downloads a report, not on every
+  // page load.
+  const downloadSpendReportPDF = async () => {
+    const { rows, total, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
+    if (!rows.length) return showToast(`No expenses recorded in ${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`, C.coral);
+    try {
+      const monthLabel = `${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`;
+      // jsPDF's actual constructor is the named export, not `default` (the
+      // default export isn't a constructor) — verified directly rather than
+      // assumed, since the two libraries turned out to differ.
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text("Pesa Yangu — Monthly Spending", 14, 18);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(monthLabel, 14, 26);
+      doc.text(`Total Spent: ${disp(total)}`, 14, 33);
+      autoTable(doc, {
+        startY: 40,
+        head: [["Category", "Spent", "Budget"]],
+        body: rows.map(c => [`${c.icon} ${c.name}`, disp(srSpend[c.id]), c.budget>0 ? disp(c.budget) : "—"]),
+        headStyles: { fillColor: [0, 212, 170] },
+      });
+      doc.save(`pesa-yangu-spending-${spendReportYear}-${String(spendReportMonth).padStart(2,"0")}.pdf`);
+      showToast("Report downloaded");
+    } catch { showToast("Couldn't generate PDF", C.coral); }
+  };
+
+  const downloadSpendReportExcel = async () => {
+    const { rows, total, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
+    if (!rows.length) return showToast(`No expenses recorded in ${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`, C.coral);
+    try {
+      const monthLabel = `${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`;
+      // exceljs's CJS build has no `default` export (unlike jspdf) — it puts
+      // Workbook directly on the module object. Handle both shapes rather
+      // than assuming one, since which one a bundler produces for a CJS
+      // dependency isn't guaranteed.
+      const ExcelJSModule = await import("exceljs");
+      const ExcelJS = ExcelJSModule.default?.Workbook ? ExcelJSModule.default : ExcelJSModule;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(monthLabel.slice(0, 31)); // Excel sheet names cap at 31 chars
+      ws.columns = [
+        { header: "Category",     key: "category", width: 28 },
+        { header: "Spent (KES)",  key: "spent",    width: 16 },
+        { header: "Budget (KES)", key: "budget",   width: 16 },
+      ];
+      ws.getRow(1).font = { bold: true };
+      rows.forEach(c => ws.addRow({ category: `${c.icon} ${c.name}`, spent: srSpend[c.id]||0, budget: c.budget>0 ? c.budget : null }));
+      const totalRow = ws.addRow({ category: "Total", spent: total });
+      totalRow.font = { bold: true };
+      const buf = await wb.xlsx.writeBuffer();
+      downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `pesa-yangu-spending-${spendReportYear}-${String(spendReportMonth).padStart(2,"0")}.xlsx`);
+      showToast("Report downloaded");
+    } catch { showToast("Couldn't generate Excel file", C.coral); }
+  };
+
   // ── Export CSV (download from backend)
   // ── Export: transactions + wallets + goals as separate CSV downloads ───────
   const exportTransactions = async () => {
@@ -4995,15 +5068,7 @@ export default function App() {
       <Modal open={isOpen("spendReport")} onClose={()=>closeM("spendReport")} title="📊 Monthly Spending" wide>
         {(()=>{
           const isCurrentSR = spendReportYear===new Date().getFullYear() && spendReportMonth===new Date().getMonth()+1;
-          const srTxs = txs.filter(t=>{ const d=new Date(t.date||t.tx_date); return d.getFullYear()===spendReportYear && d.getMonth()+1===spendReportMonth; });
-          const srSpend = {};
-          srTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; srSpend[key]=(srSpend[key]||0)+(t.amount||parseFloat(t.amount_kes||0)); });
-          // Attribute a refund to the month its original expense happened in
-          // (not the month the refund itself was recorded) — see spendByCat.
-          const srMatch = (d) => d.getFullYear()===spendReportYear && d.getMonth()+1===spendReportMonth;
-          txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); if(!orig||!srMatch(new Date(orig.date||orig.tx_date))) return; const key=orig.category||orig.category_id; if(key) srSpend[key]=Math.max(0,(srSpend[key]||0)-(t.amount||parseFloat(t.amount_kes||0))); });
-          const rows = expCats.filter(c=>(srSpend[c.id]||0)>0).sort((a,b)=>(srSpend[b.id]||0)-(srSpend[a.id]||0));
-          const total = rows.reduce((s,c)=>s+(srSpend[c.id]||0),0);
+          const { rows, total, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
           return <>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,marginBottom:16}}>
               <div style={{display:"flex",alignItems:"center",gap:14}}>
@@ -5016,6 +5081,10 @@ export default function App() {
             <div style={{background:C.navyLight,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:C.textMuted,fontSize:13}}>Total Spent</span>
               <span style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.textPrimary}}>{disp(total)}</span>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <Btn onClick={downloadSpendReportPDF} outline color={C.coral} small style={{flex:1}}>⬇ PDF</Btn>
+              <Btn onClick={downloadSpendReportExcel} outline color={C.green} small style={{flex:1}}>⬇ Excel</Btn>
             </div>
             {rows.length===0
               ? <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"32px 0"}}>No expenses recorded in {MONTH_NAMES[spendReportMonth-1]} {spendReportYear}.</div>

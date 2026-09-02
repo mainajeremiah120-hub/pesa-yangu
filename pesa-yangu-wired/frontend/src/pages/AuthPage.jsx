@@ -91,6 +91,8 @@ export default function AuthPage({ onLogin, onRegister }) {
   const [error,    setError]    = useState("");
   const [success,  setSuccess]  = useState("");
   const [loading,  setLoading]  = useState(false);
+  const [showInviteField, setShowInviteField] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
 
   const inp = {
     background:C.navyLight, border:`1px solid ${C.inputBorder}`,
@@ -111,7 +113,7 @@ export default function AuthPage({ onLogin, onRegister }) {
       } else if (mode === "register") {
         if (!name.trim()) { setError("Please enter your name."); return; }
         if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
-        await onRegister(email, password, name);
+        await onRegister(email, password, name, inviteCode.trim());
 
       } else if (mode === "forgot") {
         await authApi.forgotPassword(email);
@@ -191,10 +193,26 @@ export default function AuthPage({ onLogin, onRegister }) {
 
           <form onSubmit={submit}>
             {mode === "register" && (
-              <input value={name} onChange={e=>setName(e.target.value)}
-                placeholder="Full name" style={inp}
-                onFocus={e=>e.target.style.borderColor=C.teal}
-                onBlur={e=>e.target.style.borderColor=C.inputBorder}/>
+              <>
+                <input value={name} onChange={e=>setName(e.target.value)}
+                  placeholder="Full name" style={inp}
+                  onFocus={e=>e.target.style.borderColor=C.teal}
+                  onBlur={e=>e.target.style.borderColor=C.inputBorder}/>
+
+                {!showInviteField ? (
+                  <div style={{ marginBottom:12 }}>
+                    <span onClick={() => setShowInviteField(true)}
+                      style={{ color:C.teal, cursor:"pointer", fontWeight:600, fontSize:12 }}>
+                      🔗 Have an invite code?
+                    </span>
+                  </div>
+                ) : (
+                  <input value={inviteCode} onChange={e=>setInviteCode(e.target.value.toUpperCase())}
+                    placeholder="Invite code (e.g. 7XK4-9PLM)" style={inp}
+                    onFocus={e=>e.target.style.borderColor=C.teal}
+                    onBlur={e=>e.target.style.borderColor=C.inputBorder}/>
+                )}
+              </>
             )}
 
             {(mode === "login" || mode === "register" || mode === "forgot") && (

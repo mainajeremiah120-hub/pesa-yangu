@@ -16,7 +16,7 @@ import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
   loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
-  budgetsApi, getLastMutationAt,
+  budgetsApi, getLastMutationAt, householdApi,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
 import { ChatWidget } from "./components/ChatWidget.jsx";
@@ -889,7 +889,7 @@ function NotifRow({ label, desc, id, C }) {
 
 // AdminApp, AdminPanel, and SupportTickets are lazy-loaded near the top of this file.
 
-function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, currencies, updateUser, showToast, logout, exportTransactions, openM, askConfirm, deactivateAccount, loadData }) {
+function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, currencies, updateUser, showToast, logout, exportTransactions, openM, closeM, isOpen, askConfirm, deactivateAccount, loadData, household, loadHousehold }) {
   const [editName,   setEditName]   = useState(user?.full_name || "");
   const [savingName, setSavingName] = useState(false);
   const [notifPerm,  setNotifPerm]  = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "default"));
@@ -898,6 +898,49 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
   const [pin2,       setPin2]       = useState("");
   const [pinPassword,setPinPassword]= useState("");
   const [savingPin,  setSavingPin]  = useState(false);
+  const [inviteData,   setInviteData]   = useState(null); // { code, expires_at } from the last invite call
+  const [inviteLoading,setInviteLoading]= useState(false);
+  const [joinCode,     setJoinCode]     = useState("");
+  const [joinLoading,  setJoinLoading]  = useState(false);
+
+  const generateInvite = async () => {
+    setInviteLoading(true);
+    try {
+      const data = await householdApi.invite();
+      setInviteData(data);
+      openM("householdInvite");
+      loadHousehold();
+    } catch (err) { showToast(err?.response?.data?.error || "Could not generate an invite code", C.coral); }
+    finally { setInviteLoading(false); }
+  };
+
+  const acceptInvite = async () => {
+    if (!joinCode.trim()) return;
+    setJoinLoading(true);
+    try {
+      await householdApi.accept(joinCode.trim());
+      showToast("Linked! You're now sharing a household.", C.teal, 4000);
+      setJoinCode(""); closeM("householdJoin");
+      loadHousehold(); await loadData();
+    } catch (err) { showToast(err?.response?.data?.error || "That code didn't work", C.coral); }
+    finally { setJoinLoading(false); }
+  };
+
+  const leaveHousehold = async () => {
+    try {
+      await householdApi.leave();
+      showToast("You've left the household", C.textMuted);
+      loadHousehold(); await loadData();
+    } catch (err) { showToast(err?.response?.data?.error || "Could not leave household", C.coral); }
+  };
+
+  const dissolveHousehold = async () => {
+    try {
+      await householdApi.dissolve();
+      showToast("Household dissolved", C.textMuted);
+      loadHousehold(); await loadData();
+    } catch (err) { showToast(err?.response?.data?.error || "Could not dissolve household", C.coral); }
+  };
 
   const savePin = async (newPin) => {
     if (!pinPassword) { showToast("Enter your account password to confirm", C.coral); return; }
@@ -1025,6 +1068,45 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
         </div>
       </Card>
 
+      {/* Household — linked couple accounts */}
+      <Card>
+        <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔗 Household</div>
+        <div style={{fontSize:11,color:C.textMuted,marginBottom:14}}>Share your entire financial life with a partner — same data, separate logins</div>
+
+        {household?.partner ? (
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600}}>Linked with {household.partner.full_name}</div>
+                <div style={{fontSize:11,color:C.textMuted}}>{household.partner.email}</div>
+              </div>
+              <div style={{fontSize:18}}>🔗</div>
+            </div>
+            {household.is_owner
+              ? rowBtn("💔","Dissolve Household","Unlinks both accounts — you keep all the data, your partner starts fresh",
+                  ()=>askConfirm("Dissolve Household",`This unlinks you and ${household.partner.full_name}. You keep all the shared data; their account resets to empty. This can't be undone.`,dissolveHousehold), true)
+              : rowBtn("🚪","Leave Household","You'll start with a fresh, empty account — the shared data stays with the owner",
+                  ()=>askConfirm("Leave Household","You'll lose access to the shared data and start with a fresh, empty account. This can't be undone.",leaveHousehold), true)}
+          </div>
+        ) : household?.household_id && household?.is_owner ? (
+          <div>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Waiting for your partner</div>
+            {household.pending_invite ? (
+              <div style={{background:C.navyLight,borderRadius:10,padding:"12px 16px",marginBottom:10,textAlign:"center"}}>
+                <div style={{fontSize:20,fontWeight:800,letterSpacing:"0.08em",color:C.teal}}>{household.pending_invite.code}</div>
+                <div style={{fontSize:10,color:C.textMuted,marginTop:4}}>Expires {new Date(household.pending_invite.expires_at).toLocaleDateString()}</div>
+              </div>
+            ) : null}
+            {rowBtn("🔄","Generate New Code","Invalidates the old code and creates a fresh one", generateInvite)}
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {rowBtn("💌","Link with a Partner","Generate a code to share — only works from a brand-new account", generateInvite)}
+            {rowBtn("🔑","Join with a Code","Have a code from your partner? Enter it here", ()=>openM("householdJoin"))}
+          </div>
+        )}
+      </Card>
+
       {/* Security — PIN lock */}
       <Card>
         <div style={{fontWeight:700,fontSize:13,color:C.teal,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔒 Security</div>
@@ -1111,6 +1193,34 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
       </Card>
 
       <div style={{textAlign:"center",fontSize:11,color:C.textFaint,paddingBottom:20}}>Pesa Yangu · Built for Kenya 🇰🇪</div>
+
+      <Modal open={isOpen("householdInvite")} onClose={()=>closeM("householdInvite")} title="💌 Invite a Partner">
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:40,marginBottom:8}}>🔗</div>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Share this code</div>
+          <div style={{color:C.textMuted,fontSize:12}}>Your partner enters it when creating their account. Works once, expires in 7 days.</div>
+        </div>
+        <div style={{background:C.navyLight,borderRadius:10,padding:"16px",marginBottom:16,textAlign:"center"}}>
+          <div style={{fontSize:26,fontWeight:800,letterSpacing:"0.1em",color:C.teal}}>{inviteData?.code || "…"}</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <Btn onClick={()=>{
+            const msg = encodeURIComponent(`Join me on Pesa Yangu so we can manage our money together! Use invite code: ${inviteData?.code}`);
+            window.open(`https://wa.me/?text=${msg}`,"_blank");
+          }} color="#25D366" style={{width:"100%",fontSize:14}}>💬 Share via WhatsApp</Btn>
+          <Btn onClick={()=>{navigator.clipboard.writeText(inviteData?.code||""); showToast("Code copied!");}} outline color={C.textMuted} style={{width:"100%",fontSize:14}}>🔗 Copy Code</Btn>
+        </div>
+      </Modal>
+
+      <Modal open={isOpen("householdJoin")} onClose={()=>{closeM("householdJoin");setJoinCode("");}} title="🔑 Join a Household">
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:40,marginBottom:8}}>🔑</div>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>Enter your partner's code</div>
+          <div style={{color:C.textMuted,fontSize:12}}>Only works if your account is brand new with no data of its own yet.</div>
+        </div>
+        <Field label="Invite Code" value={joinCode} onChange={v=>setJoinCode(v.toUpperCase())} placeholder="7XK4-9PLM"/>
+        <Btn onClick={acceptInvite} disabled={joinLoading || !joinCode.trim()} style={{width:"100%",marginTop:6}}>{joinLoading?"Joining…":"Join Household"}</Btn>
+      </Modal>
     </div>
   );
 }
@@ -1190,6 +1300,7 @@ export default function App() {
   const [currencies,  setCurrencies]  = useState(DEFAULT_CURRENCIES);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError,   setDataError]   = useState("");
+  const [household,   setHousehold]   = useState(null); // { household_id, is_owner, partner, pending_invite }
 
   // ── PIN lock — sessionStorage so it clears when the browser/tab closes,
   // requiring the PIN again next time the app is opened (the actual point
@@ -1406,6 +1517,15 @@ export default function App() {
   }, [user]); // eslint-disable-line
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Linked household (couples sharing) — separate from the financial-data
+  // cache above since it's account metadata, not something loadData's
+  // stale-refresh race guard needs to worry about.
+  const loadHousehold = useCallback(() => {
+    if (!user) return;
+    householdApi.get().then(setHousehold).catch(() => {});
+  }, [user]);
+  useEffect(() => { loadHousehold(); }, [loadHousehold]);
 
   // ── Push notification subscription (after login, once)
   useEffect(() => {
@@ -3834,7 +3954,10 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"center",gap:18}}>
                   <HealthRing score={score}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Financial Health — {user.full_name}</div>
+                    <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                      Financial Health — {user.full_name}
+                      {household?.partner && <span style={{color:C.teal,fontWeight:700,letterSpacing:"normal",textTransform:"none",fontSize:10}}>🔗 Linked with {household.partner.full_name}</span>}
+                    </div>
                     <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24,color:score>=75?C.teal:score>=50?C.gold:C.coral,lineHeight:1.1,marginBottom:6}}>
                       {score>=75?"Looking Good":score>=50?"Room to Improve":"Needs Attention"}
                     </div>
@@ -4983,9 +5106,10 @@ export default function App() {
           user={user} C={C} theme={theme} toggleTheme={toggleTheme}
           baseCurrency={baseCurrency} setBase={setBase} currencies={currencies}
           updateUser={updateUser} showToast={showToast} logout={logout}
-          exportTransactions={exportTransactions} openM={openM}
+          exportTransactions={exportTransactions} openM={openM} closeM={closeM} isOpen={isOpen}
           askConfirm={askConfirm} deactivateAccount={deactivateAccount}
           loadData={loadData}
+          household={household} loadHousehold={loadHousehold}
         />}
 
         {tab==="admin"&&user?.role==="admin"&&<Suspense fallback={<div style={{textAlign:"center",color:C.textMuted,padding:20,fontSize:13}}>Loading…</div>}><AdminPanel C={C} showToast={showToast}/></Suspense>}

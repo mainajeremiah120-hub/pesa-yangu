@@ -282,6 +282,15 @@ export const insuranceApi = {
   removePayment: (id, pid)  => unwrap(client.delete(`/insurance/${id}/payments/${pid}`)),
 };
 
+// ── Household (linked couple accounts) ───────────────────────────────────────
+export const householdApi = {
+  get:      ()     => unwrap(client.get("/household")),
+  invite:   ()     => unwrap(client.post("/household/invite")),
+  accept:   (code) => unwrap(client.post("/household/accept", { code })),
+  leave:    ()     => unwrap(client.post("/household/leave")),
+  dissolve: ()     => unwrap(client.post("/household/dissolve")),
+};
+
 // ── Push notifications ─────────────────────────────────────────────────────────
 export const pushApi = {
   getVapidKey:  ()    => unwrap(client.get("/push/vapid-public-key")),

@@ -38,8 +38,8 @@ export function useAuth() {
     return data.user;
   }, []);
 
-  const register = useCallback(async (email, password, full_name) => {
-    const data = await authApi.register({ email, password, full_name });
+  const register = useCallback(async (email, password, full_name, invite_code) => {
+    const data = await authApi.register({ email, password, full_name, invite_code: invite_code || undefined });
     localStorage.setItem("py_access_token",  data.accessToken);
     localStorage.setItem("py_refresh_token", data.refreshToken);
     setUser(data.user);

@@ -48,7 +48,7 @@ categoryRouter.get("/", async (req,res,next)=>{
   try {
     // account_allocated_kes is a plain stored column now (not computed from
     // transfer history) — SELECT * already returns it, no extra query needed.
-    const {rows}=await query("SELECT * FROM categories WHERE user_id=$1 ORDER BY type,sort_order",[req.user.id]);
+    const {rows}=await query("SELECT * FROM categories WHERE user_id=$1 ORDER BY type,sort_order",[req.dataOwnerId]);
     res.json({categories:rows});
   } catch(e){next(e);}
 });
@@ -64,7 +64,7 @@ categoryRouter.patch("/:id/allocate", async (req,res,next)=>{
     const { amount_kes } = z.object({ amount_kes: z.number().min(0).max(1e12) }).parse(req.body);
 
     const category = await withTransaction(async (client) => {
-      const {rows:cr} = await client.query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id, req.user.id]);
+      const {rows:cr} = await client.query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id, req.dataOwnerId]);
       if(!cr.length) throw Object.assign(new Error("Category not found"),{status:404});
       const cat = cr[0];
 
@@ -75,21 +75,21 @@ categoryRouter.patch("/:id/allocate", async (req,res,next)=>{
       // stale sum, both pass the pool check, and together exceed it.
       let pool, siblingsSum;
       if (cat.linked_wallet_id) {
-        const {rows:wr} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[cat.linked_wallet_id, req.user.id]);
+        const {rows:wr} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[cat.linked_wallet_id, req.dataOwnerId]);
         if(!wr.length) throw Object.assign(new Error("Linked account not found"),{status:400});
         pool = parseFloat(wr[0].balance);
         const {rows:sibs} = await client.query(
           "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND linked_wallet_id=$2 AND id<>$3",
-          [req.user.id, cat.linked_wallet_id, cat.id]
+          [req.dataOwnerId, cat.linked_wallet_id, cat.id]
         );
         siblingsSum = parseFloat(sibs[0].s);
       } else if (cat.parent_id) {
-        const {rows:pr} = await client.query("SELECT account_allocated_kes FROM categories WHERE id=$1 AND user_id=$2 FOR UPDATE",[cat.parent_id, req.user.id]);
+        const {rows:pr} = await client.query("SELECT account_allocated_kes FROM categories WHERE id=$1 AND user_id=$2 FOR UPDATE",[cat.parent_id, req.dataOwnerId]);
         if(!pr.length) throw Object.assign(new Error("Parent category not found"),{status:400});
         pool = parseFloat(pr[0].account_allocated_kes);
         const {rows:sibs} = await client.query(
           "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2 AND id<>$3",
-          [req.user.id, cat.parent_id, cat.id]
+          [req.dataOwnerId, cat.parent_id, cat.id]
         );
         siblingsSum = parseFloat(sibs[0].s);
       } else {
@@ -105,14 +105,14 @@ categoryRouter.patch("/:id/allocate", async (req,res,next)=>{
       // Ingredients already add up to 30 of it.
       const {rows:childSum} = await client.query(
         "SELECT COALESCE(SUM(account_allocated_kes),0) AS s FROM categories WHERE user_id=$1 AND parent_id=$2",
-        [req.user.id, cat.id]
+        [req.dataOwnerId, cat.id]
       );
       const childrenTotal = parseFloat(childSum[0].s);
       if (childrenTotal > amount_kes + 0.01) {
         throw Object.assign(new Error(`Its sub-categories already use ${childrenTotal.toFixed(2)} — reduce or reassign them first`),{status:400});
       }
 
-      const {rows} = await client.query("UPDATE categories SET account_allocated_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[amount_kes, cat.id, req.user.id]);
+      const {rows} = await client.query("UPDATE categories SET account_allocated_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[amount_kes, cat.id, req.dataOwnerId]);
       return rows[0];
     });
     res.json({category});
@@ -151,18 +151,18 @@ categoryRouter.post("/", async (req,res,next)=>{
     const alloc=allocationFields.parse(req.body);
     const percentOfParent = alloc.allocation_type==="percent" ? alloc.percent_of_parent : null;
     if (alloc.parent_id) {
-      const {rows:pr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2 AND type=$3",[alloc.parent_id,req.user.id,base.type]);
+      const {rows:pr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2 AND type=$3",[alloc.parent_id,req.dataOwnerId,base.type]);
       if(!pr.length) return res.status(400).json({error:"Parent category not found"});
     }
     if (alloc.linked_wallet_id) {
-      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[alloc.linked_wallet_id,req.user.id]);
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[alloc.linked_wallet_id,req.dataOwnerId]);
       if(!wr.length) return res.status(400).json({error:"Linked wallet not found"});
     }
     const {rows}=await query(
       `INSERT INTO categories (user_id,name,type,icon,color,budget_kes,watch,parent_id,allocation_type,percent_of_parent,spend_kind,linked_wallet_id,windfall_percent,goal_target_kes,goal_deadline)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT (user_id,name,type) DO UPDATE SET icon=$4,color=$5,budget_kes=$6,watch=$7,parent_id=$8,allocation_type=$9,percent_of_parent=$10,spend_kind=$11,linked_wallet_id=$12,windfall_percent=$13,goal_target_kes=$14,goal_deadline=$15 RETURNING *`,
-      [req.user.id,base.name,base.type,base.icon,base.color,base.budget_kes,base.watch,alloc.parent_id||null,alloc.allocation_type,percentOfParent,alloc.spend_kind||null,alloc.linked_wallet_id||null,alloc.windfall_percent??null,alloc.goal_target_kes??null,alloc.goal_deadline||null]
+      [req.dataOwnerId,base.name,base.type,base.icon,base.color,base.budget_kes,base.watch,alloc.parent_id||null,alloc.allocation_type,percentOfParent,alloc.spend_kind||null,alloc.linked_wallet_id||null,alloc.windfall_percent??null,alloc.goal_target_kes??null,alloc.goal_deadline||null]
     );
     res.status(201).json({category:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -177,21 +177,21 @@ categoryRouter.patch("/:id", async (req,res,next)=>{
     if(u.allocation_type==="percent" && u.percent_of_parent==null) return res.status(400).json({error:"percent_of_parent is required when allocation_type is 'percent'"});
     if("windfall_percent" in u && u.windfall_percent!=null && (u.windfall_percent<0 || u.windfall_percent>100)) return res.status(400).json({error:"windfall_percent must be between 0 and 100"});
 
-    const {rows:existingRows}=await query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows:existingRows}=await query("SELECT * FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!existingRows.length) return res.status(404).json({error:"Not found"});
     const existing = existingRows[0];
 
     if("parent_id" in u && u.parent_id) {
-      if(await wouldCreateCycle(req.user.id, req.params.id, u.parent_id)) return res.status(400).json({error:"That would create a circular category hierarchy"});
+      if(await wouldCreateCycle(req.dataOwnerId, req.params.id, u.parent_id)) return res.status(400).json({error:"That would create a circular category hierarchy"});
       // POST / already enforces a new category's type matches its parent's
       // — reparenting via PATCH skipped this, letting an expense category
       // move under an income parent (or vice versa).
-      const {rows:pr}=await query("SELECT type FROM categories WHERE id=$1 AND user_id=$2",[u.parent_id,req.user.id]);
+      const {rows:pr}=await query("SELECT type FROM categories WHERE id=$1 AND user_id=$2",[u.parent_id,req.dataOwnerId]);
       if(!pr.length) return res.status(400).json({error:"Parent category not found"});
       if(pr[0].type !== existing.type) return res.status(400).json({error:"Can't move this under a category of a different type (income/expense)"});
     }
     if("linked_wallet_id" in u && u.linked_wallet_id) {
-      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[u.linked_wallet_id,req.user.id]);
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[u.linked_wallet_id,req.dataOwnerId]);
       if(!wr.length) return res.status(400).json({error:"Linked wallet not found"});
     }
 
@@ -205,7 +205,7 @@ categoryRouter.patch("/:id", async (req,res,next)=>{
     }
 
     const sets=Object.keys(u).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE categories SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(u)]);
+    const {rows}=await query(`UPDATE categories SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.dataOwnerId,...Object.values(u)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     res.json({category:rows[0]});
   } catch(e){next(e);}
@@ -213,14 +213,14 @@ categoryRouter.patch("/:id", async (req,res,next)=>{
 
 categoryRouter.delete("/:id", async (req,res,next)=>{
   try {
-    const {rows}=await query("SELECT is_system FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT is_system FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     if(rows[0].is_system) return res.status(403).json({error:"System categories cannot be deleted"});
-    const {rows:kids}=await query("SELECT COUNT(*)::int AS n FROM categories WHERE parent_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows:kids}=await query("SELECT COUNT(*)::int AS n FROM categories WHERE parent_id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(kids[0].n>0) return res.status(409).json({error:`Category has ${kids[0].n} sub-categor${kids[0].n===1?"y":"ies"} — reparent or delete them first`});
     // Null out category_id on transactions referencing this category
-    await query("UPDATE transactions SET category_id=NULL WHERE category_id=$1 AND user_id=$2",[req.params.id,req.user.id]);
-    await query("DELETE FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    await query("UPDATE transactions SET category_id=NULL WHERE category_id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
+    await query("DELETE FROM categories WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     res.json({ok:true});
   } catch(e){next(e);}
 });
@@ -260,7 +260,7 @@ budgetRouter.get("/", async (req,res,next)=>{
        WHERE c.user_id=$1
        GROUP BY c.id, mb.budget_kes
        ORDER BY c.type, c.sort_order`,
-      [req.user.id, year, month]
+      [req.dataOwnerId, year, month]
     );
     res.json({budgets:rows, year, month});
   } catch(e){next(e);}
@@ -270,7 +270,7 @@ budgetRouter.get("/", async (req,res,next)=>{
 budgetRouter.post("/", async (req,res,next)=>{
   try {
     const {category_id,budget_kes}=z.object({category_id:z.string().uuid(),budget_kes:z.number().min(0)}).parse(req.body);
-    const {rows}=await query("UPDATE categories SET budget_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[budget_kes,category_id,req.user.id]);
+    const {rows}=await query("UPDATE categories SET budget_kes=$1 WHERE id=$2 AND user_id=$3 RETURNING *",[budget_kes,category_id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Category not found"});
     res.json({category:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -291,7 +291,7 @@ budgetRouter.post("/monthly", async (req,res,next)=>{
        ON CONFLICT (user_id,category_id,year,month)
        DO UPDATE SET budget_kes=$5, updated_at=NOW()
        RETURNING *`,
-      [req.user.id,category_id,year,month,budget_kes]
+      [req.dataOwnerId,category_id,year,month,budget_kes]
     );
     res.json({budget:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -309,7 +309,7 @@ budgetRouter.delete("/monthly", async (req,res,next)=>{
       year: parseInt(req.query.year,10),
       month: parseInt(req.query.month,10),
     });
-    await query("DELETE FROM monthly_budgets WHERE user_id=$1 AND category_id=$2 AND year=$3 AND month=$4",[req.user.id,category_id,year,month]);
+    await query("DELETE FROM monthly_budgets WHERE user_id=$1 AND category_id=$2 AND year=$3 AND month=$4",[req.dataOwnerId,category_id,year,month]);
     res.json({ok:true});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
@@ -345,7 +345,7 @@ budgetRouter.get("/trend", async (req,res,next)=>{
              AND t.type IN ('expense','income')
        GROUP BY mo.m
        ORDER BY mo.m`,
-      [req.user.id]
+      [req.dataOwnerId]
     );
     res.json({trend:rows});
   } catch(e){next(e);}
@@ -364,7 +364,7 @@ incomePlanRouter.get("/", async (req,res,next)=>{
     const month = parseInt(req.query.month) || now.getMonth()+1;
     const {rows}=await query(
       `SELECT * FROM income_plans WHERE user_id=$1 AND (year,month) <= ($2,$3) ORDER BY year DESC, month DESC LIMIT 1`,
-      [req.user.id, year, month]
+      [req.dataOwnerId, year, month]
     );
     if(!rows.length) return res.json({income:null});
     const row = rows[0];
@@ -378,7 +378,7 @@ incomePlanRouter.post("/", async (req,res,next)=>{
     const {rows}=await query(
       `INSERT INTO income_plans (user_id,year,month,gross_income_kes) VALUES ($1,$2,$3,$4)
        ON CONFLICT (user_id,year,month) DO UPDATE SET gross_income_kes=$4,updated_at=NOW() RETURNING *`,
-      [req.user.id,d.year,d.month,d.gross_income_kes]
+      [req.dataOwnerId,d.year,d.month,d.gross_income_kes]
     );
     res.status(201).json({income:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -393,7 +393,7 @@ goalRouter.get("/", async (req,res,next)=>{
   try {
     // LEFT JOIN — a goal with no receiving account set yet must still show
     // up (it did not before, since an INNER JOIN silently dropped it).
-    const {rows:goals}=await query("SELECT g.*,w.name AS wallet_name,w.currency AS wallet_currency FROM goals g LEFT JOIN wallets w ON w.id=g.wallet_id WHERE g.user_id=$1 ORDER BY g.created_at",[req.user.id]);
+    const {rows:goals}=await query("SELECT g.*,w.name AS wallet_name,w.currency AS wallet_currency FROM goals g LEFT JOIN wallets w ON w.id=g.wallet_id WHERE g.user_id=$1 ORDER BY g.created_at",[req.dataOwnerId]);
     if (goals.length) {
       const {rows:allContribs}=await query(
         "SELECT * FROM goal_contributions WHERE goal_id = ANY($1) ORDER BY contributed_date DESC, created_at DESC",
@@ -426,7 +426,7 @@ goalRouter.post("/", async (req,res,next)=>{
     // balance anywhere — the same bug as funding a goal used to have.
     const {rows}=await query(
       "INSERT INTO goals (user_id,wallet_id,name,icon,color,target_kes,saved_kes,deadline) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-      [req.user.id,d.wallet_id||null,d.name,d.icon,d.color,d.target_kes,d.saved_kes,d.deadline||null]
+      [req.dataOwnerId,d.wallet_id||null,d.name,d.icon,d.color,d.target_kes,d.saved_kes,d.deadline||null]
     );
     res.status(201).json({goal:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -444,7 +444,7 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
     const fromWalletId = d.from_wallet_id || d.wallet_id;
     if(!fromWalletId) return res.status(400).json({error:"No source account specified"});
 
-    const {rows:gr}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows:gr}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!gr.length) return res.status(404).json({error:"Goal not found"});
     const g=gr[0];
     if(!g.wallet_id) return res.status(400).json({error:"This goal has no receiving account yet — edit the goal to set one"});
@@ -466,7 +466,7 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
       );
       if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a contribution you just made — check the goal's history before submitting again."),{status:409});
 
-      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[fromWalletId,req.user.id]);
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[fromWalletId,req.dataOwnerId]);
       if(!wr.length) throw Object.assign(new Error("Source account not found"),{status:404});
       if(parseFloat(wr[0].balance)<toAdd) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
 
@@ -475,7 +475,7 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
 
       const {rows:cRows}=await client.query(
         "INSERT INTO goal_contributions (goal_id,user_id,from_wallet_id,to_wallet_id,amount_kes,contributed_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
-        [g.id,req.user.id,fromWalletId,g.wallet_id,toAdd,d.contributed_date||new Date(),d.note||null]
+        [g.id,req.dataOwnerId,fromWalletId,g.wallet_id,toAdd,d.contributed_date||new Date(),d.note||null]
       );
       const contribution=cRows[0];
 
@@ -485,7 +485,7 @@ goalRouter.post("/:id/fund", async (req,res,next)=>{
       const {rows:txRows}=await client.query(
         `INSERT INTO transactions (user_id,wallet_id,type,amount_kes,note,tx_date,transfer_pair_id,goal_contribution_id)
          VALUES ($1,$2,'transfer_out',$3,$4,$5,$6,$7),($1,$8,'transfer_in',$3,$4,$5,$6,$7) RETURNING *`,
-        [req.user.id,fromWalletId,toAdd,noteText,contribDate,pairId,contribution.id,g.wallet_id]
+        [req.dataOwnerId,fromWalletId,toAdd,noteText,contribDate,pairId,contribution.id,g.wallet_id]
       );
 
       const {rows:gRows}=await client.query(
@@ -502,7 +502,7 @@ goalRouter.patch("/:id/contributions/:cid", async (req,res,next)=>{
   try {
     const {rows:cr}=await query(
       "SELECT c.* FROM goal_contributions c JOIN goals g ON g.id=c.goal_id WHERE c.id=$1 AND c.goal_id=$2 AND g.user_id=$3",
-      [req.params.cid, req.params.id, req.user.id]
+      [req.params.cid, req.params.id, req.dataOwnerId]
     );
     if(!cr.length) return res.status(404).json({error:"Contribution not found"});
     const old=cr[0];
@@ -525,7 +525,7 @@ goalRouter.patch("/:id/contributions/:cid", async (req,res,next)=>{
       if(old.from_wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(old.amount_kes),old.from_wallet_id]);
       if(old.to_wallet_id)   await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(old.amount_kes),old.to_wallet_id]);
 
-      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[newFromWallet,req.user.id]);
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[newFromWallet,req.dataOwnerId]);
       if(!wr.length) throw Object.assign(new Error("Source account not found"),{status:404});
       if(parseFloat(wr[0].balance)<newAmount) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
 
@@ -558,7 +558,7 @@ goalRouter.delete("/:id/contributions/:cid", async (req,res,next)=>{
   try {
     const {rows}=await query(
       "SELECT c.* FROM goal_contributions c JOIN goals g ON g.id=c.goal_id WHERE c.id=$1 AND c.goal_id=$2 AND g.user_id=$3",
-      [req.params.cid, req.params.id, req.user.id]
+      [req.params.cid, req.params.id, req.dataOwnerId]
     );
     if(!rows.length) return res.status(404).json({error:"Contribution not found"});
     const c=rows[0];
@@ -585,20 +585,20 @@ goalRouter.patch("/:id", async (req,res,next)=>{
       deadline:   z.string().nullable().optional(),
       wallet_id:  z.string().uuid().optional(),
     }).parse(req.body);
-    const { rows:gr } = await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const { rows:gr } = await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!gr.length) return res.status(404).json({error:"Not found"});
     const allowed=["name","icon","color","target_kes","deadline","wallet_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE goals SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
+    const {rows}=await query(`UPDATE goals SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.dataOwnerId,...Object.values(updates)]);
     res.json({goal:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 goalRouter.delete("/:id", async (req,res,next)=>{
   try {
-    const {rows}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     const g=rows[0];
     // Reverse every real contribution back to the wallet it actually came
@@ -625,7 +625,7 @@ const investmentRouter = express.Router();
 
 investmentRouter.get("/", async (req,res,next)=>{
   try {
-    const {rows:invs}=await query("SELECT * FROM investments WHERE user_id=$1 ORDER BY created_at",[req.user.id]);
+    const {rows:invs}=await query("SELECT * FROM investments WHERE user_id=$1 ORDER BY created_at",[req.dataOwnerId]);
     if(invs.length) {
       const {rows:allReturns}=await query(
         "SELECT * FROM investment_returns WHERE investment_id = ANY($1) ORDER BY return_date DESC",
@@ -642,13 +642,13 @@ investmentRouter.get("/", async (req,res,next)=>{
 investmentRouter.post("/", async (req,res,next)=>{
   try {
     const d=z.object({wallet_id:z.string().uuid(),name:z.string().min(1).max(100).trim(),ticker:z.string().max(20).optional(),type:z.string().max(50).default("Stock"),currency:z.string().length(3).default("KES"),units:z.number().positive().max(1e9),buy_price_kes:z.number().positive().max(1e12),current_price_kes:z.number().positive().max(1e12).optional(),category_id:z.string().uuid().optional()}).parse(req.body);
-    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     // Returns are income, so a linked category must be one of the user's
     // own INCOME categories (e.g. "Safaricom Dividends"), not an expense one.
-    const categoryId = await resolveIncomeCategoryLink(req.user.id, d.category_id);
+    const categoryId = await resolveIncomeCategoryLink(req.dataOwnerId, d.category_id);
     const {rows}=await query("INSERT INTO investments (user_id,wallet_id,name,ticker,type,currency,units,buy_price_kes,current_price_kes,category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
-      [req.user.id,d.wallet_id,d.name,d.ticker||null,d.type,d.currency,d.units,d.buy_price_kes,d.current_price_kes||d.buy_price_kes,categoryId]);
+      [req.dataOwnerId,d.wallet_id,d.name,d.ticker||null,d.type,d.currency,d.units,d.buy_price_kes,d.current_price_kes||d.buy_price_kes,categoryId]);
     res.status(201).json({investment:{...rows[0],returns:[]}});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
@@ -670,12 +670,12 @@ investmentRouter.patch("/:id", async (req,res,next)=>{
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     if(updates.wallet_id) {
-      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[updates.wallet_id,req.user.id]);
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[updates.wallet_id,req.dataOwnerId]);
       if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     }
-    if (updates.category_id) updates.category_id = await resolveIncomeCategoryLink(req.user.id, updates.category_id);
+    if (updates.category_id) updates.category_id = await resolveIncomeCategoryLink(req.dataOwnerId, updates.category_id);
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE investments SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
+    const {rows}=await query(`UPDATE investments SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.dataOwnerId,...Object.values(updates)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     res.json({investment:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -685,7 +685,7 @@ investmentRouter.delete("/:id/returns/:rid", async (req,res,next)=>{
   try {
     const {rows}=await query(
       "SELECT r.*,i.user_id FROM investment_returns r JOIN investments i ON i.id=r.investment_id WHERE r.id=$1 AND i.id=$2 AND i.user_id=$3",
-      [req.params.rid,req.params.id,req.user.id]
+      [req.params.rid,req.params.id,req.dataOwnerId]
     );
     if(!rows.length) return res.status(404).json({error:"Return not found"});
     const r=rows[0];
@@ -700,16 +700,16 @@ investmentRouter.delete("/:id/returns/:rid", async (req,res,next)=>{
 
 investmentRouter.delete("/:id", async (req,res,next)=>{
   try {
-    const {rows}=await query("SELECT id FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT id FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     // Reverse any return credits before deleting
     const {rows:rets}=await query("SELECT * FROM investment_returns WHERE investment_id=$1",[req.params.id]);
     await withTransaction(async(client)=>{
       for(const r of rets) {
-        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[parseFloat(r.amount_kes),r.wallet_id,req.user.id]);
+        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[parseFloat(r.amount_kes),r.wallet_id,req.dataOwnerId]);
       }
       await client.query("DELETE FROM investment_returns WHERE investment_id=$1",[req.params.id]);
-      await client.query("DELETE FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+      await client.query("DELETE FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     });
     res.json({ok:true});
   } catch(e){next(e);}
@@ -717,11 +717,11 @@ investmentRouter.delete("/:id", async (req,res,next)=>{
 
 investmentRouter.post("/:id/returns", async (req,res,next)=>{
   try {
-    const {rows:ir}=await query("SELECT * FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows:ir}=await query("SELECT * FROM investments WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!ir.length) return res.status(404).json({error:"Investment not found"});
     const inv=ir[0];
     const d=z.object({wallet_id:z.string().uuid(),return_type:z.enum(["interest","dividend","capital_gain","coupon","other"]),amount_kes:z.number().positive(),return_date:z.string().optional(),note:z.string().optional()}).parse(req.body);
-    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
 
     const ret=await withTransaction(async(client)=>{
@@ -738,8 +738,8 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
       if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a return you just recorded — check the return list before submitting again."),{status:409});
 
       const {rows}=await client.query("INSERT INTO investment_returns (investment_id,user_id,wallet_id,return_type,amount_kes,return_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
-        [inv.id,req.user.id,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[d.amount_kes,d.wallet_id,req.user.id]);
+        [inv.id,req.dataOwnerId,d.wallet_id,d.return_type,d.amount_kes,d.return_date||new Date(),d.note||null]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[d.amount_kes,d.wallet_id,req.dataOwnerId]);
       // Use the investment's own linked category if it has one (e.g. a
       // "Safaricom Dividends" category on that specific holding), so
       // different investments' returns don't all pile into one bucket per
@@ -747,11 +747,11 @@ investmentRouter.post("/:id/returns", async (req,res,next)=>{
       let categoryId = inv.category_id;
       if (!categoryId) {
         const catMap={interest:"Interest",dividend:"Dividend",capital_gain:"Investment Return",coupon:"Interest",other:"Other Income"};
-        const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name=$2 AND type='income' LIMIT 1",[req.user.id,catMap[d.return_type]||"Investment Return"]);
+        const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name=$2 AND type='income' LIMIT 1",[req.dataOwnerId,catMap[d.return_type]||"Investment Return"]);
         categoryId = cats[0]?.id||null;
       }
       const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,investment_return_id) VALUES ($1,$2,$3,'income',$4,$5,$6,$7,$8) RETURNING *",
-        [req.user.id,d.wallet_id,categoryId,d.amount_kes,inv.name,d.note||null,d.return_date||new Date(),rows[0].id]);
+        [req.dataOwnerId,d.wallet_id,categoryId,d.amount_kes,inv.name,d.note||null,d.return_date||new Date(),rows[0].id]);
       return {...rows[0], transaction: txRows[0]};
     });
     res.status(201).json({return:ret});
@@ -765,7 +765,7 @@ const loanRouter = express.Router();
 
 loanRouter.get("/", async (req,res,next)=>{
   try {
-    const {rows:loans}=await query("SELECT * FROM loans WHERE user_id=$1 ORDER BY created_at",[req.user.id]);
+    const {rows:loans}=await query("SELECT * FROM loans WHERE user_id=$1 ORDER BY created_at",[req.dataOwnerId]);
     if(loans.length) {
       const {rows:allRepayments}=await query(
         "SELECT r.*,array_agg(a.filename) FILTER(WHERE a.id IS NOT NULL) AS attachments FROM loan_repayments r LEFT JOIN loan_attachments a ON a.repayment_id=r.id WHERE r.loan_id = ANY($1) GROUP BY r.id ORDER BY r.payment_date DESC",
@@ -819,17 +819,17 @@ loanRouter.post("/", async (req,res,next)=>{
       ? d.principal_kes * (1 + d.interest_rate / 100)
       : d.principal_kes;
     const remaining_kes = d.remaining_kes ?? defaultRemaining;
-    const categoryId = await resolveExpenseCategoryLink(req.user.id, d.category_id);
+    const categoryId = await resolveExpenseCategoryLink(req.dataOwnerId, d.category_id);
     const {rows}=await query(
       "INSERT INTO loans (user_id,name,lender,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,monthly_payment_kes,next_due_date,note,category_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *",
-      [req.user.id,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.monthly_payment_kes,d.next_due_date||null,d.note||null,categoryId]);
+      [req.dataOwnerId,d.name,d.lender||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.monthly_payment_kes,d.next_due_date||null,d.note||null,categoryId]);
     res.status(201).json({loan:{...rows[0],repayments:[]}});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 loanRouter.post("/:id/repayments/parse", uploadStatement.single("file"), async (req,res,next)=>{
   try {
-    const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!lr.length) return res.status(404).json({error:"Loan not found"});
     if(!req.file) return res.status(400).json({error:"No file uploaded"});
     const { extractRepaymentFromFile } = require("../lib/parseStatement");
@@ -840,7 +840,7 @@ loanRouter.post("/:id/repayments/parse", uploadStatement.single("file"), async (
 
 loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,res,next)=>{
   try {
-    const {rows:lr}=await query("SELECT * FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows:lr}=await query("SELECT * FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!lr.length) return res.status(404).json({error:"Loan not found"});
     const loan=lr[0];
     const d=z.object({wallet_id:z.string().uuid(),total_kes:z.number().positive(),principal_kes:z.number().min(0).default(0),interest_kes:z.number().min(0).default(0),payment_date:z.string().optional(),note:z.string().optional()}).parse({
@@ -869,10 +869,10 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       );
       if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a repayment you just recorded — check your repayment list before submitting again."),{status:409});
 
-      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.user.id]);
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.dataOwnerId]);
       if(!wr.length) throw Object.assign(new Error("Wallet not found"),{status:404});
       if(parseFloat(wr[0].balance)<d.total_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.total_kes,d.wallet_id,req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.total_kes,d.wallet_id,req.dataOwnerId]);
       // Simple interest: reduce remaining by total paid (interest baked in at creation)
       // Compound: reduce remaining by principal portion only
       const reduction = loan.interest_type === "simple" ? d.total_kes : d.principal_kes;
@@ -885,17 +885,17 @@ loanRouter.post("/:id/repayments", uploadStatement.array("files",5), async (req,
       const excessKes = reduction > remainingBefore ? +(reduction - remainingBefore).toFixed(2) : 0;
       await client.query("UPDATE loans SET remaining_kes=$1,is_settled=($1::numeric<=0) WHERE id=$2",[newRemaining,loan.id]);
       const {rows}=await client.query("INSERT INTO loan_repayments (loan_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-        [loan.id,req.user.id,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
+        [loan.id,req.dataOwnerId,d.wallet_id,d.total_kes,d.principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]);
       // Use the loan's own linked category if it has one (e.g. a "HELB Loan"
       // category set on the HELB loan itself), so repayments for different
       // loans don't all pile into one generic "Loan Repayment" bucket.
       let categoryId = loan.category_id;
       if (!categoryId) {
-        const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Loan Repayment' AND type='expense' LIMIT 1",[req.user.id]);
+        const {rows:cats}=await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Loan Repayment' AND type='expense' LIMIT 1",[req.dataOwnerId]);
         categoryId = cats[0]?.id||null;
       }
       const {rows:txRows}=await client.query("INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,loan_repayment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-        [req.user.id,d.wallet_id,categoryId,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
+        [req.dataOwnerId,d.wallet_id,categoryId,d.total_kes,loan.lender||loan.name,d.note||null,d.payment_date||new Date(),loan.id,d.principal_kes,d.interest_kes,rows[0].id]);
       return { repayment:rows[0], transaction:txRows[0], excessKes };
     });
     res.status(201).json({repayment:rep, transaction:tx, excess_kes: excessKes || undefined});
@@ -921,9 +921,9 @@ loanRouter.patch("/:id", async (req,res,next)=>{
     const allowed=["name","lender","currency","principal_kes","remaining_kes","interest_rate","interest_type","term_months","monthly_payment_kes","next_due_date","note","category_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
-    if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.user.id, updates.category_id);
+    if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.dataOwnerId, updates.category_id);
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
-    const {rows}=await query(`UPDATE loans SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.user.id,...Object.values(updates)]);
+    const {rows}=await query(`UPDATE loans SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.dataOwnerId,...Object.values(updates)]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     res.json({loan:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -941,7 +941,7 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
     }).parse(req.body);
 
     if (d.wallet_id) {
-      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
       if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     }
 
@@ -954,7 +954,7 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
       // wallet and loan balance.
       const {rows:rr}=await client.query(
         "SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3 FOR UPDATE OF r",
-        [req.params.rid,req.params.id,req.user.id]
+        [req.params.rid,req.params.id,req.dataOwnerId]
       );
       if(!rr.length) throw Object.assign(new Error("Repayment not found"),{status:404});
       const old=rr[0];
@@ -968,12 +968,12 @@ loanRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
       const isSimple    = old.interest_type === "simple";
 
       // Reverse old wallet debit and loan remaining effect
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(old.total_kes),old.wallet_id,req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(old.total_kes),old.wallet_id,req.dataOwnerId]);
       const oldReduction = isSimple ? parseFloat(old.total_kes) : parseFloat(old.principal_kes);
       await client.query("UPDATE loans SET remaining_kes=remaining_kes+$1 WHERE id=$2",[oldReduction,req.params.id]);
 
       // Apply new
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[newTotal,newWallet,req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[newTotal,newWallet,req.dataOwnerId]);
       const newReduction = isSimple ? newTotal : newPrincipal;
       await client.query(
         "UPDATE loans SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",
@@ -1000,7 +1000,7 @@ loanRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
   try {
     const {rows}=await query(
       "SELECT r.*,l.user_id,l.interest_type FROM loan_repayments r JOIN loans l ON l.id=r.loan_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",
-      [req.params.rid,req.params.id,req.user.id]
+      [req.params.rid,req.params.id,req.dataOwnerId]
     );
     if(!rows.length) return res.status(404).json({error:"Repayment not found"});
     const r=rows[0];
@@ -1019,7 +1019,7 @@ loanRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
 
 loanRouter.delete("/:id", async (req,res,next)=>{
   try {
-    const {rows}=await query("SELECT * FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT * FROM loans WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     await withTransaction(async(client)=>{
       // Reverse all repayment deductions from wallets
@@ -1041,7 +1041,7 @@ const recurringRouter = express.Router();
 
 recurringRouter.get("/", async (req,res,next)=>{
   try {
-    const {rows}=await query("SELECT r.*,c.name AS category_name,c.icon AS category_icon,w.name AS wallet_name FROM recurring_transactions r LEFT JOIN categories c ON c.id=r.category_id LEFT JOIN wallets w ON w.id=r.wallet_id WHERE r.user_id=$1 ORDER BY r.next_date",[req.user.id]);
+    const {rows}=await query("SELECT r.*,c.name AS category_name,c.icon AS category_icon,w.name AS wallet_name FROM recurring_transactions r LEFT JOIN categories c ON c.id=r.category_id LEFT JOIN wallets w ON w.id=r.wallet_id WHERE r.user_id=$1 ORDER BY r.next_date",[req.dataOwnerId]);
     res.json({recurring:rows});
   } catch(e){next(e);}
 });
@@ -1049,32 +1049,32 @@ recurringRouter.get("/", async (req,res,next)=>{
 recurringRouter.post("/", async (req,res,next)=>{
   try {
     const d=z.object({wallet_id:z.string().uuid(),category_id:z.string().uuid().optional(),type:z.enum(["expense","income"]),amount_kes:z.number().positive(),merchant:z.string().optional(),note:z.string().optional(),freq:z.enum(["daily","weekly","monthly","yearly"]).default("monthly"),next_date:z.string(),loan_id:z.string().uuid().optional()}).parse(req.body);
-    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     if(d.category_id) {
-      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.user.id]);
+      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.dataOwnerId]);
       if(!cr.length) return res.status(400).json({error:"Category not found"});
     }
     if(d.loan_id) {
-      const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.user.id]);
+      const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.dataOwnerId]);
       if(!lr.length) return res.status(400).json({error:"Loan not found"});
     }
     const {rows}=await query("INSERT INTO recurring_transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,freq,next_date,loan_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
-      [req.user.id,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,d.freq,d.next_date,d.loan_id||null]);
+      [req.dataOwnerId,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,d.freq,d.next_date,d.loan_id||null]);
     res.status(201).json({recurring:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
 });
 
 recurringRouter.patch("/:id/toggle", async (req,res,next)=>{
   try {
-    const {rows}=await query("UPDATE recurring_transactions SET is_active=NOT is_active WHERE id=$1 AND user_id=$2 RETURNING *",[req.params.id,req.user.id]);
+    const {rows}=await query("UPDATE recurring_transactions SET is_active=NOT is_active WHERE id=$1 AND user_id=$2 RETURNING *",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     res.json({recurring:rows[0]});
   } catch(e){next(e);}
 });
 
 recurringRouter.delete("/:id", async (req,res,next)=>{
-  try { await query("DELETE FROM recurring_transactions WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]); res.json({ok:true}); } catch(e){next(e);}
+  try { await query("DELETE FROM recurring_transactions WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]); res.json({ok:true}); } catch(e){next(e);}
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1334,7 +1334,7 @@ reconcileRouter.post("/parse", upload.single("file"), async (req,res,next)=>{
   try {
     if(!req.file) return res.status(400).json({error:"No file uploaded"});
     const {walletId}=z.object({walletId:z.string().uuid()}).parse(req.body);
-    const {rows:wr}=await query("SELECT currency FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.user.id]);
+    const {rows:wr}=await query("SELECT currency FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     // Statement amounts are in the account's own currency, but amount_kes is
     // always KES internally — same conversion every other money-entry path
@@ -1358,7 +1358,7 @@ reconcileRouter.post("/parse", upload.single("file"), async (req,res,next)=>{
       return {date,desc,amount};
     }).filter(r=>r.date&&r.amount!==0);
 
-    const {rows:existing}=await query("SELECT amount_kes,tx_date FROM transactions WHERE wallet_id=$1 AND user_id=$2",[walletId,req.user.id]);
+    const {rows:existing}=await query("SELECT amount_kes,tx_date FROM transactions WHERE wallet_id=$1 AND user_id=$2",[walletId,req.dataOwnerId]);
     const rows=parsed.map(row=>{
       const match=existing.find(t=>t.tx_date===row.date&&Math.abs(parseFloat(t.amount_kes)-Math.abs(row.amount))<1);
       return {...row,status:match?"matched":"unmatched"};
@@ -1378,7 +1378,7 @@ reconcileRouter.post("/confirm", async (req,res,next)=>{
       })).max(5000),
       walletId: z.string().uuid(),
     }).parse(req.body);
-    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.user.id]);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[walletId,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     const toImport=inputRows.filter(r=>r.amount!==0);
     // Single multi-row INSERT + one aggregated wallet UPDATE, instead of a
@@ -1391,7 +1391,7 @@ reconcileRouter.post("/confirm", async (req,res,next)=>{
           const type=row.amount>0?"income":"expense";
           const amount=Math.abs(row.amount);
           const b=i*6;
-          values.push(req.user.id,walletId,type,amount,row.desc||row.description,row.date);
+          values.push(req.dataOwnerId,walletId,type,amount,row.desc||row.description,row.date);
           return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6})`;
         });
         await client.query(
@@ -1399,7 +1399,7 @@ reconcileRouter.post("/confirm", async (req,res,next)=>{
           values
         );
         const totalDelta=toImport.reduce((s,row)=>s+(row.amount>0?Math.abs(row.amount):-Math.abs(row.amount)),0);
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[totalDelta,walletId,req.user.id]);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[totalDelta,walletId,req.dataOwnerId]);
         imported=toImport.length;
       }
     });
@@ -1434,7 +1434,7 @@ const insuranceSchema = z.object({
 
 insuranceRouter.get("/", async (req,res,next) => {
   try {
-    const {rows:policies} = await query("SELECT * FROM insurance_policies WHERE user_id=$1 ORDER BY created_at DESC", [req.user.id]);
+    const {rows:policies} = await query("SELECT * FROM insurance_policies WHERE user_id=$1 ORDER BY created_at DESC", [req.dataOwnerId]);
     if (policies.length) {
       const {rows:allPayments} = await query(
         "SELECT * FROM premium_payments WHERE policy_id = ANY($1) ORDER BY payment_date DESC",
@@ -1451,11 +1451,11 @@ insuranceRouter.get("/", async (req,res,next) => {
 insuranceRouter.post("/", async (req,res,next) => {
   try {
     const d = insuranceSchema.parse(req.body);
-    const categoryId = await resolveExpenseCategoryLink(req.user.id, d.category_id);
+    const categoryId = await resolveExpenseCategoryLink(req.dataOwnerId, d.category_id);
     const {rows} = await query(
       `INSERT INTO insurance_policies (user_id,name,provider,policy_type,policy_number,premium_amount,premium_frequency,start_date,end_date,sum_assured,surrender_value,amount_paid,beneficiary,wallet_id,currency,notes,is_active,category_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
-      [req.user.id,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.amount_paid??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active,categoryId]
+      [req.dataOwnerId,d.name,d.provider,d.policy_type,d.policy_number||null,d.premium_amount,d.premium_frequency,d.start_date||null,d.end_date||null,d.sum_assured??null,d.surrender_value??null,d.amount_paid??null,d.beneficiary||null,d.wallet_id||null,d.currency,d.notes||null,d.is_active,categoryId]
     );
     res.status(201).json({policy:rows[0]});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
@@ -1467,7 +1467,7 @@ insuranceRouter.patch("/:id", async (req,res,next) => {
     const allowed=["name","provider","policy_type","policy_number","premium_amount","premium_frequency","start_date","end_date","sum_assured","surrender_value","amount_paid","beneficiary","wallet_id","currency","notes","is_active","category_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
-    if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.user.id, updates.category_id);
+    if (updates.category_id) updates.category_id = await resolveExpenseCategoryLink(req.dataOwnerId, updates.category_id);
 
     // amount_paid is meant as a one-time "premiums paid before you started
     // tracking here" opening figure — once real payments exist in the
@@ -1482,7 +1482,7 @@ insuranceRouter.patch("/:id", async (req,res,next) => {
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(
       `UPDATE insurance_policies SET ${sets.join(",")},updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING *`,
-      [req.params.id,req.user.id,...Object.values(updates)]
+      [req.params.id,req.dataOwnerId,...Object.values(updates)]
     );
     if(!rows.length) return res.status(404).json({error:"Not found"});
     res.json({policy:rows[0]});
@@ -1491,15 +1491,15 @@ insuranceRouter.patch("/:id", async (req,res,next) => {
 
 insuranceRouter.delete("/:id", async (req,res,next) => {
   try {
-    const {rows}=await query("SELECT id FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT id FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     // Reverse every payment's wallet debit before deleting (mirrors investments/loans delete).
     const {rows:pays} = await query("SELECT * FROM premium_payments WHERE policy_id=$1", [req.params.id]);
     await withTransaction(async(client)=>{
       for (const p of pays) {
-        if (p.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(p.amount_kes), p.wallet_id, req.user.id]);
+        if (p.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[parseFloat(p.amount_kes), p.wallet_id, req.dataOwnerId]);
       }
-      await client.query("DELETE FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+      await client.query("DELETE FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     });
     res.json({ok:true});
   } catch(e){next(e);}
@@ -1507,14 +1507,14 @@ insuranceRouter.delete("/:id", async (req,res,next) => {
 
 insuranceRouter.post("/:id/payments", async (req,res,next) => {
   try {
-    const {rows:pr} = await query("SELECT * FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id, req.user.id]);
+    const {rows:pr} = await query("SELECT * FROM insurance_policies WHERE id=$1 AND user_id=$2",[req.params.id, req.dataOwnerId]);
     if (!pr.length) return res.status(404).json({error:"Policy not found"});
     const policy = pr[0];
     const d = z.object({
       wallet_id: z.string().uuid(), amount_kes: z.number().positive(),
       payment_date: z.string().optional(), note: z.string().optional(),
     }).parse(req.body);
-    const {rows:wr} = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id, req.user.id]);
+    const {rows:wr} = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id, req.dataOwnerId]);
     if (!wr.length) return res.status(400).json({error:"Wallet not found"});
 
     const payment = await withTransaction(async(client)=>{
@@ -1530,25 +1530,25 @@ insuranceRouter.post("/:id/payments", async (req,res,next) => {
       );
       if (dupe.length) throw Object.assign(new Error("This looks like a duplicate of a payment you just recorded — check the payment list before submitting again."),{status:409});
 
-      const {rows:wbal} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id, req.user.id]);
+      const {rows:wbal} = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id, req.dataOwnerId]);
       if (!wbal.length) throw Object.assign(new Error("Wallet not found"),{status:404});
       if (parseFloat(wbal[0].balance) < d.amount_kes) throw Object.assign(new Error("Insufficient balance in selected account"),{status:400});
       const {rows} = await client.query(
         "INSERT INTO premium_payments (policy_id,user_id,wallet_id,amount_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
-        [policy.id, req.user.id, d.wallet_id, d.amount_kes, d.payment_date||new Date(), d.note||null]
+        [policy.id, req.dataOwnerId, d.wallet_id, d.amount_kes, d.payment_date||new Date(), d.note||null]
       );
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.amount_kes, d.wallet_id, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3",[d.amount_kes, d.wallet_id, req.dataOwnerId]);
       // Use the policy's own linked category if it has one (e.g. a "My Son's
       // Education Policy" category), so premiums for different policies
       // don't all pile into one generic "Premium" bucket.
       let categoryId = policy.category_id;
       if (!categoryId) {
-        const {rows:cats} = await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Premium' AND type='expense' LIMIT 1",[req.user.id]);
+        const {rows:cats} = await client.query("SELECT id FROM categories WHERE user_id=$1 AND name='Premium' AND type='expense' LIMIT 1",[req.dataOwnerId]);
         categoryId = cats[0]?.id||null;
       }
       const {rows:txRows} = await client.query(
         "INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,premium_payment_id) VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,$8) RETURNING *",
-        [req.user.id, d.wallet_id, categoryId, d.amount_kes, policy.name, d.note||null, d.payment_date||new Date(), rows[0].id]
+        [req.dataOwnerId, d.wallet_id, categoryId, d.amount_kes, policy.name, d.note||null, d.payment_date||new Date(), rows[0].id]
       );
       return {...rows[0], transaction: txRows[0]};
     });
@@ -1560,7 +1560,7 @@ insuranceRouter.delete("/:id/payments/:pid", async (req,res,next) => {
   try {
     const {rows} = await query(
       "SELECT p.* FROM premium_payments p JOIN insurance_policies i ON i.id=p.policy_id WHERE p.id=$1 AND p.policy_id=$2 AND i.user_id=$3",
-      [req.params.pid, req.params.id, req.user.id]
+      [req.params.pid, req.params.id, req.dataOwnerId]
     );
     if (!rows.length) return res.status(404).json({error:"Payment not found"});
     const p = rows[0];

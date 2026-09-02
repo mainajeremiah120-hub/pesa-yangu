@@ -19,7 +19,7 @@ const upload  = multer({
 router.get("/", async (req, res, next) => {
   try {
     const { wallet_id, type, from, to, limit=500, offset=0 } = req.query;
-    const cond=["t.user_id=$1"]; const p=[req.user.id]; let n=2;
+    const cond=["t.user_id=$1"]; const p=[req.dataOwnerId]; let n=2;
     if(wallet_id){cond.push(`t.wallet_id=$${n++}`);p.push(wallet_id);}
     if(type){cond.push(`t.type=$${n++}`);p.push(type);}
     if(from){cond.push(`t.tx_date>=$${n++}`);p.push(from);}
@@ -51,18 +51,18 @@ router.post("/", async (req, res, next) => {
     // always be server-generated (see wallets.js POST /transfer), otherwise a
     // client could tag an unrelated transaction with another user's pair id.
 
-    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.user.id]);
+    const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     if(d.category_id) {
-      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.user.id]);
+      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.dataOwnerId]);
       if(!cr.length) return res.status(400).json({error:"Category not found"});
     }
     if(d.loan_id) {
-      const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.user.id]);
+      const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.dataOwnerId]);
       if(!lr.length) return res.status(400).json({error:"Loan not found"});
     }
     if(d.refund_of) {
-      const {rows:rr}=await query("SELECT id FROM transactions WHERE id=$1 AND user_id=$2",[d.refund_of,req.user.id]);
+      const {rows:rr}=await query("SELECT id FROM transactions WHERE id=$1 AND user_id=$2",[d.refund_of,req.dataOwnerId]);
       if(!rr.length) return res.status(400).json({error:"Original transaction not found"});
     }
 
@@ -74,21 +74,21 @@ router.post("/", async (req, res, next) => {
       // check before either commits, see nothing, and both insert; with it,
       // the second one waits for the first to finish and then correctly
       // sees its row.
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`tx:${req.user.id}:${d.wallet_id}:${d.type}:${d.amount_kes}`]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`tx:${req.dataOwnerId}:${d.wallet_id}:${d.type}:${d.amount_kes}`]);
       const {rows:dupe}=await client.query(
         "SELECT id FROM transactions WHERE user_id=$1 AND wallet_id=$2 AND type=$3 AND amount_kes=$4 AND created_at > NOW() - INTERVAL '10 seconds'",
-        [req.user.id,d.wallet_id,d.type,d.amount_kes]
+        [req.dataOwnerId,d.wallet_id,d.type,d.amount_kes]
       );
       if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a transaction you just added — check Records before submitting again."),{status:409});
 
       const {rows}=await client.query(
         `INSERT INTO transactions (user_id,wallet_id,category_id,type,amount_kes,merchant,note,tx_date,loan_id,principal_paid,interest_paid,refund_of)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [req.user.id,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,
+        [req.dataOwnerId,d.wallet_id,d.category_id||null,d.type,d.amount_kes,d.merchant||null,d.note||null,
          d.tx_date||new Date(),d.loan_id||null,d.principal_paid||null,d.interest_paid||null,d.refund_of||null]
       );
       const delta=(d.type==="income"||d.type==="transfer_in"||d.type==="refund")?d.amount_kes:-d.amount_kes;
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,d.wallet_id,req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,d.wallet_id,req.dataOwnerId]);
       return rows[0];
     });
     res.status(201).json({transaction:tx});
@@ -108,11 +108,11 @@ router.patch("/:id", async (req, res, next) => {
     }).parse(req.body);
 
     if (d.wallet_id) {
-      const { rows: wr } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [d.wallet_id, req.user.id]);
+      const { rows: wr } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [d.wallet_id, req.dataOwnerId]);
       if (!wr.length) return res.status(400).json({ error: "Wallet not found" });
     }
     if (Object.prototype.hasOwnProperty.call(d, "category_id") && d.category_id) {
-      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [d.category_id, req.user.id]);
+      const { rows: cr } = await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2", [d.category_id, req.dataOwnerId]);
       if (!cr.length) return res.status(400).json({ error: "Category not found" });
     }
 
@@ -124,7 +124,7 @@ router.patch("/:id", async (req, res, next) => {
       // amount — which would double-credit the wallet.
       const { rows: existing } = await client.query(
         "SELECT * FROM transactions WHERE id=$1 AND user_id=$2 FOR UPDATE",
-        [req.params.id, req.user.id]
+        [req.params.id, req.dataOwnerId]
       );
       if (!existing.length) throw Object.assign(new Error("Not found"), { status: 404 });
       const old = existing[0];
@@ -139,10 +139,10 @@ router.patch("/:id", async (req, res, next) => {
 
       const isCredit = (t) => t === "income" || t === "transfer_in" || t === "refund";
       const oldDelta = isCredit(old.type) ? -parseFloat(old.amount_kes) : parseFloat(old.amount_kes);
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [oldDelta, old.wallet_id, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [oldDelta, old.wallet_id, req.dataOwnerId]);
 
       const newDelta = isCredit(newType) ? newAmount : -newAmount;
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [newDelta, newWalletId, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [newDelta, newWalletId, req.dataOwnerId]);
 
       const { rows } = await client.query(
         `UPDATE transactions SET
@@ -167,7 +167,7 @@ router.patch("/transfer/:pairId", async (req, res, next) => {
   try {
     const { rows: legs } = await query(
       "SELECT * FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",
-      [req.params.pairId, req.user.id]
+      [req.params.pairId, req.dataOwnerId]
     );
     const outLeg = legs.find(l => l.type === "transfer_out");
     const inLeg  = legs.find(l => l.type === "transfer_in");
@@ -188,22 +188,22 @@ router.patch("/transfer/:pairId", async (req, res, next) => {
     const newDate   = d.tx_date ?? outLeg.tx_date;
 
     if (newFrom === newTo) return res.status(400).json({ error: "Source and destination account can't be the same" });
-    const { rows: fromCheck } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [newFrom, req.user.id]);
+    const { rows: fromCheck } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [newFrom, req.dataOwnerId]);
     if (!fromCheck.length) return res.status(400).json({ error: "Source account not found" });
-    const { rows: toCheck } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [newTo, req.user.id]);
+    const { rows: toCheck } = await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2", [newTo, req.dataOwnerId]);
     if (!toCheck.length) return res.status(400).json({ error: "Destination account not found" });
 
     const result = await withTransaction(async (client) => {
       // Reverse the old effect on both original wallets first
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [parseFloat(outLeg.amount_kes), outLeg.wallet_id, req.user.id]);
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3", [parseFloat(inLeg.amount_kes), inLeg.wallet_id, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [parseFloat(outLeg.amount_kes), outLeg.wallet_id, req.dataOwnerId]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3", [parseFloat(inLeg.amount_kes), inLeg.wallet_id, req.dataOwnerId]);
 
-      const { rows: wr } = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE", [newFrom, req.user.id]);
+      const { rows: wr } = await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE", [newFrom, req.dataOwnerId]);
       if (!wr.length) throw Object.assign(new Error("Source account not found"), { status: 404 });
       if (parseFloat(wr[0].balance) < newAmount) throw Object.assign(new Error("Insufficient balance in the source account"), { status: 400 });
 
-      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3", [newAmount, newFrom, req.user.id]);
-      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [newAmount, newTo, req.user.id]);
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2 AND user_id=$3", [newAmount, newFrom, req.dataOwnerId]);
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3", [newAmount, newTo, req.dataOwnerId]);
 
       const { rows: outRows } = await client.query(
         "UPDATE transactions SET wallet_id=$1, amount_kes=$2, note=$3, tx_date=$4 WHERE id=$5 RETURNING *",
@@ -221,7 +221,7 @@ router.patch("/transfer/:pairId", async (req, res, next) => {
 
 router.delete("/:id", async (req, res, next) => {
   try {
-    const {rows}=await query("SELECT * FROM transactions WHERE id=$1 AND user_id=$2",[req.params.id,req.user.id]);
+    const {rows}=await query("SELECT * FROM transactions WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!rows.length) return res.status(404).json({error:"Not found"});
     const tx=rows[0];
     await withTransaction(async(client)=>{
@@ -230,16 +230,16 @@ router.delete("/:id", async (req, res, next) => {
         // Scoped to this user — a transfer's two legs always belong to the
         // same user (see wallets.js POST /transfer), so this also guards
         // against a crafted transfer_pair_id collision touching someone else's rows.
-        const {rows:pair}=await client.query("SELECT * FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",[tx.transfer_pair_id,req.user.id]);
+        const {rows:pair}=await client.query("SELECT * FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",[tx.transfer_pair_id,req.dataOwnerId]);
         for(const leg of pair) {
           const delta=(leg.type==="income"||leg.type==="transfer_in")?-parseFloat(leg.amount_kes):parseFloat(leg.amount_kes);
-          await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,leg.wallet_id,req.user.id]);
+          await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,leg.wallet_id,req.dataOwnerId]);
         }
-        await client.query("DELETE FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",[tx.transfer_pair_id,req.user.id]);
+        await client.query("DELETE FROM transactions WHERE transfer_pair_id=$1 AND user_id=$2",[tx.transfer_pair_id,req.dataOwnerId]);
       } else {
-        await client.query("DELETE FROM transactions WHERE id=$1 AND user_id=$2",[tx.id,req.user.id]);
+        await client.query("DELETE FROM transactions WHERE id=$1 AND user_id=$2",[tx.id,req.dataOwnerId]);
         const delta=(tx.type==="income"||tx.type==="transfer_in"||tx.type==="refund")?-parseFloat(tx.amount_kes):parseFloat(tx.amount_kes);
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,tx.wallet_id,req.user.id]);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,tx.wallet_id,req.dataOwnerId]);
       }
     });
     res.json({ok:true});
@@ -253,7 +253,7 @@ router.get("/export", async (req, res, next) => {
       `SELECT t.tx_date AS date,t.type,c.name AS category,t.amount_kes,t.merchant,t.note,w.name AS wallet,w.currency
        FROM transactions t LEFT JOIN categories c ON c.id=t.category_id LEFT JOIN wallets w ON w.id=t.wallet_id
        WHERE t.user_id=$1 ORDER BY t.tx_date DESC`,
-      [req.user.id]
+      [req.dataOwnerId]
     );
     const hdrs=["date","type","category","amount_kes","merchant","note","wallet","currency"];
     const csv=[hdrs.join(","),...rows.map(r=>hdrs.map(h=>`"${(r[h]||"").toString().replace(/"/g,'""')}"`).join(","))].join("\n");
@@ -283,13 +283,13 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
     const fileHash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
     const {rows:dupeBatch} = await query(
       "SELECT id FROM import_batches WHERE user_id=$1 AND file_hash=$2 AND created_at > NOW() - INTERVAL '10 minutes'",
-      [req.user.id, fileHash]
+      [req.dataOwnerId, fileHash]
     );
     if (dupeBatch.length) return res.status(409).json({error:"This looks like the same file you just imported — check Records before importing it again."});
     const hdrs=lines[0].split(",").map(h=>h.trim().toLowerCase().replace(/["']/g,""));
     const idx=(n)=>hdrs.indexOf(n);
-    const {rows:cats}=await query("SELECT id,name,type FROM categories WHERE user_id=$1",[req.user.id]);
-    const {rows:wals}=await query("SELECT id,name FROM wallets WHERE user_id=$1",[req.user.id]);
+    const {rows:cats}=await query("SELECT id,name,type FROM categories WHERE user_id=$1",[req.dataOwnerId]);
+    const {rows:wals}=await query("SELECT id,name FROM wallets WHERE user_id=$1",[req.dataOwnerId]);
     const catMap=Object.fromEntries(cats.map(c=>[`${c.name.toLowerCase()}:${c.type}`,c.id]));
     const walMap=Object.fromEntries(wals.map(w=>[w.name.toLowerCase(),w.id]));
     const defWal=wals[0]?.id;
@@ -321,7 +321,7 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
       const values=[];
       const placeholders=toInsert.map((r,i)=>{
         const b=i*8;
-        values.push(req.user.id,r.wallet_id,r.cat_id,r.type,r.amount,r.merchant,r.note,r.tx_date);
+        values.push(req.dataOwnerId,r.wallet_id,r.cat_id,r.type,r.amount,r.merchant,r.note,r.tx_date);
         return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8})`;
       });
       await client.query(
@@ -334,11 +334,11 @@ router.post("/import", upload.single("file"), async (req, res, next) => {
         deltaByWallet[r.wallet_id]=(deltaByWallet[r.wallet_id]||0)+delta;
       }
       for(const [walletId,delta] of Object.entries(deltaByWallet)){
-        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.user.id]);
+        await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2 AND user_id=$3",[delta,walletId,req.dataOwnerId]);
       }
       await client.query(
         "INSERT INTO import_batches (user_id,file_hash,row_count) VALUES ($1,$2,$3)",
-        [req.user.id, fileHash, toInsert.length]
+        [req.dataOwnerId, fileHash, toInsert.length]
       );
       imported=toInsert.length;
     });

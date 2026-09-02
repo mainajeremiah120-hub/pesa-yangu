@@ -16,7 +16,8 @@ function fail(name, detail="") { results.push({name, ok:false, detail}); console
 
 async function api(method, path, body, opts={}) {
   const headers = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const useToken = opts.token !== undefined ? opts.token : token;
+  if (useToken) headers.Authorization = `Bearer ${useToken}`;
   const res = await fetch(`${BASE}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   let json = null;
   try { json = await res.json(); } catch {}
@@ -246,6 +247,77 @@ async function run() {
     const { status: allowed } = await api("DELETE", `/wallets/${walC.id}`);
     allowed===200 ? pass("delete empty wallet allowed") : fail("delete empty wallet allowed", `status ${allowed}`);
     created.wallets = created.wallets.filter(id=>id!==walC.id);
+  }
+
+  console.log("=== HOUSEHOLD LINKING ===");
+  const householdTestUsers = [];
+  {
+    const nonce = Date.now();
+    async function registerThrowaway(label) {
+      const email = `e2e-hh-${label}-${nonce}@test.local`;
+      const { status, json } = await api("POST", "/auth/register", { email, password: "TestPass123!", full_name: `E2E ${label}` }, { token: null });
+      if (status !== 201) return { ok:false, status, json };
+      householdTestUsers.push({ email, token: json.accessToken });
+      return { ok:true, token: json.accessToken, id: json.user.id };
+    }
+
+    const a = await registerThrowaway("A");
+    const b = await registerThrowaway("B");
+    (a.ok && b.ok) ? pass("register two throwaway household test users") : fail("register two throwaway household test users", JSON.stringify([a,b]));
+
+    // A creates a wallet + transaction as a baseline to prove sharing.
+    const { json: walJson } = await api("POST", "/wallets", { name:"E2E HH Wallet", balance:5000 }, { token: a.token });
+    const hhWalletId = walJson?.wallet?.id;
+    await api("POST", "/transactions", { wallet_id: hhWalletId, type:"expense", amount_kes: 100 }, { token: a.token });
+
+    const { status: invStatus, json: invJson } = await api("POST", "/household/invite", null, { token: a.token });
+    const code = invJson?.code;
+    (invStatus===200 && code) ? pass("A generates an invite code") : fail("A generates an invite code", `status ${invStatus} ${JSON.stringify(invJson)}`);
+
+    const { status: acceptStatus } = await api("POST", "/household/accept", { code }, { token: b.token });
+    acceptStatus===200 ? pass("B accepts A's invite") : fail("B accepts A's invite", `status ${acceptStatus}`);
+
+    const { json: bWallets } = await api("GET", "/wallets", null, { token: b.token });
+    (bWallets?.wallets||[]).some(w=>w.id===hhWalletId)
+      ? pass("B immediately sees A's wallet") : fail("B immediately sees A's wallet", JSON.stringify(bWallets));
+
+    const { status: bTxStatus } = await api("POST", "/transactions", { wallet_id: hhWalletId, type:"expense", amount_kes: 250 }, { token: b.token });
+    const { json: aTxs } = await api("GET", "/transactions", null, { token: a.token });
+    (bTxStatus===201 && (aTxs?.transactions||[]).some(t=>parseFloat(t.amount_kes)===250))
+      ? pass("bidirectional: B's transaction visible to A") : fail("bidirectional: B's transaction visible to A", `status ${bTxStatus}`);
+
+    // C has real data — must be rejected joining a (different, otherwise
+    // empty) household.
+    const c = await registerThrowaway("C");
+    await api("POST", "/wallets", { name:"E2E HH Wallet C", balance:100 }, { token: c.token });
+    // C becomes the owner of a second, fresh (otherwise-empty) household —
+    // used below to prove "existing data blocks join" holds even when the
+    // target household itself has room and no other issue.
+    const { json: cInvJson } = await api("POST", "/household/invite", null, { token: c.token });
+
+    const dRejectDirty = await registerThrowaway("D");
+    await api("POST", "/wallets", { name:"E2E HH Wallet D", balance:50 }, { token: dRejectDirty.token }); // give D real data
+    const { status: freshInvStatus, json: freshInvJson } = await api("POST", "/household/invite", null, { token: a.token }); // A's household is full (A+B) -> should reject
+    (freshInvStatus===409) ? pass("full household rejects a new invite") : fail("full household rejects a new invite", `status ${freshInvStatus} ${JSON.stringify(freshInvJson)}`);
+
+    // A dirty (non-empty) account cannot join even a fresh, empty household.
+    const { status: dirtyJoinStatus } = await api("POST", "/household/accept", { code: cInvJson?.code }, { token: dRejectDirty.token });
+    dirtyJoinStatus===400 ? pass("account with existing data rejected from joining") : fail("account with existing data rejected from joining", `status ${dirtyJoinStatus}`);
+
+    const { status: leaveStatus } = await api("POST", "/household/leave", null, { token: b.token });
+    const { json: bWalletsAfterLeave } = await api("GET", "/wallets", null, { token: b.token });
+    (leaveStatus===200 && (bWalletsAfterLeave?.wallets||[]).length===0)
+      ? pass("leave is airtight — B sees nothing after leaving") : fail("leave is airtight — B sees nothing after leaving", `status ${leaveStatus} wallets=${JSON.stringify(bWalletsAfterLeave)}`);
+
+    // Cleanup: A's baseline wallet (also removes B's transaction on it via
+    // the same cascade path normal wallet cleanup uses), then best-effort
+    // deactivate every throwaway account (no hard-delete endpoint exists).
+    if (hhWalletId) {
+      const { json: hhTxs } = await api("GET", `/transactions?wallet_id=${hhWalletId}&limit=1000`, null, { token: a.token });
+      for (const t of (hhTxs?.transactions||[])) await api("DELETE", `/transactions/${t.id}`, null, { token: a.token }).catch(()=>{});
+      await api("DELETE", `/wallets/${hhWalletId}`, null, { token: a.token }).catch(()=>{});
+    }
+    for (const u of householdTestUsers) await api("DELETE", "/auth/account", null, { token: u.token }).catch(()=>{});
   }
 
   console.log("\n=== SUMMARY ===");

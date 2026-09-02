@@ -8,6 +8,7 @@ const { z }        = require("zod");
 const { query, withTransaction } = require("../models/db");
 const { requireAuth } = require("../middleware/auth");
 const { seed }     = require("../services/defaultCategories");
+const { acceptInvite } = require("./household");
 const logger       = require("../services/logger");
 
 const mailer = nodemailer.createTransport({
@@ -47,10 +48,11 @@ const hashTok     = (t)  => crypto.createHash("sha256").update(t).digest("hex");
 // POST /auth/register
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, full_name } = z.object({
-      email:     z.string().email().max(254),
-      password:  z.string().min(8, "Password must be at least 8 characters").max(128),
-      full_name: z.string().min(1).max(100).trim(),
+    const { email, password, full_name, invite_code } = z.object({
+      email:       z.string().email().max(254),
+      password:    z.string().min(8, "Password must be at least 8 characters").max(128),
+      full_name:   z.string().min(1).max(100).trim(),
+      invite_code: z.string().trim().min(1).max(20).optional(),
     }).parse(req.body);
 
     const existing = await query("SELECT id FROM users WHERE email=$1", [email.toLowerCase()]);
@@ -65,8 +67,19 @@ router.post("/register", async (req, res, next) => {
          VALUES ($1,$2,$3) RETURNING id, email, full_name, plan, role, budget_mode, household_id, false AS has_pin`,
         [email.toLowerCase(), password_hash, full_name]
       );
-      await seed(client, rows[0].id);
-      return rows[0];
+      const newUser = rows[0];
+      if (invite_code) {
+        // Joining a household immediately — skip the default category
+        // seed entirely rather than seed-then-delete, and let acceptInvite
+        // validate the code/household in the same transaction as account
+        // creation, so a bad code fails registration cleanly with a clear
+        // error instead of silently creating an unwanted solo account.
+        const householdId = await acceptInvite(client, newUser.id, invite_code.toUpperCase());
+        newUser.household_id = householdId;
+      } else {
+        await seed(client, newUser.id);
+      }
+      return newUser;
     });
 
     const accessToken  = signAccess(user.id);
@@ -206,7 +219,17 @@ router.post("/verify-pin", requireAuth, async (req, res, next) => {
 
 // POST /auth/reset-data — factory reset: wipe all financial data, keep account
 router.post("/reset-data", requireAuth, async (req, res) => {
-  const uid = req.user.id;
+  // A non-owner household member resetting would either be a confusing
+  // no-op (if scoped to their own empty id) or wipe their partner's whole
+  // financial life without asking (if scoped to the shared data) — block
+  // it outright and point them at the actual owner.
+  if (req.user.household_id) {
+    const { rows: hh } = await query("SELECT owner_user_id FROM households WHERE id=$1", [req.user.household_id]);
+    if (hh.length && hh[0].owner_user_id !== req.user.id) {
+      return res.status(403).json({ error: "Only the household owner can reset shared data. Ask them, or leave the household first." });
+    }
+  }
+  const uid = req.dataOwnerId;
   try {
     await withTransaction(async (client) => {
       await client.query("DELETE FROM loan_repayments        WHERE user_id=$1", [uid]);
@@ -230,6 +253,18 @@ router.post("/reset-data", requireAuth, async (req, res) => {
 // DELETE /auth/account — deactivate (soft delete) the user account
 router.delete("/account", requireAuth, async (req, res, next) => {
   try {
+    if (req.user.household_id) {
+      const { rows: hh } = await query("SELECT owner_user_id FROM households WHERE id=$1", [req.user.household_id]);
+      if (hh.length && hh[0].owner_user_id === req.user.id) {
+        const { rows: members } = await query("SELECT id FROM users WHERE household_id=$1", [req.user.household_id]);
+        if (members.length > 1) {
+          return res.status(409).json({ error: "Dissolve your household first (or ask your partner to leave) before deactivating your account." });
+        }
+      } else {
+        // Non-owner: clear the link first so the owner's member list stays accurate.
+        await query("UPDATE users SET household_id=NULL WHERE id=$1", [req.user.id]);
+      }
+    }
     await query("UPDATE users SET is_active=FALSE WHERE id=$1", [req.user.id]);
     await query("DELETE FROM refresh_tokens WHERE user_id=$1", [req.user.id]);
     res.json({ ok: true });

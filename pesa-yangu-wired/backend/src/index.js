@@ -40,6 +40,7 @@ const ticketRoutes      = require("./routes/tickets");
 const walletRoutes      = require("./routes/wallets");
 const transactionRoutes = require("./routes/transactions");
 const pushRoutes        = require("./routes/push");
+const { householdRouter: householdRoutes } = require("./routes/household");
 const { scheduleReminders } = require("./push-scheduler");
 const { scheduleLoanInterestAccrual } = require("./loan-interest-scheduler");
 const { requireAuth, requireAdmin } = require("./middleware/auth");
@@ -177,6 +178,7 @@ v1.use("/admin",       requireAuth, requireAdmin, adminRoutes);
 v1.use("/tickets",     requireAuth, ticketRoutes);
 v1.use("/fx-rates",    fxRoutes);
 
+v1.use("/household",    requireAuth, householdRoutes);
 v1.use("/wallets",      requireAuth, walletRoutes);
 v1.use("/transactions", requireAuth, transactionRoutes);
 v1.use("/categories",   requireAuth, categoryRoutes);

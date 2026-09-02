@@ -62,7 +62,7 @@ router.post("/register", async (req, res, next) => {
     const user = await withTransaction(async (client) => {
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, full_name)
-         VALUES ($1,$2,$3) RETURNING id, email, full_name, plan, role, budget_mode, false AS has_pin`,
+         VALUES ($1,$2,$3) RETURNING id, email, full_name, plan, role, budget_mode, household_id, false AS has_pin`,
         [email.toLowerCase(), password_hash, full_name]
       );
       await seed(client, rows[0].id);
@@ -94,7 +94,7 @@ router.post("/login", async (req, res, next) => {
     }).parse(req.body);
 
     const { rows } = await query(
-      "SELECT id,email,full_name,plan,role,budget_mode,password_hash,(pin_hash IS NOT NULL) AS has_pin FROM users WHERE email=$1",
+      "SELECT id,email,full_name,plan,role,budget_mode,household_id,password_hash,(pin_hash IS NOT NULL) AS has_pin FROM users WHERE email=$1",
       [email.toLowerCase()]
     );
     const user = rows[0];
@@ -157,7 +157,7 @@ router.patch("/profile", requireAuth, async (req, res, next) => {
     if (d.budget_mode != null) { vals.push(d.budget_mode); sets.push(`budget_mode=$${vals.length}`); }
     vals.push(req.user.id);
     const { rows } = await query(
-      `UPDATE users SET ${sets.join(",")} WHERE id=$${vals.length} RETURNING id,email,full_name,plan,role,budget_mode,(pin_hash IS NOT NULL) AS has_pin`,
+      `UPDATE users SET ${sets.join(",")} WHERE id=$${vals.length} RETURNING id,email,full_name,plan,role,budget_mode,household_id,(pin_hash IS NOT NULL) AS has_pin`,
       vals
     );
     res.json({ user: rows[0] });

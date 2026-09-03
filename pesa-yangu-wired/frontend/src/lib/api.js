@@ -38,7 +38,7 @@ export const getLastMutationAt = () => lastMutationAt;
 client.interceptors.response.use(
   (res) => {
     const method = res.config?.method?.toLowerCase();
-    if (method && method !== "get") lastMutationAt = Date.now();
+    if (method && method !== "get" && !res.config?.skipMutationTracking) lastMutationAt = Date.now();
     return res;
   },
   async (err) => {
@@ -293,9 +293,14 @@ export const householdApi = {
 
 // ── Push notifications ─────────────────────────────────────────────────────────
 export const pushApi = {
+  // skipMutationTracking: this fires silently on every page load to keep
+  // the server-side subscription in sync — it's not a user-initiated data
+  // change, so it must not trip loadData's "discard stale refresh" guard
+  // (see lastMutationAt above), which otherwise silently drops a real,
+  // freshly-fetched wallets/transactions snapshot on every single load.
   getVapidKey:  ()    => unwrap(client.get("/push/vapid-public-key")),
-  subscribe:    (sub) => unwrap(client.post("/push/subscribe", sub)),
-  unsubscribe:  (endpoint) => unwrap(client.delete("/push/subscribe", { data: { endpoint } })),
+  subscribe:    (sub) => unwrap(client.post("/push/subscribe", sub, { skipMutationTracking: true })),
+  unsubscribe:  (endpoint) => unwrap(client.delete("/push/subscribe", { data: { endpoint }, skipMutationTracking: true })),
 };
 
 export default client;

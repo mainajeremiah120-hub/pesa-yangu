@@ -133,7 +133,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
       <div className="py-hero" style={{ padding:"50px 24px 60px", borderBottom:`1px solid ${HAIRLINE}`, maxWidth:1216, margin:"0 auto" }}>
         <div style={{ flex:1.1 }}>
           <div style={{ fontSize:12.5, fontWeight:700, letterSpacing:"0.06em", color:TEAL, marginBottom:20 }}>PERSONAL FINANCE · KENYA</div>
-          <div style={{ fontFamily:serif, fontWeight:400, fontSize:"clamp(30px,5vw,48px)", lineHeight:1.12, color:TEXT, textWrap:"balance" }}>
+          <div style={{ fontFamily:serif, fontWeight:400, fontSize:"clamp(30px,5vw,48px)", lineHeight:1.12, color:GOLD, textWrap:"balance" }}>
             Your household's money, in one private ledger.
           </div>
           <div style={{ fontSize:14, color:MUTED, lineHeight:1.7, marginTop:22, maxWidth:"46ch" }}>

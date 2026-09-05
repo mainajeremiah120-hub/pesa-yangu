@@ -99,13 +99,14 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
         }
       `}</style>
 
-      {/* Ticker strip */}
+      {/* Ticker strip — each label jumps to the section that actually covers it */}
       <div style={{ display:"flex", alignItems:"center", gap:0, padding:"9px 24px", borderBottom:`1px solid ${HAIRLINE}`, background:PANEL, overflowX:"auto", whiteSpace:"nowrap" }}>
         {["BUDGETS","GOALS","INVESTMENTS","LOANS","INSURANCE"].map((label,i) => (
-          <span key={label} className="py-ticker-item" style={{ fontSize:9.5, letterSpacing:"0.12em", color:MUTED,
+          <span key={label} className="py-ticker-item py-navlink" onClick={()=>scrollTo("features")}
+            style={{ fontSize:9.5, letterSpacing:"0.12em", color:MUTED,
             padding: i===0 ? "0 20px 0 0" : "0 20px", borderRight:`1px solid ${HAIRLINE}` }}>{label}</span>
         ))}
-        <span style={{ fontSize:9.5, letterSpacing:"0.12em", color:GOLD, padding:"0 20px" }}>HOUSEHOLD SHARING</span>
+        <span className="py-navlink" onClick={()=>scrollTo("household")} style={{ fontSize:9.5, letterSpacing:"0.12em", color:GOLD, padding:"0 20px" }}>HOUSEHOLD SHARING</span>
         <div style={{ flex:1 }} />
         <span style={{ fontSize:9.5, letterSpacing:"0.1em", color:FAINT }}>PESAYANGU.AFRICA</span>
       </div>

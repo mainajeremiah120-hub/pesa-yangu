@@ -4,9 +4,9 @@
  */
 
 export const DARK = {
-  navy:        "#0A1712",
-  navyMid:     "#102A1F",
-  navyLight:   "#1C3A2C",
+  navy:        "#0A0A0B",
+  navyMid:     "#141414",
+  navyLight:   "#212121",
   teal:        "#00D4AA",
   gold:        "#F5C842",
   coral:       "#FF6B6B",
@@ -14,12 +14,12 @@ export const DARK = {
   purple:      "#9B59B6",
   green:       "#2ECC71",
   orange:      "#E67E22",
-  textPrimary: "#F0F4FF",
-  textMuted:   "#8FAE9C",
-  textFaint:   "#3D5F4E",
+  textPrimary: "#F5F5F5",
+  textMuted:   "#9B9B9B",
+  textFaint:   "#5A5A5A",
   // extras for light-mode-aware borders / shadows
   shadow:      "rgba(0,0,0,0.4)",
-  inputBorder: "#1C3A2C",
+  inputBorder: "#212121",
 };
 
 export const LIGHT = {

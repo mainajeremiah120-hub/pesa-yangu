@@ -82,6 +82,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
         .py-cta:hover{opacity:.85;}
         .py-navlink{cursor:pointer; transition:color .15s;}
         .py-navlink:hover{color:${TEXT};}
+        .py-ticker-item:hover{color:${TEAL} !important;}
         .py-hero{display:flex; gap:50px;}
         .py-benefits{display:flex;}
         .py-benefit{flex:1;}
@@ -102,7 +103,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
       <div style={{ display:"flex", alignItems:"center", gap:0, padding:"9px 24px", borderBottom:`1px solid ${HAIRLINE}`, background:PANEL, overflowX:"auto", whiteSpace:"nowrap" }}>
         {["BUDGETS","GOALS","INVESTMENTS","LOANS","INSURANCE"].map((label,i) => (
           <span key={label} className="py-ticker-item py-navlink" onClick={()=>scrollTo("features")}
-            style={{ fontSize:9.5, letterSpacing:"0.12em", color:MUTED,
+            style={{ fontSize:9.5, letterSpacing:"0.12em", color:GOLD,
             padding: i===0 ? "0 20px 0 0" : "0 20px", borderRight:`1px solid ${HAIRLINE}` }}>{label}</span>
         ))}
         <span className="py-navlink" onClick={()=>scrollTo("household")} style={{ fontSize:9.5, letterSpacing:"0.12em", color:TEAL, padding:"0 20px" }}>HOUSEHOLD SHARING</span>

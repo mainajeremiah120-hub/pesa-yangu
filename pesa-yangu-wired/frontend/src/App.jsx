@@ -1422,6 +1422,11 @@ export default function App() {
       logoutTimer = setTimeout(() => {
         setIdleWarning(false);
         logout();
+        // Land straight back on the sign-in form, not the marketing page —
+        // someone who just got timed out is trying to get back in, not
+        // browsing features.
+        setAuthMode("login");
+        setShowAuth(true);
         showToast("You were signed out due to inactivity.", "#E74C3C", 5000);
       }, LOGOUT_MS);
     };

@@ -171,9 +171,9 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
         )}
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:36 }}>
-          <div style={{ width:56, height:56, background:`linear-gradient(135deg,${C.teal},${C.blue})`,
+          <div style={{ width:56, height:56, background:`linear-gradient(135deg,${C.teal},${C.gold})`,
             borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:26, margin:"0 auto 14px" }}>◈</div>
+            fontSize:26, margin:"0 auto 14px", color:C.navy }}>◈</div>
           <div style={{ fontWeight:800, fontSize:22, letterSpacing:"-0.02em", color:C.textPrimary }}>Pesa Yangu</div>
           <div style={{ color:C.textMuted, fontSize:13, marginTop:4 }}>Smart personal finance for Kenya</div>
         </div>
@@ -191,7 +191,7 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
                   style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none", cursor:"pointer",
                     fontWeight:700, fontSize:13,
                     background: mode===m ? C.teal : "transparent",
-                    color:      mode===m ? "#0B1120" : C.textMuted,
+                    color:      mode===m ? C.navy : C.textMuted,
                     transition:"all 0.2s" }}>
                   {m === "login" ? "Sign In" : "Create Account"}
                 </button>
@@ -261,8 +261,8 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
               </div>
             )}
             {success && (
-              <div style={{ color:"#00D4AA", fontSize:12, marginBottom:14,
-                padding:"8px 12px", background:"#00D4AA14", borderRadius:8 }}>
+              <div style={{ color:C.teal, fontSize:12, marginBottom:14,
+                padding:"8px 12px", background:C.teal+"14", borderRadius:8 }}>
                 {success}
               </div>
             )}
@@ -270,7 +270,7 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
             {/* Don't show submit button after forgot success */}
             {!(mode === "forgot" && success) && (
               <button type="submit" disabled={loading}
-                style={{ width:"100%", padding:14, background:C.teal, color:"#0B1120",
+                style={{ width:"100%", padding:14, background:C.teal, color:C.navy,
                   border:"none", borderRadius:12, fontWeight:800, fontSize:15,
                   cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1,
                   transition:"opacity 0.2s" }}>

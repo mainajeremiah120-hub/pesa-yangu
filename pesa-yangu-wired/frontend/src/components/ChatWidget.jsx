@@ -14,6 +14,31 @@ const SEEN_KEY = "py_chat_last_seen";
 const DISMISS_KEY = "py_chat_dismissed"; // sessionStorage — clears on next login/session, same pattern as py_unlocked
 const ACTIVE_STATUSES = ["open", "in_progress"]; // statuses a follow-up message can be added to
 
+// Lightweight local FAQ layer — instant answers for common "how do I use X"
+// questions, so someone isn't stuck waiting a day for something we already
+// know how to explain. These replies are client-side only (never sent to
+// the backend); anything that doesn't match still goes to the real support
+// queue exactly as before.
+const FAQ = [
+  { keywords: ["goal", "goals", "target", "save for"], reply: "Tap Goals in the sidebar, then \"+ New Savings Goal\". Set a target amount and the account to fund it from — you can add money to it any time from there." },
+  { keywords: ["budget", "budgets", "overspend", "category limit"], reply: "Open Budgets to set a flat cap per category, or switch to Percentage mode in Settings → Budgeting Style so your caps recalculate automatically from your income each month." },
+  { keywords: ["saving", "savings rate"], reply: "Your Dashboard shows your savings rate automatically (income minus expenses, as a %). To save toward something specific, set up a Goal — tap Goals → \"+ New Savings Goal\"." },
+  { keywords: ["loan", "loans", "repayment", "interest"], reply: "Open Loans → \"+ Add Loan\". Record repayments as you make them — Pesa Yangu tracks compound interest and your remaining balance automatically." },
+  { keywords: ["invest", "investment", "portfolio", "returns"], reply: "Open Invest → \"+ Add Investment\". Log returns as they come in and your portfolio value updates on the Dashboard automatically." },
+  { keywords: ["insurance", "premium", "policy"], reply: "Open Insurance → \"+ Add Policy\". Record each premium payment as you make it so you can see what's paid and what's due." },
+  { keywords: ["recurring", "subscription", "every month"], reply: "Open Recurring → \"+ Add Recurring\" to set up a transaction that repeats on its own schedule." },
+  { keywords: ["reconcile", "statement", "mpesa statement", "m-pesa statement", "bank statement"], reply: "Open Reconcile, upload your bank or M-Pesa statement, and match it line by line against what you've already recorded." },
+  { keywords: ["household", "partner", "spouse", "wife", "husband", "link account", "linked account", "invite code"], reply: "Go to Settings → Household, generate an invite code, and share it with your partner. Once they join, you'll share every wallet, transaction, budget and goal — with separate logins." },
+  { keywords: ["account", "wallet", "bank account", "mobile money"], reply: "Go to Accounts → \"+ Add Account\" to add a wallet, mobile-money, or bank account. You can transfer between accounts from there too." },
+  { keywords: ["transaction", "record", "expense", "income", "history"], reply: "Tap \"+ Add Transaction\" anywhere in the app to log one, or open Records to see your full history and filter by date or category." },
+];
+function matchFaq(text) {
+  const t = text.toLowerCase();
+  return FAQ.find(f => f.keywords.some(k => t.includes(k))) || null;
+}
+const GREETING = "Hi! I'm the Pesa Yangu assistant. Ask me how to use Budgets, Goals, Loans, Investments, Insurance, Recurring, Reconcile, or Household sharing — I can help right away. For anything else, I'll bring in our support team.";
+const HANDOFF  = "Thanks for reaching out — I'll hand this over to our support team, please bear with us a little while they take a look. They'll reply right here.";
+
 function XIcon({ size = 22 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -42,6 +67,7 @@ export function ChatWidget({ user, C, showToast }) {
   const [sending,     setSending]     = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
   const [lastSeenAt,  setLastSeenAt]  = useState(() => localStorage.getItem(SEEN_KEY) || "");
+  const [botMessages, setBotMessages] = useState([]); // local-only assistant replies (greeting, FAQ, hand-off notice)
   const scrollRef = useRef(null);
   const seenAdminReplyRef = useRef(new Map()); // ticketId -> last admin_reply text we've already reacted to
   const hasPolledOnceRef = useRef(false); // avoid toasting for a reply that arrived before this tab was open
@@ -102,7 +128,14 @@ export function ChatWidget({ user, C, showToast }) {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, open]);
+  }, [messages, botMessages, open]);
+
+  // Greet once per fresh (ticket-less) visit to the panel.
+  useEffect(() => {
+    if (open && !active && botMessages.length === 0) {
+      setBotMessages([{ id: "bot-greeting", message: GREETING, sender_role: "bot", created_at: new Date().toISOString() }]);
+    }
+  }, [open, active, botMessages.length]);
 
   const unread = !open && active && new Date(active.updated_at) > new Date(lastSeenAt || 0);
 
@@ -110,6 +143,7 @@ export function ChatWidget({ user, C, showToast }) {
     const text = input.trim();
     if (!text || sending) return;
     setSending(true);
+    const isFreshConversation = !(active && ACTIVE_STATUSES.includes(active.status));
     try {
       if (active && ACTIVE_STATUSES.includes(active.status)) {
         const { message } = await ticketsApi.addMessage(active.id, text);
@@ -123,6 +157,17 @@ export function ChatWidget({ user, C, showToast }) {
       }
       setInput("");
       markSeen();
+
+      // Instant local assistant reply — a matched FAQ answers right away;
+      // anything unmatched gets a one-time hand-off notice (only for the
+      // first message of a fresh conversation — an ongoing thread already
+      // shows the persistent "waiting" banner below).
+      const faq = matchFaq(text);
+      if (faq) {
+        setBotMessages(b => [...b, { id: `bot-${Date.now()}`, message: faq.reply, sender_role: "bot", created_at: new Date().toISOString() }]);
+      } else if (isFreshConversation) {
+        setBotMessages(b => [...b, { id: `bot-${Date.now()}`, message: HANDOFF, sender_role: "bot", created_at: new Date().toISOString() }]);
+      }
     } catch (err) {
       showToast?.(err?.response?.data?.error || "Couldn't send — please try again.", C.coral);
     } finally {
@@ -212,25 +257,21 @@ export function ChatWidget({ user, C, showToast }) {
           </div>
 
           <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-            {!active && (
-              <div style={{ color: C.textMuted, fontSize: 12, textAlign: "center", marginTop: 30 }}>
-                👋 Send us a message and we'll get back to you here.
-              </div>
-            )}
             {loadingThread && messages.length === 0 && (
               <div style={{ color: C.textMuted, fontSize: 12, textAlign: "center", marginTop: 30 }}>Loading…</div>
             )}
-            {messages.map(m => {
+            {[...messages, ...botMessages].map(m => {
               const mine = m.sender_role === "user";
+              const bot = m.sender_role === "bot";
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
                   <div style={{
                     maxWidth: "80%", padding: "8px 12px", borderRadius: 12,
                     background: mine ? C.teal : C.navyLight,
-                    color: mine ? "#0B1120" : C.textPrimary,
+                    color: mine ? C.navy : C.textPrimary,
                     fontSize: 12.5, lineHeight: 1.4,
                   }}>
-                    {!mine && <div style={{ fontSize: 10, fontWeight: 700, color: C.teal, marginBottom: 2 }}>Support</div>}
+                    {!mine && <div style={{ fontSize: 10, fontWeight: 700, color: bot ? C.gold : C.teal, marginBottom: 2 }}>{bot ? "Pesa Yangu Assistant" : "Support"}</div>}
                     <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.message}</div>
                     <div style={{ fontSize: 9, opacity: 0.7, marginTop: 3, textAlign: "right" }}>{relTime(m.created_at)}</div>
                   </div>
@@ -262,7 +303,7 @@ export function ChatWidget({ user, C, showToast }) {
               disabled={!input.trim() || sending}
               style={{
                 background: C.teal, border: "none", borderRadius: 10, padding: "0 14px",
-                color: "#0B1120", fontWeight: 700, fontSize: 12.5,
+                color: C.navy, fontWeight: 700, fontSize: 12.5,
                 cursor: (!input.trim() || sending) ? "not-allowed" : "pointer",
                 opacity: (!input.trim() || sending) ? 0.5 : 1,
               }}

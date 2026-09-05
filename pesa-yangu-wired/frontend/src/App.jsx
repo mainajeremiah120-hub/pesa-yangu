@@ -3896,6 +3896,9 @@ export default function App() {
           .app-sidebar {
             display: none !important;
           }
+          .main-col {
+            margin-left: 0 !important;
+          }
           .sidebar-toggle-btn {
             display: none !important;
           }
@@ -3959,7 +3962,7 @@ export default function App() {
       <ChatWidget user={user} C={C} showToast={showToast}/>
 
       {/* Sidebar */}
-      <div className="app-sidebar" style={{width:sidebarCollapsed?72:230,flexShrink:0,background:C.navyMid,borderRight:`1px solid ${C.navyLight}`,display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",transition:"width 0.2s",zIndex:90}}>
+      <div className="app-sidebar" style={{width:sidebarCollapsed?72:230,flexShrink:0,background:C.navyMid,borderRight:`1px solid ${C.navyLight}`,display:"flex",flexDirection:"column",position:"fixed",top:0,left:0,bottom:0,height:"100vh",transition:"width 0.2s",zIndex:90}}>
         <div onClick={()=>setTab("dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"20px 18px",cursor:"pointer",flexShrink:0}}>
           <div style={{width:32,height:32,background:`linear-gradient(135deg,${C.teal},${C.gold})`,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,flexShrink:0,color:C.navy}}>◈</div>
           {!sidebarCollapsed && <div style={{minWidth:0}}>
@@ -3999,7 +4002,7 @@ export default function App() {
       </div>
 
       {/* Main column */}
-      <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+      <div className="main-col" style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",marginLeft:sidebarCollapsed?72:230,transition:"margin-left 0.2s"}}>
 
       {/* Header */}
       <div style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,padding:"11px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:80,gap:8,flexWrap:"wrap"}}>
@@ -4159,24 +4162,72 @@ export default function App() {
               </Card>
             </div>
 
-            {watched.length>0&&(
-              <Card onClick={() => setTab("budgets")} style={{borderLeft:`3px solid ${C.gold}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div style={{fontWeight:700,fontSize:13}}>🔔 Watching Closely</div>
-                  <button onClick={(e)=>{e.stopPropagation();setTab("budgets");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>Manage →</button>
-                </div>
-                {watched.map(c=>{
-                  const spent=spendByCat[c.id]||0,over=c.budget>0&&spent>c.budget;
-                  return<div key={c.id} style={{marginBottom:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                      <span style={{color:C.textMuted,fontSize:12}}>{c.icon} {c.name}</span>
-                      <span style={{fontSize:12,fontWeight:600,color:over?C.coral:C.textPrimary}}>{disp(spent)}{c.budget>0?` / ${disp(c.budget)}`:""}{over&&<span style={{color:C.coral}}> ⚠</span>}</span>
+            <div className="grid-3" style={{gap:14}}>
+              {watched.length>0&&(
+                <Card onClick={() => setTab("budgets")}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13}}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+                      Watching Closely
                     </div>
-                    {c.budget>0&&<Bar value={spent} max={c.budget} color={c.color}/>}
+                    <button onClick={(e)=>{e.stopPropagation();setTab("budgets");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View All</button>
+                  </div>
+                  {watched.map(c=>{
+                    const spent=spendByCat[c.id]||0,over=c.budget>0&&spent>c.budget;
+                    return<div key={c.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                      <div style={{width:34,height:34,borderRadius:"50%",background:c.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{c.icon}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                          <span style={{color:C.textPrimary,fontSize:12,fontWeight:600}}>{c.name}</span>
+                          <span style={{fontSize:11.5,fontWeight:600,color:over?C.coral:C.textMuted}}>{disp(spent)}{c.budget>0?` / ${disp(c.budget)}`:""}</span>
+                        </div>
+                        {c.budget>0&&<Bar value={spent} max={c.budget} color={c.color}/>}
+                      </div>
+                    </div>;
+                  })}
+                </Card>
+              )}
+
+              <Card onClick={() => setTab("transactions")}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{fontWeight:700,fontSize:13}}>Recent Entries</div>
+                  <button onClick={(e)=>{e.stopPropagation();setTab("transactions");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View All</button>
+                </div>
+                {txs.slice(0,2).map(t=>{
+                  const isRefund=t.type==="refund";
+                  const catId=t.category||t.category_id;
+                  const cat=t.type==="transfer_out"||t.type==="transfer_in"?{icon:"⇄",color:C.blue}:isRefund?{icon:"↩️",color:"#9B59B6"}:t.type==="expense"?expCats.find(c=>c.id===catId):incCats.find(c=>c.id===catId);
+                  const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
+                  const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
+                  return<div key={t.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                    <div style={{width:34,height:34,borderRadius:"50%",background:(cat?.color||C.blue)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"💸"}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.merchant||t.note||"Transaction"}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>{w?.name||"—"} · {fmtDate(t.date||t.tx_date)}</div>
+                    </div>
+                    <div style={{fontSize:12.5,fontWeight:700,color:isIn?C.teal:C.textPrimary,flexShrink:0}}>{isIn?"+":"−"}{disp(t.amount||parseFloat(t.amount_kes||0))}</div>
                   </div>;
                 })}
+                {txs.length===0&&<div style={{textAlign:"center",color:C.textFaint,padding:"14px 0",fontSize:12}}>No transactions yet.</div>}
               </Card>
-            )}
+
+              <Card onClick={openAiChat} style={{background:`linear-gradient(135deg,${C.teal}18,${C.navyMid})`,display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontFamily:"'DM Serif Display',serif",fontSize:17,lineHeight:1.3,marginBottom:8}}>Smart insights for a better you</div>
+                  <div style={{fontSize:11.5,color:C.textMuted,lineHeight:1.5,marginBottom:14}}>Track, plan and grow your money with confidence.</div>
+                </div>
+                <svg width="100%" height="46" viewBox="0 0 160 46" style={{marginBottom:14}}>
+                  <polyline points="0,40 30,30 60,34 90,18 120,10 160,4" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  {[[10,32,"14"],[45,26,"20"],[80,20,"26"],[115,14,"32"],[150,8,"38"]].map(([x,,h],i)=>(
+                    <rect key={i} x={x} y={46-Number(h)} width="10" height={h} rx="2" fill={C.teal} opacity={0.5+i*0.1}/>
+                  ))}
+                </svg>
+                <button onClick={(e)=>{e.stopPropagation();openAiChat();}} style={{background:C.teal,color:C.navy,border:"none",borderRadius:9,padding:"9px 14px",fontWeight:700,fontSize:11.5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  Explore Insights
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+                </button>
+              </Card>
+            </div>
 
             <div className="grid-2" style={{ gap: 14 }}>
               <Card onClick={() => {setSpendReportYear(new Date().getFullYear());setSpendReportMonth(new Date().getMonth()+1);openM("spendReport");}}>
@@ -4237,7 +4288,7 @@ export default function App() {
                 const w=wallets.find(w=>w.id===(t.wallet||t.wallet_id));
                 const isIn=t.type==="income"||t.type==="transfer_in"||isRefund;
                 return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<7?`1px solid ${C.navyLight}`:"none"}}>
-                  <div style={{width:34,height:34,borderRadius:9,background:(cat?.color||C.blue)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"💸"}</div>
+                  <div style={{width:34,height:34,borderRadius:"50%",background:(cat?.color||C.blue)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{cat?.icon||"💸"}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.merchant||t.note||"Transaction"}</div>
                     <div style={{fontSize:10,color:C.textMuted}}>{cat?.name||"—"} · {w?.name||"—"} · {fmtDate(t.date||t.tx_date)}{txTime(t)?" · "+txTime(t):""}</div>
@@ -4249,6 +4300,30 @@ export default function App() {
                 </div>;
               })}
               {txs.length===0&&<div style={{textAlign:"center",color:C.textFaint,padding:"20px 0",fontSize:13}}>No transactions yet. Click + Add to get started.</div>}
+            </Card>
+
+            {/* Quick Actions */}
+            <Card>
+              <div style={{fontWeight:700,fontSize:11,letterSpacing:"0.04em",textTransform:"uppercase",color:C.textMuted,marginBottom:14}}>Quick Actions</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:22}}>
+                {[
+                  {label:"Add Income",  color:C.teal,  icon:<path d="M12 5v14M5 12l7-7 7 7"/>, onClick:()=>{setEditTx(null);setFTx({...blankTx,type:"income",wallet:wallets[0]?.id||"",category:incCats[0]?.id||""});openM("tx");}},
+                  {label:"Add Expense", color:C.gold,  icon:<path d="M12 19V5M5 12l7 7 7-7"/>, onClick:()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}},
+                  {label:"Transfer",    color:C.blue,  icon:<><path d="M7 7h11l-3-3M17 17H6l3 3"/></>, onClick:()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}},
+                  {label:"Create Budget", color:C.teal, icon:<><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></>, onClick:()=>setTab("budgets")},
+                ].map(a=>(
+                  <button key={a.label} onClick={a.onClick} style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:9,color:C.textPrimary,fontSize:12.5,fontWeight:600}}>
+                    <div style={{width:30,height:30,borderRadius:"50%",border:`1.5px solid ${a.color}`,display:"flex",alignItems:"center",justifyContent:"center",color:a.color,flexShrink:0}}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{a.icon}</svg>
+                    </div>
+                    {a.label}
+                  </button>
+                ))}
+                <button onClick={()=>openM("importExport")} style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:9,color:C.textMuted,fontSize:12.5,fontWeight:600,marginLeft:"auto"}}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+                  More Actions
+                </button>
+              </div>
             </Card>
           </div>
         )}

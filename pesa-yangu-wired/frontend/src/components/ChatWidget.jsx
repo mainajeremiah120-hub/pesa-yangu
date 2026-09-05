@@ -165,7 +165,10 @@ export function ChatWidget({ user, C, showToast }) {
             fontSize: 24, boxShadow: "0 6px 20px #0006",
           }}
         >
-          💬
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+          </svg>
           {unread && !open && (
             <span style={{
               position: "absolute", top: -2, right: -2, width: 14, height: 14, borderRadius: "50%",

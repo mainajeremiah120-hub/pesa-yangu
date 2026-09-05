@@ -328,6 +328,33 @@ const Sparkline = ({ values, color, width=100, height=40 }) => {
   </svg>;
 };
 
+// Responsive gradient area chart (viewBox-scaled, unlike Sparkline's fixed
+// pixel canvas) — used for the Dashboard's Net Worth trend.
+const AreaChart = ({ values, color, height=90 }) => {
+  const C = useC();
+  const gid = useRef(`ac${Math.random().toString(36).slice(2,9)}`).current;
+  if (!values||values.length<2) return null;
+  const w=300, col=color||C.teal;
+  const min=Math.min(...values), max=Math.max(...values), range=max-min||1;
+  const pt=(v,i)=>[((i/(values.length-1))*w).toFixed(1), (height-((v-min)/range)*(height-6)-3).toFixed(1)];
+  const pts = values.map((v,i)=>pt(v,i));
+  const line = pts.map(p=>p.join(",")).join(" ");
+  const area = `0,${height} ${line} ${w},${height}`;
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{display:"block"}}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={col} stopOpacity="0.35"/>
+          <stop offset="100%" stopColor={col} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${gid})`}/>
+      <polyline points={line} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      {pts.map(([x,y],i)=><circle key={i} cx={x} cy={y} r="3" fill={C.navyMid} stroke={col} strokeWidth="1.6"/>)}
+    </svg>
+  );
+};
+
 const MiniBar = ({ data, height=90 }) => {
   const C = useC();
   const max = Math.max(...data.map(d=>d.value),1);
@@ -1365,6 +1392,7 @@ export default function App() {
   // callbacks (and AuthPage's onBack) move between it and the real auth form.
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("login");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const openM  = (key, extra={}) => setModals(p=>({...p,[key]:{open:true,...extra}}));
   const closeM = (key)            => setModals(p=>({...p,[key]:{open:false}}));
   const isOpen = (key)            => !!modals[key]?.open;
@@ -3779,6 +3807,28 @@ export default function App() {
     ...(user?.role==="admin" ? [{id:"admin", label:"Admin", icon:"🛡️"}] : []),
   ];
 
+  // Line-icon set for the sidebar (stroke="currentColor" so it inherits the
+  // nav item's active/inactive color automatically).
+  const NAV_ICONS = {
+    dashboard:    <path d="M3 11l9-7 9 7M5 10v10h14V10"/>,
+    accounts:     <><path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9 10v9M15 10v9"/><path d="M3 19h18"/></>,
+    transactions: <><path d="M6 6h13M6 12h13M6 18h13"/><circle cx="3" cy="6" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="18" r="1"/></>,
+    budgets:      <><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></>,
+    goals:        <><path d="M6 3v18"/><path d="M6 4h11l-2.5 3.5L17 11H6"/></>,
+    recurring:    <><path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/></>,
+    investments:  <><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></>,
+    loans:        <><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></>,
+    insurance:    <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>,
+    reconcile:    <><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.3 2.3L16 9.5"/></>,
+    settings:     <><circle cx="12" cy="12" r="2.8"/><path d="M19.4 13.5a1.7 1.7 0 000-3l-1.4-.3a6.4 6.4 0 00-.7-1.7l.8-1.2a1.7 1.7 0 00-2.4-2.4l-1.2.8a6.4 6.4 0 00-1.7-.7L12.5 3a1.7 1.7 0 00-3 0l-.3 1.4a6.4 6.4 0 00-1.7.7l-1.2-.8a1.7 1.7 0 00-2.4 2.4l.8 1.2a6.4 6.4 0 00-.7 1.7L2.6 10.5a1.7 1.7 0 000 3l1.4.3c.15.6.4 1.17.7 1.7l-.8 1.2a1.7 1.7 0 002.4 2.4l1.2-.8c.53.3 1.1.55 1.7.7l.3 1.4a1.7 1.7 0 003 0l.3-1.4c.6-.15 1.17-.4 1.7-.7l1.2.8a1.7 1.7 0 002.4-2.4l-.8-1.2c.3-.53.55-1.1.7-1.7z"/></>,
+    admin:        <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>,
+  };
+  const NavIcon = ({id, size=18}) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      {NAV_ICONS[id]}
+    </svg>
+  );
+
   const ACCT_TYPE = {current:"Current",savings:"Savings",investment:"Investment",cash:"Cash",digital:"Mobile Money"};
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -3786,7 +3836,7 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <ThemeCtx.Provider value={C}>
-    <div style={{minHeight:"100vh",background:C.navy,color:C.textPrimary,fontFamily:"'Inter',-apple-system,sans-serif",display:"flex",flexDirection:"column",overflowX:"hidden",transition:"background 0.3s,color 0.3s"}}>
+    <div style={{minHeight:"100vh",background:C.navy,color:C.textPrimary,fontFamily:"'Inter',-apple-system,sans-serif",display:"flex",flexDirection:"row",overflowX:"hidden",transition:"background 0.3s,color 0.3s"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -3843,7 +3893,10 @@ export default function App() {
             grid-template-columns: 1fr !important;
             gap: 12px !important;
           }
-          .desktop-nav {
+          .app-sidebar {
+            display: none !important;
+          }
+          .sidebar-toggle-btn {
             display: none !important;
           }
           .mobile-bottom-nav {
@@ -3905,12 +3958,54 @@ export default function App() {
 
       <ChatWidget user={user} C={C} showToast={showToast}/>
 
-      {/* Header */}
-      <div style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,padding:"11px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,gap:8,flexWrap:"wrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-          <div onClick={()=>setTab(tab==="settings"?"dashboard":"settings")} style={{width:30,height:30,background:`linear-gradient(135deg,${C.teal},${C.blue})`,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,cursor:"pointer"}}>◈</div>
-          <span style={{fontWeight:800,fontSize:16,letterSpacing:"-0.02em"}}>Pesa Yangu</span>
+      {/* Sidebar */}
+      <div className="app-sidebar" style={{width:sidebarCollapsed?72:230,flexShrink:0,background:C.navyMid,borderRight:`1px solid ${C.navyLight}`,display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",transition:"width 0.2s",zIndex:90}}>
+        <div onClick={()=>setTab("dashboard")} style={{display:"flex",alignItems:"center",gap:10,padding:"20px 18px",cursor:"pointer",flexShrink:0}}>
+          <div style={{width:32,height:32,background:`linear-gradient(135deg,${C.teal},${C.gold})`,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,flexShrink:0,color:C.navy}}>◈</div>
+          {!sidebarCollapsed && <div style={{minWidth:0}}>
+            <div style={{fontWeight:800,fontSize:15,letterSpacing:"-0.02em",whiteSpace:"nowrap"}}>Pesa Yangu</div>
+            <div style={{fontSize:9,letterSpacing:"0.1em",color:C.textFaint,whiteSpace:"nowrap"}}>PRIVATE LEDGER</div>
+          </div>}
         </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"6px 12px",display:"flex",flexDirection:"column",gap:2}}>
+          {NAV.map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} title={sidebarCollapsed?n.label:undefined}
+              style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
+                background:tab===n.id?C.teal+"22":"none",border:"none",
+                color:tab===n.id?C.teal:C.textMuted,fontWeight:tab===n.id?700:500,fontSize:13,
+                cursor:"pointer",textAlign:"left",whiteSpace:"nowrap",overflow:"hidden"}}>
+              <NavIcon id={n.id}/>
+              {!sidebarCollapsed && n.label}
+            </button>
+          ))}
+        </div>
+
+        {plan!=="pro" && !sidebarCollapsed && (
+          <div style={{margin:"6px 12px 12px",padding:14,background:`linear-gradient(135deg,${C.gold}22,${C.navyLight})`,border:`1px solid ${C.gold}44`,borderRadius:12,flexShrink:0}}>
+            <div style={{fontWeight:700,fontSize:12,marginBottom:4,color:C.gold}}>Go Premium</div>
+            <div style={{fontSize:10.5,color:C.textMuted,marginBottom:10,lineHeight:1.4}}>Unlock powerful tools and deeper insights.</div>
+            <button onClick={()=>openM("billing")} style={{width:"100%",background:C.gold,color:C.navy,border:"none",borderRadius:8,padding:"7px 0",fontWeight:700,fontSize:11,cursor:"pointer"}}>Upgrade Now</button>
+          </div>
+        )}
+
+        <div onClick={()=>setTab("settings")} style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",borderTop:`1px solid ${C.navyLight}`,cursor:"pointer",flexShrink:0}}>
+          <div style={{width:32,height:32,borderRadius:"50%",background:C.navyLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0}}>{(user.full_name||"?")[0].toUpperCase()}</div>
+          {!sidebarCollapsed && <div style={{minWidth:0,overflow:"hidden"}}>
+            <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.full_name}</div>
+            {household?.partner && <div style={{fontSize:9.5,letterSpacing:"0.06em",color:C.teal,fontWeight:700}}>{household.partner.full_name.toUpperCase()}</div>}
+          </div>}
+        </div>
+      </div>
+
+      {/* Main column */}
+      <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+
+      {/* Header */}
+      <div style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,padding:"11px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:80,gap:8,flexWrap:"wrap"}}>
+        <button className="sidebar-toggle-btn" onClick={()=>setSidebarCollapsed(s=>!s)} style={{background:C.navyLight,border:"none",borderRadius:8,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:C.textMuted,flexShrink:0}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
         <select value={baseCurrency} onChange={e=>setBase(e.target.value)} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.textPrimary,padding:"5px 10px",fontSize:12,cursor:"pointer",outline:"none"}}>
           {currencies.map(c=><option key={c.code} value={c.code}>{c.code} {c.symbol}</option>)}
         </select>
@@ -3923,15 +4018,6 @@ export default function App() {
           <button onClick={toggleTheme} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:8,color:C.textMuted,padding:"6px 10px",cursor:"pointer",fontSize:15,lineHeight:1,transition:"background 0.2s,color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.color=C.teal;}} onMouseLeave={e=>{e.currentTarget.style.color=C.textMuted;}}>{theme==="dark"?"☀️":"🌙"}</button>
           <button onClick={logout} style={{background:"none",border:`1px solid ${C.coral}55`,borderRadius:8,color:C.coral,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,lineHeight:1,transition:"background 0.2s,border-color 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.background=C.coral+"22";e.currentTarget.style.borderColor=C.coral;}} onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.borderColor=C.coral+"55";}}>Sign Out</button>
         </div>
-      </div>
-
-      {/* Nav tabs */}
-      <div className="desktop-nav" style={{background:C.navyMid,borderBottom:`1px solid ${C.navyLight}`,display:"flex",overflowX:"auto",padding:"0 10px"}}>
-        {NAV.map(n=>(
-          <button key={n.id} onClick={()=>setTab(n.id)} style={{background:"none",border:"none",color:tab===n.id?C.teal:C.textMuted,padding:"10px 13px",cursor:"pointer",fontWeight:tab===n.id?700:500,borderBottom:tab===n.id?`2px solid ${C.teal}`:"2px solid transparent",fontSize:12,whiteSpace:"nowrap",transition:"all 0.2s"}}>
-            {n.icon} {n.label}
-          </button>
-        ))}
       </div>
 
       {/* Page */}
@@ -3960,37 +4046,117 @@ export default function App() {
               </div>
             )}
 
+            {/* Stat strip */}
+            <div style={{display:"flex",flexWrap:"wrap",background:C.navyMid,border:`1px solid ${C.navyLight}`,borderRadius:16,overflow:"hidden"}}>
+              <div style={{flex:"1 1 150px",padding:"14px 20px",borderRight:`1px solid ${C.navyLight}`}}>
+                <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Net Worth</div>
+                <div style={{fontSize:16,fontWeight:700,color:C.teal}}>{disp(netWorth)}</div>
+              </div>
+              <div style={{flex:"1 1 150px",padding:"14px 20px",borderRight:`1px solid ${C.navyLight}`}}>
+                <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Savings Rate</div>
+                <div style={{fontSize:16,fontWeight:700}}>{savingsRate.toFixed(0)}%</div>
+              </div>
+              <div style={{flex:"1 1 150px",padding:"14px 20px",borderRight:overBudget.length>0?`1px solid ${C.navyLight}`:"none"}}>
+                <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Health Score</div>
+                <div style={{fontSize:16,fontWeight:700,color:score>=75?C.teal:score>=50?C.gold:C.coral}}>{score} / 100</div>
+              </div>
+              {overBudget.length>0&&(
+                <div onClick={()=>setTab("budgets")} style={{flex:"1 1 150px",padding:"14px 20px",cursor:"pointer"}}>
+                  <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Budget Over</div>
+                  <div style={{fontSize:14,fontWeight:700,color:C.gold,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{overBudget[0].name}{overBudget.length>1?` +${overBudget.length-1}`:""}</div>
+                </div>
+              )}
+            </div>
+
             <div className="grid-2-1">
+              <Card onClick={() => setTab("accounts")}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:2}}>
+                  <div>
+                    <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Net Worth</div>
+                    <div style={{color:C.textMuted,fontSize:11}}>Assets − Liabilities</div>
+                  </div>
+                  {household?.partner && <Badge color={C.teal}>🔗 Linked with {household.partner.full_name}</Badge>}
+                </div>
+                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:32,color:C.textPrimary,margin:"6px 0 10px"}}>{disp(netWorth)}</div>
+                <AreaChart values={[netWorth*0.82,netWorth*0.86,netWorth*0.84,netWorth*0.90,netWorth*0.95,netWorth*0.97,netWorth]} color={C.teal} height={80}/>
+              </Card>
               <Card>
-                <div style={{display:"flex",alignItems:"center",gap:18}}>
-                  <HealthRing score={score}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-                      Financial Health — {user.full_name}
-                      {household?.partner && <span style={{color:C.teal,fontWeight:700,letterSpacing:"normal",textTransform:"none",fontSize:10}}>🔗 Linked with {household.partner.full_name}</span>}
-                    </div>
-                    <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24,color:score>=75?C.teal:score>=50?C.gold:C.coral,lineHeight:1.1,marginBottom:6}}>
-                      {score>=75?"Looking Good":score>=50?"Room to Improve":"Needs Attention"}
-                    </div>
-                    <div style={{color:C.textMuted,fontSize:12}}>Savings rate <strong style={{color:C.teal}}>{savingsRate.toFixed(0)}%</strong> · {overBudget.length} budget{overBudget.length!==1?"s":""} over{activeGoals.length>0&&<> · Goals <strong style={{color:C.teal}}>{goalsFactor.toFixed(0)}%</strong></>}</div>
-                    {overBudget.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>{overBudget.map(a=><Badge key={a.id} color={C.coral}>⚠ {a.name}</Badge>)}</div>}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontWeight:700,fontSize:13}}>Account Summary</div>
+                  <button onClick={(e)=>{e.stopPropagation();setTab("settings");}} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11}}>View Profile</button>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${C.navyLight}`}}><span style={{color:C.textMuted,fontSize:12}}>Holder</span><span style={{fontSize:12,fontWeight:600}}>{user.full_name}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${C.navyLight}`}}><span style={{color:C.textMuted,fontSize:12}}>Linked Account</span><span style={{fontSize:12,fontWeight:600,color:household?.partner?C.teal:C.textFaint}}>{household?.partner?household.partner.full_name:"Not linked"}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.navyLight}`}}>
+                  <span style={{color:C.textMuted,fontSize:12}}>Health Score</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:70,height:5,background:C.navyLight,borderRadius:3,overflow:"hidden"}}><div style={{width:`${score}%`,height:"100%",background:score>=75?C.teal:score>=50?C.gold:C.coral}}/></div>
+                    <span style={{fontSize:12,fontWeight:600}}>{score} / 100</span>
                   </div>
                 </div>
-              </Card>
-              <Card onClick={() => setTab("accounts")}>
-                <div style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Net Worth</div>
-                <div style={{fontFamily:"'DM Serif Display',serif",fontSize:26,color:C.textPrimary}}>{disp(netWorth)}</div>
-                <div style={{color:C.textMuted,fontSize:11,marginTop:5,marginBottom:8}}>{baseCurrency} · Assets − Liabilities</div>
-                <Sparkline values={[netWorth*0.88,netWorth*0.91,netWorth*0.89,netWorth*0.94,netWorth*0.97,netWorth]} color={C.teal} width={140} height={30}/>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0"}}>
+                  <span style={{color:C.textMuted,fontSize:12}}>Status</span>
+                  <span style={{fontSize:12,fontWeight:600,color:score>=75?C.teal:score>=50?C.gold:C.coral}}>{score>=75?"Looking Good":score>=50?"Room to Improve":"Needs Attention"}</span>
+                </div>
               </Card>
             </div>
 
             <div className="grid-5">
-              <Card onClick={() => setTab("accounts")}><Chip label="Total Balance" value={disp(totalBalance)} color={C.textPrimary} sub={`${wallets.length} accounts`}/></Card>
-              <Card onClick={() => setTab("transactions")}><Chip label="Income" value={disp(totalIncome)} color={C.teal} sub="This month"/></Card>
-              <Card onClick={() => setTab("transactions")}><Chip label="Expenses" value={disp(totalExpense)} color={totalExpense>totalIncome*0.8?C.coral:C.textPrimary} sub={`${totalIncome>0?((totalExpense/totalIncome)*100).toFixed(0):0}% of income`}/></Card>
-              <Card onClick={() => setTab("investments")}><Chip label="Investments" value={disp(portfolioValue)} color={C.teal} sub={`${investments.length} asset${investments.length!==1?"s":""}`}/></Card>
-              <Card onClick={() => setTab("loans")}><Chip label="Total Debt" value={disp(totalDebt)} color={C.coral} sub={`${loans.length} loan${loans.length!==1?"s":""}`}/></Card>
+              <Card onClick={() => setTab("accounts")}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",background:C.teal+"22",display:"flex",alignItems:"center",justifyContent:"center",color:C.teal,flexShrink:0}}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M16 12h.01"/></svg>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,color:C.textMuted,marginBottom:2}}>Balance</div>
+                    <div style={{fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{disp(totalBalance)}</div>
+                  </div>
+                </div>
+              </Card>
+              <Card onClick={() => setTab("transactions")}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",background:C.teal+"22",display:"flex",alignItems:"center",justifyContent:"center",color:C.teal,flexShrink:0}}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,color:C.textMuted,marginBottom:2}}>Income</div>
+                    <div style={{fontSize:14,fontWeight:700,color:C.teal,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>+{disp(totalIncome)}</div>
+                  </div>
+                </div>
+              </Card>
+              <Card onClick={() => setTab("transactions")}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",background:C.gold+"22",display:"flex",alignItems:"center",justifyContent:"center",color:C.gold,flexShrink:0}}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,color:C.textMuted,marginBottom:2}}>Expenses</div>
+                    <div style={{fontSize:14,fontWeight:700,color:totalExpense>totalIncome*0.8?C.coral:C.textPrimary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{disp(totalExpense)}</div>
+                  </div>
+                </div>
+              </Card>
+              <Card onClick={() => setTab("investments")}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",background:C.teal+"22",display:"flex",alignItems:"center",justifyContent:"center",color:C.teal,flexShrink:0}}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,color:C.textMuted,marginBottom:2}}>Investments</div>
+                    <div style={{fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{disp(portfolioValue)}</div>
+                  </div>
+                </div>
+              </Card>
+              <Card onClick={() => setTab("loans")}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",background:C.coral+"22",display:"flex",alignItems:"center",justifyContent:"center",color:C.coral,flexShrink:0}}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9 10v9M15 10v9"/><path d="M3 19h18"/></svg>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,color:C.textMuted,marginBottom:2}}>Total Debt</div>
+                    <div style={{fontSize:14,fontWeight:700,color:totalDebt>0?C.coral:C.textPrimary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{disp(totalDebt)}</div>
+                  </div>
+                </div>
+              </Card>
             </div>
 
             {watched.length>0&&(
@@ -5164,6 +5330,9 @@ export default function App() {
           </div>
         )}
       </div>
+
+      </div>
+      {/* main-column wrapper close */}
 
       {/* MODALS  */}
 

@@ -127,7 +127,16 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
         setTimeout(() => reset("login"), 2500);
       }
     } catch (err) {
-      setError(err?.response?.data?.error || "Something went wrong. Please try again.");
+      // No response at all (offline, DNS failure, request timeout) reads very
+      // differently from a real server-side rejection (wrong password, a
+      // validation error) — the generic fallback below was showing for both,
+      // which sent people trying the same login again instead of checking
+      // their connection.
+      if (!err?.response) {
+        setError("Check your internet connection and try again.");
+      } else {
+        setError(err.response.data?.error || "Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

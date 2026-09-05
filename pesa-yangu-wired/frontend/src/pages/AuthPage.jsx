@@ -60,7 +60,7 @@ function PasswordField({ value, onChange, placeholder, C }) {
   );
 }
 
-export default function AuthPage({ onLogin, onRegister }) {
+export default function AuthPage({ onLogin, onRegister, initialMode="login", onBack }) {
   const [theme, setThemeState] = useState(getTheme);
   const C = tokens(theme);
 
@@ -83,7 +83,7 @@ export default function AuthPage({ onLogin, onRegister }) {
     }
   }, []);
 
-  const [mode,     setMode]     = useState("login"); // login | register | forgot | reset
+  const [mode,     setMode]     = useState(initialMode); // login | register | forgot | reset
   const [name,     setName]     = useState("");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
@@ -153,6 +153,13 @@ export default function AuthPage({ onLogin, onRegister }) {
       `}</style>
 
       <div style={{ width:"100%", maxWidth:400 }}>
+        {onBack && (
+          <div onClick={onBack} style={{ color:C.textMuted, fontSize:12.5, fontWeight:600, cursor:"pointer",
+            display:"flex", alignItems:"center", gap:6, marginBottom:20 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Back to pesayangu.africa
+          </div>
+        )}
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:36 }}>
           <div style={{ width:56, height:56, background:`linear-gradient(135deg,${C.teal},${C.blue})`,

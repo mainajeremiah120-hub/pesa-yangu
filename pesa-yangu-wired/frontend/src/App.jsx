@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext, lazy, Suspense } from "react";
 import AuthPage from "./pages/AuthPage.jsx";
+import LandingPage from "./pages/LandingPage.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
@@ -1360,6 +1361,10 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const [modals, setModals] = useState({});
+  // Signed-out visitors see the marketing landing page first; these two
+  // callbacks (and AuthPage's onBack) move between it and the real auth form.
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
   const openM  = (key, extra={}) => setModals(p=>({...p,[key]:{open:true,...extra}}));
   const closeM = (key)            => setModals(p=>({...p,[key]:{open:false}}));
   const isOpen = (key)            => !!modals[key]?.open;
@@ -3708,7 +3713,13 @@ export default function App() {
     return <AuthPage onLogin={login} onRegister={register}/>;
 
   if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yangu…"/></ThemeCtx.Provider>;
-  if (!user)       return <AuthPage onLogin={login} onRegister={register}/>;
+  if (!user && !showAuth) return (
+    <LandingPage
+      onGetStarted={()=>{setAuthMode("register");setShowAuth(true);}}
+      onSignIn={()=>{setAuthMode("login");setShowAuth(true);}}
+    />
+  );
+  if (!user)       return <AuthPage onLogin={login} onRegister={register} initialMode={authMode} onBack={()=>setShowAuth(false)}/>;
   // PIN lock — gates everyone (including admins) below this point. Wrapped in
   // ThemeCtx.Provider because Field/Btn read the theme via useC()/context,
   // same lesson as the admin-dashboard crash fixed earlier today.

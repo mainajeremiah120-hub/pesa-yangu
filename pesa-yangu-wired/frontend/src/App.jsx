@@ -1359,6 +1359,8 @@ export default function App() {
   const setTab = (newTab) => {
     _setTab(newTab);
     if (newTab !== "transactions") { setTxSearch(""); setTxWalletFilter(""); }
+    if (newTab !== "accounts") setWalletSearch("");
+    if (newTab !== "budgets") setBudgetSearch("");
     window.history.pushState({ tab: newTab }, "", "#" + newTab);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1369,6 +1371,8 @@ export default function App() {
       const t = e.state?.tab || "dashboard";
       _setTab(t);
       if (t !== "transactions") { setTxSearch(""); setTxWalletFilter(""); }
+      if (t !== "accounts") setWalletSearch("");
+      if (t !== "budgets") setBudgetSearch("");
       window.scrollTo({ top: 0, behavior: "smooth" });
     };
     // Seed the initial history entry so back can return to it
@@ -1910,6 +1914,18 @@ export default function App() {
   const [walletView,     setWalletView]     = useState("grid");
   const [budgetSearch,   setBudgetSearch]   = useState("");
   const [budgetView,     setBudgetView]     = useState("all"); // "all"|"expense"|"income"
+
+  // Searches/filters are per-session UI state, not saved preferences — the
+  // component never unmounts on logout (only `user` goes null), so without
+  // this they'd silently survive into the next person's session on a shared
+  // device, or just reappear stale on your own next login.
+  useEffect(() => {
+    if (user) return;
+    setTxSearch(""); setTxWalletFilter(""); setTxTypeFilter("all"); setTxPeriod("all");
+    setTxDateFrom(""); setTxDateTo(""); setTxSpecificDate(todayStr()); setTxCompare(false);
+    setWalletSearch("");
+    setBudgetSearch("");
+  }, [user]);
 
   // ── Per-month budget overrides (manual mode only). A category's budget_kes
   // is the constant default that applies every month unless a monthly_budgets

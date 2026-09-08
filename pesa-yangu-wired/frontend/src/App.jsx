@@ -2103,7 +2103,7 @@ export default function App() {
   // FORM BLANKS
   // ─────────────────────────────────────────────────────────────────────────
   const blankTx    = { type:"expense", category:"", amount:"", wallet:"", note:"", merchant:"", isRecurring:false, freq:"monthly", time:"" };
-  const blankXfer  = { from:"", to:"", amount:"", note:"" };
+  const blankXfer  = { from:"", to:"", amount:"", note:"", date:"" };
   const blankWindfall = { amount:"", fromWallet:"" };
   const blankWal   = { name:"", accountType:"current", currency:"KES", icon:"🏦", color:C.teal, openingBalance:"", currentBalance:"" };
   const blankExpCat= { id:null, name:"", icon:"🏷️", color:C.blue, budget:"", watch:false, parentId:null, allocationType:"fixed", percentOfParent:"", spendKind:null, linkedWalletId:null, kind:"spending", windfallPercent:"", goalTarget:"", goalDeadline:"" };
@@ -2239,6 +2239,7 @@ export default function App() {
       to:     inLeg.wallet||inLeg.wallet_id,
       amount: String(fromKES(outLeg.amount ?? parseFloat(outLeg.amount_kes||0), fromW?.currency||"KES", currencies)),
       note:   outLeg.note||"",
+      date:   outLeg.date||"",
     });
     openM("xfer");
   };
@@ -2264,6 +2265,7 @@ export default function App() {
           const oldIn  = txs.find(x=>x.transfer_pair_id===editXferPairId && x.type==="transfer_in");
           const { transfer_out, transfer_in } = await txApi.updateTransfer(editXferPairId, {
             from_wallet_id: fXfer.from, to_wallet_id: fXfer.to, amount_kes: amtKES, note: fXfer.note||undefined,
+            tx_date: fXfer.date||undefined,
           });
           setTxs(p=>p.map(t=>{
             if(t.id===transfer_out.id) return {...t, ...transfer_out, wallet:transfer_out.wallet_id, amount:parseFloat(transfer_out.amount_kes), date:txLocalDate(transfer_out)};
@@ -2285,7 +2287,7 @@ export default function App() {
       }
 
       try {
-        await walletsApi.transfer({ from_wallet_id:fXfer.from, to_wallet_id:fXfer.to, amount_kes:amtKES, note:fXfer.note||undefined });
+        await walletsApi.transfer({ from_wallet_id:fXfer.from, to_wallet_id:fXfer.to, amount_kes:amtKES, note:fXfer.note||undefined, tx_date:fXfer.date||undefined });
         setWallets(p=>p.map(w=>{
           if(w.id===fXfer.from) return{...w,balance:parseFloat(w.balance)-amtKES};
           if(w.id===fXfer.to)   return{...w,balance:parseFloat(w.balance)+amtKES};
@@ -5460,6 +5462,7 @@ export default function App() {
         }} options={wOpts}/>
         <Field label="To" value={fXfer.to} onChange={v=>setFXfer({...fXfer,to:v})} options={wallets.filter(w=>w.id!==fXfer.from).map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))}/>
         <Field label="Amount" type="number" value={fXfer.amount} onChange={v=>setFXfer({...fXfer,amount:v})} placeholder="0.00" note="In source account's currency"/>
+        <Field label="Date" type="date" value={fXfer.date||todayStr()} onChange={v=>setFXfer({...fXfer,date:v})}/>
         <Field label="Note (optional)" value={fXfer.note} onChange={v=>setFXfer({...fXfer,note:v})} placeholder="e.g. Moving to savings"/>
         <Btn onClick={doTransfer} disabled={xferBusy} style={{width:"100%",padding:13,fontSize:14}}>{xferBusy?"Please wait…":editXferPairId?"Save Changes":"Transfer Funds"}</Btn>
       </Modal>

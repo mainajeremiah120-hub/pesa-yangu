@@ -114,7 +114,7 @@ router.delete("/:id", async (req, res, next) => {
 
 router.post("/transfer", async (req, res, next) => {
   try {
-    const d = z.object({ from_wallet_id:z.string().uuid(), to_wallet_id:z.string().uuid(), amount_kes:z.number().positive(), note:z.string().optional(), category_id:z.string().uuid().optional() }).parse(req.body);
+    const d = z.object({ from_wallet_id:z.string().uuid(), to_wallet_id:z.string().uuid(), amount_kes:z.number().positive(), note:z.string().optional(), category_id:z.string().uuid().optional(), tx_date:z.string().max(30).optional() }).parse(req.body);
     if(d.from_wallet_id===d.to_wallet_id) return res.status(400).json({error:"Source and destination cannot be the same"});
     if (d.category_id) {
       const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.dataOwnerId]);
@@ -128,8 +128,8 @@ router.post("/transfer", async (req, res, next) => {
       if(parseFloat(from.balance)<d.amount_kes) throw Object.assign(new Error("Insufficient balance"),{status:400});
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[d.amount_kes,d.from_wallet_id]);
       await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[d.amount_kes,d.to_wallet_id]);
-      await client.query(`INSERT INTO transactions (user_id,wallet_id,type,amount_kes,note,transfer_pair_id,category_id) VALUES ($1,$2,'transfer_out',$3,$4,$5,$7),($1,$6,'transfer_in',$3,$4,$5,NULL)`,
-        [req.dataOwnerId,d.from_wallet_id,d.amount_kes,d.note||null,pairId,d.to_wallet_id,d.category_id||null]);
+      await client.query(`INSERT INTO transactions (user_id,wallet_id,type,amount_kes,note,transfer_pair_id,category_id,tx_date) VALUES ($1,$2,'transfer_out',$3,$4,$5,$7,$8),($1,$6,'transfer_in',$3,$4,$5,NULL,$8)`,
+        [req.dataOwnerId,d.from_wallet_id,d.amount_kes,d.note||null,pairId,d.to_wallet_id,d.category_id||null,d.tx_date||new Date()]);
     });
     res.json({ok:true});
   } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}

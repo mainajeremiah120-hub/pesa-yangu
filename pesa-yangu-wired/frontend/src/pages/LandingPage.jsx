@@ -1,24 +1,23 @@
 /**
  * frontend/src/pages/LandingPage.jsx
  * Marketing entry point shown to signed-out visitors before AuthPage.
- * Palette matches the in-app system: neutral dark surfaces (no tint, no
- * shadows), teal as the primary accent, gold reserved for secondary
- * highlights — same as theme.js's DARK tokens, so this page and the real
- * app read as one thing. Flat throughout by design: hairline borders only,
+ * Deep-green palette (Jeremy's preferred direction for this page
+ * specifically — the main app itself stays neutral/no-tint, this is a
+ * deliberate exception). Flat throughout regardless: hairline borders only,
  * no box-shadow, no gradient glow — nothing "shaded".
  */
 import { useState, useEffect } from "react";
 
-const TEAL    = "#00D4AA";
-const GOLD    = "#F5C842";
-const CORAL   = "#FF6B6B";
-const INK     = "#0A0A0B";
-const PANEL   = "#141414";
-const PANEL2  = "#1A1A1A";
-const TEXT    = "#F5F5F5";
-const MUTED   = "#9B9B9B";
-const FAINT   = "#5A5A5A";
-const HAIRLINE = "rgba(255,255,255,0.1)";
+const TEAL    = "#2ABFAA";
+const GOLD    = "#D4A843";
+const CORAL   = "#E07070";
+const INK     = "#0F2419";
+const PANEL   = "#153323";
+const PANEL2  = "#1A3D2B";
+const TEXT    = "#F2EFE6";
+const MUTED   = "#8A9E8F";
+const FAINT   = "#5A7268";
+const HAIRLINE = "rgba(255,255,255,0.08)";
 
 const display = "'Sora', 'Inter', -apple-system, sans-serif";
 const sans    = "'Inter', -apple-system, sans-serif";
@@ -133,7 +132,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           <h1 style={{ fontFamily:display, fontWeight:800, fontSize:"clamp(34px,5vw,54px)", lineHeight:1.08, letterSpacing:"-0.02em", margin:"0 0 22px", textWrap:"balance" }}>
             Your money,<br/><span style={{ color:TEAL }}>finally making sense.</span>
           </h1>
-          <p style={{ fontSize:16.5, color:MUTED, lineHeight:1.7, maxWidth:440, marginBottom:36 }}>
+          <p style={{ fontSize:16.5, color:MUTED, lineHeight:1.5, maxWidth:440, marginBottom:24 }}>
             Budgets, goals, loans, investments and insurance — one clean app built for how people actually manage money, with a shared ledger two partners can hold the pen on together.
           </p>
           <div style={{ display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
@@ -193,7 +192,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           <div>
             <div style={{ fontSize:12.5, fontWeight:700, color:GOLD, marginBottom:14 }}>SOUND FAMILIAR?</div>
             <h2 style={{ fontFamily:display, fontWeight:800, fontSize:"clamp(26px,3.6vw,36px)", lineHeight:1.15, marginBottom:30, textWrap:"balance" }}>You earn well. But where does it go?</h2>
-            <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
               {[
                 ["Salary arrives, disappears.", "By the 20th you're wondering where it all went."],
                 ["Several accounts, zero visibility.", "Bank, mobile money, SACCO — no idea what the combined total is."],
@@ -208,8 +207,8 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
             </div>
           </div>
           <div style={{ background:INK, border:`1px solid ${HAIRLINE}`, borderRadius:18, padding:"38px 34px" }}>
-            <p style={{ fontSize:17, color:TEXT, lineHeight:1.75, marginBottom:16 }}>Most people are not bad with money. They just have <span style={{ color:TEAL, fontWeight:600 }}>no single place to see all of it</span> at once.</p>
-            <p style={{ fontSize:14.5, color:MUTED, lineHeight:1.75 }}>Pesa Yangu puts your entire financial picture — income, spending, debt, savings, investments, insurance — in one clean view, so you can make smarter decisions with what you already earn.</p>
+            <p style={{ fontSize:17, color:TEXT, lineHeight:1.5, marginBottom:10 }}>Most people are not bad with money. They just have <span style={{ color:TEAL, fontWeight:600 }}>no single place to see all of it</span> at once.</p>
+            <p style={{ fontSize:14.5, color:MUTED, lineHeight:1.55 }}>Pesa Yangu puts your entire financial picture — income, spending, debt, savings, investments, insurance — in one clean view, so you can make smarter decisions with what you already earn.</p>
           </div>
         </div>
       </div>
@@ -218,7 +217,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
       <div id="features" style={{ maxWidth:1120, margin:"0 auto", padding:"88px 24px" }}>
         <div style={{ fontSize:12.5, fontWeight:700, color:GOLD, marginBottom:14 }}>WHAT PESA YANGU DOES</div>
         <h2 style={{ fontFamily:display, fontWeight:800, fontSize:"clamp(26px,3.6vw,36px)", marginBottom:14 }}>Everything, in one app</h2>
-        <p style={{ fontSize:15.5, color:MUTED, lineHeight:1.7, maxWidth:480, marginBottom:46 }}>Built around how people actually manage money — mobile money, bank accounts, and everything in between.</p>
+        <p style={{ fontSize:15.5, color:MUTED, lineHeight:1.5, maxWidth:480, marginBottom:28 }}>Built around how people actually manage money — mobile money, bank accounts, and everything in between.</p>
         <div className="py-feat-grid">
           {FEATURES.map(f => (
             <div key={f.name} className="py-feat-card" style={{ background:PANEL, padding:"30px 26px" }}>
@@ -236,7 +235,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           <div style={{ flex:1 }}>
             <div style={{ fontSize:12.5, fontWeight:700, color:GOLD, marginBottom:14 }}>FEATURED</div>
             <h2 style={{ fontFamily:display, fontWeight:800, fontSize:"clamp(24px,3.2vw,32px)", lineHeight:1.2, marginBottom:16 }}>Household Accounts</h2>
-            <p style={{ fontSize:14.5, color:MUTED, lineHeight:1.75, maxWidth:440, marginBottom:20 }}>
+            <p style={{ fontSize:14.5, color:MUTED, lineHeight:1.5, maxWidth:440, marginBottom:14 }}>
               Two people, two logins, one shared financial life. Generate a code, your partner enters it once, and every wallet, loan, goal and shift in net worth is visible to both — instantly.
             </p>
             <span className="py-navlink" onClick={onGetStarted} style={{ display:"inline-flex", alignItems:"center", gap:8, fontSize:13.5, fontWeight:700, color:TEAL }}>See how it works <IconArrow/></span>
@@ -273,7 +272,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
       <div style={{ borderTop:`1px solid ${HAIRLINE}`, background:PANEL }}>
         <div style={{ maxWidth:620, margin:"0 auto", padding:"88px 24px", textAlign:"center" }}>
           <h2 style={{ fontFamily:display, fontWeight:800, fontSize:"clamp(26px,3.6vw,38px)", marginBottom:16 }}>Take control of your money today.</h2>
-          <p style={{ fontSize:15, color:MUTED, lineHeight:1.7, marginBottom:32 }}>Start budgeting smarter, saving with purpose, and understanding your financial health for the first time — free, with no card required.</p>
+          <p style={{ fontSize:15, color:MUTED, lineHeight:1.5, marginBottom:22 }}>Start budgeting smarter, saving with purpose, and understanding your financial health for the first time — free, with no card required.</p>
           <div style={{ display:"flex", gap:14, justifyContent:"center", flexWrap:"wrap" }}>
             <CTAButton onClick={onGetStarted} style={{ padding:"15px 30px" }}>Get Started Free <IconArrow/></CTAButton>
             <span className="py-navlink" onClick={()=>scrollTo("features")} style={{ fontSize:14, color:MUTED, fontWeight:600, padding:"15px 22px", border:`1px solid ${HAIRLINE}`, borderRadius:10 }}>See all features</span>

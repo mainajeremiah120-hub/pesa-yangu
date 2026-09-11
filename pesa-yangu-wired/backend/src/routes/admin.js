@@ -177,4 +177,54 @@ router.patch("/tickets/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /admin/audit — recomputes every wallet's balance from its full
+// transaction history (opening_balance + every income/expense/transfer/
+// refund effect since) and flags any wallet where the stored `balance`
+// doesn't match. In a correctly-behaving system these always agree — every
+// path that changes a wallet's balance also inserts a matching transaction
+// row (including the auto-logged "Balance adjustment" entry from a direct
+// edit) — so a mismatch here means a real bug slipped a balance change
+// through without its matching ledger entry, not user error. Scans every
+// user's wallets; on-demand only, no scheduling.
+router.get("/audit", async (req, res, next) => {
+  try {
+    const { rows } = await query(`
+      SELECT
+        w.id, w.name AS wallet_name, w.currency, w.opening_balance, w.balance AS stored_balance,
+        u.id AS user_id, u.email, u.full_name,
+        (w.opening_balance + COALESCE(SUM(
+          CASE WHEN t.type IN ('income','transfer_in','refund') THEN t.amount_kes
+               WHEN t.type IN ('expense','transfer_out')        THEN -t.amount_kes
+               ELSE 0 END
+        ), 0)) AS computed_balance,
+        COUNT(t.id)::int AS tx_count
+      FROM wallets w
+      JOIN users u ON u.id = w.user_id
+      LEFT JOIN transactions t ON t.wallet_id = w.id
+      GROUP BY w.id, u.id
+      HAVING ABS(w.balance - (w.opening_balance + COALESCE(SUM(
+        CASE WHEN t.type IN ('income','transfer_in','refund') THEN t.amount_kes
+             WHEN t.type IN ('expense','transfer_out')        THEN -t.amount_kes
+             ELSE 0 END
+      ), 0))) > 0.01
+      ORDER BY ABS(w.balance - (w.opening_balance + COALESCE(SUM(
+        CASE WHEN t.type IN ('income','transfer_in','refund') THEN t.amount_kes
+             WHEN t.type IN ('expense','transfer_out')        THEN -t.amount_kes
+             ELSE 0 END
+      ), 0))) DESC
+    `);
+    const { rows: [{ wallet_count }] } = await query("SELECT COUNT(*)::int AS wallet_count FROM wallets");
+    res.json({
+      mismatches: rows.map(r => ({
+        ...r,
+        stored_balance: parseFloat(r.stored_balance),
+        computed_balance: parseFloat(r.computed_balance),
+        difference: parseFloat(r.stored_balance) - parseFloat(r.computed_balance),
+      })),
+      wallets_checked: wallet_count,
+      checked_at: new Date().toISOString(),
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

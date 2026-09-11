@@ -42,6 +42,8 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
   const [replying,  setReplying] = useState(false);
   const [thread, setThread] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [audit,        setAudit]        = useState(null); // { mismatches, wallets_checked, checked_at } | null = never run this session
+  const [auditRunning, setAuditRunning] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -121,6 +123,13 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
       setActiveTicket(null); setReplyText(""); setReplyStatus("resolved");
     } catch(e) { alert(e?.response?.data?.error||"Failed"); }
     finally { setReplying(false); }
+  };
+
+  const runAudit = async () => {
+    setAuditRunning(true);
+    try { setAudit(await adminApi.audit()); }
+    catch(e) { alert(e?.response?.data?.error||"Audit failed"); }
+    finally { setAuditRunning(false); }
   };
 
   const inp = { width:"100%", background:C.navyLight, border:`1px solid ${C.navyLight}`,
@@ -342,6 +351,68 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
           </div>
         )}
 
+        {/* ── AUDIT TAB ── */}
+        {tab==="audit"&&(
+          <div>
+            <div style={{fontWeight:800,fontSize:18,marginBottom:4}}>Ledger Audit</div>
+            <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>
+              Recomputes every wallet's balance from its own transaction history and flags any that don't match. A clean result means every balance change has a matching ledger entry, system-wide.
+            </div>
+
+            <button onClick={runAudit} disabled={auditRunning}
+              style={{width:"100%",padding:13,borderRadius:12,border:"none",background:C.teal,color:"#0B1120",
+                cursor:auditRunning?"not-allowed":"pointer",fontWeight:700,fontSize:13,opacity:auditRunning?0.6:1,marginBottom:20}}>
+              {auditRunning?"Running audit…":audit?"Run Audit Again":"Run Audit"}
+            </button>
+
+            {audit && (
+              <>
+                <div style={{fontSize:11,color:C.textFaint,marginBottom:14}}>
+                  Checked {audit.wallets_checked} wallet{audit.wallets_checked!==1?"s":""} at {fmtDateTime(audit.checked_at)}
+                </div>
+
+                {audit.mismatches.length===0 ? (
+                  <div style={{background:C.teal+"14",border:`1px solid ${C.teal}44`,borderRadius:14,padding:"20px 18px",textAlign:"center"}}>
+                    <div style={{fontSize:28,marginBottom:8}}>✓</div>
+                    <div style={{fontWeight:700,fontSize:14,color:C.teal,marginBottom:4}}>All balances check out</div>
+                    <div style={{fontSize:11,color:C.textMuted}}>No discrepancies found across the whole system.</div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{background:C.coral+"14",border:`1px solid ${C.coral}44`,borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:12,color:C.coral,fontWeight:600}}>
+                      {audit.mismatches.length} wallet{audit.mismatches.length!==1?"s":""} out of balance
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {audit.mismatches.map(m=>(
+                        <div key={m.id} style={{background:C.navyMid,border:`1px solid ${C.coral}44`,borderRadius:14,padding:"14px 16px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
+                            <div>
+                              <div style={{fontWeight:700,fontSize:13}}>{m.wallet_name}</div>
+                              <div style={{fontSize:10,color:C.textMuted}}>{m.full_name||"(no name)"} · {m.email}</div>
+                            </div>
+                            <div style={{fontSize:13,fontWeight:800,color:C.coral,flexShrink:0}}>
+                              {m.difference>0?"+":""}{m.difference.toLocaleString(undefined,{maximumFractionDigits:2})}
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:14,fontSize:11,color:C.textMuted}}>
+                            <span>Stored: <strong style={{color:C.textPrimary}}>{m.stored_balance.toLocaleString(undefined,{maximumFractionDigits:2})}</strong></span>
+                            <span>Computed: <strong style={{color:C.textPrimary}}>{m.computed_balance.toLocaleString(undefined,{maximumFractionDigits:2})}</strong></span>
+                            <span>{m.tx_count} txns</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {!audit && !auditRunning && (
+              <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:40}}>Run the audit to check every wallet's balance against its transaction history.</div>
+            )}
+          </div>
+        )}
+
         {/* ── SETTINGS TAB ── */}
         {tab==="settings"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -369,6 +440,7 @@ export function AdminApp({ user, logout, C, theme, toggleTheme }) {
           {id:"dashboard", icon:"◈",  label:"Dashboard"},
           {id:"users",     icon:"👥", label:"Users"},
           {id:"tickets",   icon:"🎫", label:"Tickets"},
+          {id:"audit",     icon:"⚖️", label:"Audit"},
           {id:"settings",  icon:"⚙️", label:"Settings"},
         ].map(n=>(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"10px 4px 14px",background:"none",border:"none",cursor:"pointer",

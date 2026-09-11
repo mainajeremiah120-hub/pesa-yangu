@@ -1044,7 +1044,7 @@ function SettingsTab({ user, C, theme, toggleTheme, baseCurrency, setBase, curre
               style={{flex:1,background:C.navyLight,border:`1px solid ${C.navyLight}`,borderRadius:10,padding:"10px 14px",color:C.textPrimary,fontSize:13,outline:"none"}}
               onFocus={e=>e.target.style.borderColor=C.teal} onBlur={e=>e.target.style.borderColor=C.navyLight}/>
             <button onClick={saveName} disabled={savingName||editName.trim()===user?.full_name}
-              style={{background:C.teal,color:"#0B1120",border:"none",borderRadius:10,padding:"0 16px",fontWeight:700,fontSize:12,cursor:"pointer",opacity:(savingName||editName.trim()===user?.full_name)?0.5:1}}>
+              style={{background:C.teal,color:C.navy,border:"none",borderRadius:10,padding:"0 16px",fontWeight:700,fontSize:12,cursor:"pointer",opacity:(savingName||editName.trim()===user?.full_name)?0.5:1}}>
               {savingName?"Saving…":"Save"}
             </button>
           </div>

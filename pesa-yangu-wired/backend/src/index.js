@@ -43,6 +43,7 @@ const pushRoutes        = require("./routes/push");
 const { householdRouter: householdRoutes } = require("./routes/household");
 const { scheduleReminders } = require("./push-scheduler");
 const { scheduleLoanInterestAccrual } = require("./loan-interest-scheduler");
+const { scheduleRecurringExecution } = require("./recurring-scheduler");
 const { requireAuth, requireAdmin } = require("./middleware/auth");
 const {
   categoryRouter:   categoryRoutes,
@@ -216,6 +217,7 @@ runMigrations()
   .then(() => {
     scheduleReminders();
     scheduleLoanInterestAccrual();
+    scheduleRecurringExecution();
     app.listen(PORT, () =>
       logger.info(`Pesa Yangu API on :${PORT} [${process.env.NODE_ENV || "development"}]`)
     );

@@ -17,6 +17,20 @@ router.get("/", async (req, res, next) => {
   } catch(e){next(e);}
 });
 
+// GET /wallets/archived — deactivated accounts, kept separate from the main
+// list (and its own route rather than a query param) so the common case
+// stays a single simple query; this one is only hit when a user opens the
+// "Deactivated Accounts" section to reactivate something.
+router.get("/archived", async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM wallets WHERE user_id=$1 AND is_archived=TRUE ORDER BY updated_at DESC",
+      [req.dataOwnerId]
+    );
+    res.json({ wallets: rows });
+  } catch(e){next(e);}
+});
+
 router.post("/", async (req, res, next) => {
   try {
     const d = z.object({ name:z.string().min(1).max(100).trim(), account_type:z.string().max(30).default("current"), currency:z.string().length(3).default("KES"), balance:z.number().min(-1e12).max(1e12).default(0), opening_balance:z.number().min(-1e12).max(1e12).optional(), color:z.string().max(20).default("#00D4AA"), icon:z.string().max(10).default("🏦") }).parse(req.body);

@@ -102,6 +102,7 @@ export const authApi = {
 // ── Wallets ───────────────────────────────────────────────────────────────────
 export const walletsApi = {
   list:     ()         => unwrap(client.get("/wallets")),
+  archived: ()         => unwrap(client.get("/wallets/archived")),
   create:   (p)        => unwrap(client.post("/wallets", p)),
   update:   (id, p)    => unwrap(client.patch(`/wallets/${id}`, p)),
   remove:   (id)       => unwrap(client.delete(`/wallets/${id}`)),

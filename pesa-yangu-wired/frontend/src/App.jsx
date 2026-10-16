@@ -1912,6 +1912,9 @@ export default function App() {
   const [txSpecificDate, setTxSpecificDate] = useState(todayStr());
   const [walletSearch,   setWalletSearch]   = useState("");
   const [walletView,     setWalletView]     = useState("grid");
+  const [archivedWallets, setArchivedWallets] = useState([]);
+  const [showArchived,    setShowArchived]    = useState(false);
+  const [loadingArchived, setLoadingArchived] = useState(false);
   const [budgetSearch,   setBudgetSearch]   = useState("");
   const [budgetView,     setBudgetView]     = useState("all"); // "all"|"expense"|"income"
 
@@ -3261,6 +3264,34 @@ export default function App() {
     }
   };
 
+  // Deactivate: unlike delete, this always works regardless of linked
+  // records — it just hides the account from the normal list (is_archived),
+  // keeping all its history intact and fully reversible from the
+  // "Deactivated Accounts" section.
+  const deactivateWallet = async (id) => {
+    try {
+      await walletsApi.update(id, { is_archived: true });
+      setWallets(p=>p.filter(w=>w.id!==id));
+      showToast("Account deactivated");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to deactivate", C.coral); }
+  };
+
+  const loadArchivedWallets = async () => {
+    setLoadingArchived(true);
+    try { const { wallets: rows } = await walletsApi.archived(); setArchivedWallets(rows||[]); }
+    catch { showToast("Could not load deactivated accounts", C.coral); }
+    finally { setLoadingArchived(false); }
+  };
+
+  const reactivateWallet = async (id) => {
+    try {
+      const { wallet } = await walletsApi.update(id, { is_archived: false });
+      setArchivedWallets(p=>p.filter(w=>w.id!==id));
+      setWallets(p=>[...p, wallet]);
+      showToast("Account reactivated", C.teal);
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to reactivate", C.coral); }
+  };
+
   const deleteGoal = async (id) => {
     try {
       const g = goals.find(g=>g.id===id);
@@ -4412,6 +4443,7 @@ export default function App() {
                           <div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
                             <button onClick={e=>{e.stopPropagation();openAccountAllocate(w);}} style={{background:"none",border:`1px solid ${C.purple}44`,borderRadius:6,color:C.purple,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🎯 Allocate</button>
                             <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
+                            <button onClick={e=>{e.stopPropagation();askConfirm("Deactivate Account",`Hide "${w.name}" from your accounts list? Its history stays intact and you can reactivate it any time from "Deactivated Accounts" below.`,()=>deactivateWallet(w.id));}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>⏸ Deactivate</button>
                             <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
                           </div>
                         </div>
@@ -4480,6 +4512,7 @@ export default function App() {
                       <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
                         <button onClick={e=>{e.stopPropagation();openAccountAllocate(w);}} style={{background:"none",border:`1px solid ${C.purple}44`,borderRadius:6,color:C.purple,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🎯</button>
                         <button onClick={e=>{e.stopPropagation();openEditWallet(w);}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️</button>
+                        <button onClick={e=>{e.stopPropagation();askConfirm("Deactivate Account",`Hide "${w.name}" from your accounts list? Its history stays intact and you can reactivate it any time from "Deactivated Accounts" below.`,()=>deactivateWallet(w.id));}} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>⏸</button>
                         <button onClick={e=>{e.stopPropagation();askConfirm("Delete Account",`Delete "${w.name}"? This will permanently remove the account. Deletion will be blocked if the account has any transactions, goals, investments, or loan repayments linked to it.`,()=>deleteWallet(w.id));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑</button>
                       </div>
                     </div>;
@@ -4501,6 +4534,29 @@ export default function App() {
                 </div>)}
               </div>
             </Card>}
+
+            <Card>
+              <div onClick={()=>{const next=!showArchived;setShowArchived(next);if(next&&archivedWallets.length===0)loadArchivedWallets();}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+                <div style={{fontWeight:700,fontSize:13}}>Deactivated Accounts</div>
+                <span style={{color:C.textMuted,fontSize:12}}>{showArchived?"▾":"▸"}</span>
+              </div>
+              {showArchived&&(
+                <div style={{marginTop:14}}>
+                  {loadingArchived&&<div style={{textAlign:"center",color:C.textFaint,fontSize:12,padding:12}}>Loading…</div>}
+                  {!loadingArchived&&archivedWallets.length===0&&<div style={{textAlign:"center",color:C.textFaint,fontSize:12,padding:12}}>No deactivated accounts.</div>}
+                  {archivedWallets.map(w=>(
+                    <div key={w.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderTop:`1px solid ${C.navyLight}`}}>
+                      <div style={{fontSize:18,flexShrink:0,opacity:0.6}}>{w.icon}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:13,color:C.textMuted}}>{w.name}</div>
+                        <div style={{fontSize:11,color:C.textFaint}}>{fmtC(parseFloat(w.balance||0),w.currency,currencies)}</div>
+                      </div>
+                      <button onClick={()=>reactivateWallet(w.id)} style={{background:"none",border:`1px solid ${C.teal}44`,borderRadius:6,color:C.teal,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:600,flexShrink:0}}>Reactivate</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
         )}
 

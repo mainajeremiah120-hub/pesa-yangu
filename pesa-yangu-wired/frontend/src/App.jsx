@@ -2802,6 +2802,7 @@ export default function App() {
       wallet:   g.wallet_id || g.wallet || "",
       deadline: g.deadline || "",
       color:    g.color || C.teal,
+      openingBalance: String(g.saved_kes ?? g.saved ?? ""),
     });
     openM("goal");
   };
@@ -2944,6 +2945,7 @@ export default function App() {
           icon:       fGoal.icon,
           color:      fGoal.color,
           target_kes: t,
+          saved_kes:  parseFloat(fGoal.openingBalance)||0,
           wallet_id:  fGoal.wallet || undefined,
           deadline:   fGoal.deadline || null,
         });
@@ -6066,12 +6068,10 @@ export default function App() {
         </div>
         <Field label={`Target Amount (${baseCurrency})`} type="number" value={fGoal.target} onChange={v=>setFGoal({...fGoal,target:v})} placeholder="e.g. 450000"/>
         <Field label="Receiving Account" value={fGoal.wallet} onChange={v=>setFGoal({...fGoal,wallet:v})} options={wOpts} note="Where money for this goal actually sits — top-ups move money into this account from wherever you choose."/>
-        {!editGoal&&(
-          <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#00D4AA",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Already saving for this goal?</div>
-            <Field label={`Opening Balance (${baseCurrency}) — optional`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note="Bookkeeping only — for money you already have sitting in the receiving account. Nothing moves and no transaction is created."/>
-          </div>
-        )}
+        <div style={{background:"#00D4AA11",border:"1px solid #00D4AA33",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#00D4AA",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>{editGoal?"Correct the saved amount":"Already saving for this goal?"}</div>
+          <Field label={`${editGoal?"Saved Amount":"Opening Balance"} (${baseCurrency})${editGoal?"":" — optional"}`} type="number" value={fGoal.openingBalance||""} onChange={v=>setFGoal({...fGoal,openingBalance:v})} placeholder="e.g. 15000" note={editGoal?"Bookkeeping only — use this if money already sitting in the receiving account (e.g. income paid straight into it) should count toward this goal but a top-up transfer doesn't apply. Nothing moves and no transaction is created.":"Bookkeeping only — for money you already have sitting in the receiving account. Nothing moves and no transaction is created."}/>
+        </div>
         <Field label="Target Date" type="date" value={fGoal.deadline} onChange={v=>setFGoal({...fGoal,deadline:v})}/>
         <Btn onClick={saveGoal} style={{width:"100%",padding:13,fontSize:14}}>{editGoal?"Save Changes":"Create Goal"}</Btn>
       </Modal>

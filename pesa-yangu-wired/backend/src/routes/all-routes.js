@@ -582,14 +582,26 @@ goalRouter.patch("/:id", async (req,res,next)=>{
       icon:       z.string().optional(),
       color:      z.string().optional(),
       target_kes: z.number().positive().optional(),
+      saved_kes:  z.number().min(0).max(1e9).optional(),
       deadline:   z.string().nullable().optional(),
       wallet_id:  z.string().uuid().optional(),
     }).parse(req.body);
     const { rows:gr } = await query("SELECT * FROM goals WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!gr.length) return res.status(404).json({error:"Not found"});
-    const allowed=["name","icon","color","target_kes","deadline","wallet_id"];
+    const allowed=["name","icon","color","target_kes","saved_kes","deadline","wallet_id"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
+    // saved_kes here is a direct correction, same "bookkeeping only" rule as
+    // the opening balance at creation (see POST /) — it does not move any
+    // wallet money or create a transaction/contribution row. It exists for
+    // exactly the case where money that should count toward this goal is
+    // already sitting in the receiving account (e.g. income paid straight
+    // into it) rather than having arrived via a transfer from elsewhere, so
+    // POST /:id/fund's wallet-to-wallet model can't represent it.
+    if ("saved_kes" in updates) {
+      const newTarget = updates.target_kes ?? parseFloat(gr[0].target_kes);
+      updates.is_achieved = updates.saved_kes >= newTarget;
+    }
     const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
     const {rows}=await query(`UPDATE goals SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.dataOwnerId,...Object.values(updates)]);
     res.json({goal:rows[0]});

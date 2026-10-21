@@ -1365,6 +1365,17 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Nav items are real <a href="#tab"> links (not buttons) so a module can
+  // be opened in a new tab — ctrl/cmd/middle-click, or right-click → "Open
+  // in new tab" — just like any other link; the URL hash already restores
+  // the right tab on load (see the tab useState above). A plain click still
+  // does the normal in-page SPA switch via setTab.
+  const navClick = (id) => (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    setTab(id);
+  };
+
   // Browser back/forward button support
   useEffect(() => {
     const onPop = (e) => {
@@ -4029,14 +4040,14 @@ export default function App() {
 
         <div style={{flex:1,overflowY:"auto",padding:"6px 12px",display:"flex",flexDirection:"column",gap:2}}>
           {NAV.map(n=>(
-            <button key={n.id} onClick={()=>setTab(n.id)} title={sidebarCollapsed?n.label:undefined}
+            <a key={n.id} href={"#"+n.id} onClick={navClick(n.id)} title={sidebarCollapsed?n.label:undefined}
               style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,
-                background:tab===n.id?C.teal+"22":"none",border:"none",
+                background:tab===n.id?C.teal+"22":"none",border:"none",textDecoration:"none",
                 color:tab===n.id?C.teal:C.textMuted,fontWeight:tab===n.id?700:500,fontSize:13,
                 cursor:"pointer",textAlign:"left",whiteSpace:"nowrap",overflow:"hidden"}}>
               <NavIcon id={n.id}/>
               {!sidebarCollapsed && n.label}
-            </button>
+            </a>
           ))}
         </div>
 
@@ -6409,12 +6420,14 @@ export default function App() {
         ].map(item => {
           const isActive = tab === item.id || (item.id === "more" && ["goals", "recurring", "investments", "loans", "insurance", "reconcile"].includes(tab));
           return (
-            <button
+            <a
               key={item.id}
-              onClick={() => setTab(item.id)}
+              href={"#"+item.id}
+              onClick={navClick(item.id)}
               style={{
                 background: "none",
                 border: "none",
+                textDecoration: "none",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -6430,7 +6443,7 @@ export default function App() {
             >
               <span style={{ fontSize: 20, marginBottom: 2 }}>{item.icon}</span>
               <span>{item.label}</span>
-            </button>
+            </a>
           );
         })}
       </div>

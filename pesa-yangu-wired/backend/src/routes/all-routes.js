@@ -170,9 +170,10 @@ categoryRouter.post("/", async (req,res,next)=>{
 
 categoryRouter.patch("/:id", async (req,res,next)=>{
   try {
-    const allowed=["name","icon","color","budget_kes","watch","sort_order","parent_id","allocation_type","percent_of_parent","spend_kind","linked_wallet_id","windfall_percent","goal_target_kes","goal_deadline"];
+    const allowed=["name","icon","color","budget_kes","watch","sort_order","parent_id","allocation_type","percent_of_parent","spend_kind","linked_wallet_id","windfall_percent","goal_target_kes","goal_deadline","is_active"];
     const u=Object.fromEntries(Object.entries(req.body).filter(([k])=>allowed.includes(k)));
     if(!Object.keys(u).length) return res.status(400).json({error:"No valid fields"});
+    if("is_active" in u && typeof u.is_active !== "boolean") return res.status(400).json({error:"is_active must be a boolean"});
     if("allocation_type" in u && !["fixed","percent"].includes(u.allocation_type)) return res.status(400).json({error:"Invalid allocation_type"});
     if(u.allocation_type==="percent" && u.percent_of_parent==null) return res.status(400).json({error:"percent_of_parent is required when allocation_type is 'percent'"});
     if("windfall_percent" in u && u.windfall_percent!=null && (u.windfall_percent<0 || u.windfall_percent>100)) return res.status(400).json({error:"windfall_percent must be between 0 and 100"});

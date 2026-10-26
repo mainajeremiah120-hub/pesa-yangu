@@ -551,7 +551,7 @@ const Divider = ({ label }) => {
 // Cap (top-down from Gross Income), actual Used (bottom-up from transactions),
 // and Remaining, then recurses into its children — grouping them into Fixed /
 // Variable sections when the children carry that tag.
-const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onAddChild, wallets, onViewHistory, query="" }) => {
+const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp, onEdit, onDelete, onToggleActive, onAddChild, wallets, onViewHistory, query="" }) => {
   const C = useC();
   const [expanded, setExpanded] = useState(true);
   // A search elsewhere in the tree shouldn't stay hidden behind a node the
@@ -577,12 +577,12 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
   const linkedWallet = node.linkedWalletId ? wallets.find(w=>w.id===node.linkedWalletId) : null;
 
   const renderKids = (list) => list.map(k=>(
-    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} wallets={wallets} onViewHistory={onViewHistory} query={query}/>
+    <CategoryTree key={k.id} node={k} depth={depth+1} childrenByParent={childrenByParent} capById={capById} usedById={usedById} disp={disp} onEdit={onEdit} onDelete={onDelete} onToggleActive={onToggleActive} onAddChild={onAddChild} wallets={wallets} onViewHistory={onViewHistory} query={query}/>
   ));
 
   return (
     <div style={{marginLeft: depth*14, marginBottom:8}}>
-      <Card style={{borderLeft:over?`3px solid ${C.coral}`:node.watch?`3px solid ${C.gold}`:"3px solid transparent"}}>
+      <Card style={{borderLeft:over?`3px solid ${C.coral}`:node.watch?`3px solid ${C.gold}`:"3px solid transparent",opacity:node.isActive===false?0.65:1}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1,cursor:"pointer"}}
             onClick={()=>{
@@ -598,6 +598,7 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
                 {node.allocationType==="percent" && <Badge color={C.blue}>{node.percentOfParent}%</Badge>}
                 {linkedWallet && <Badge color={C.purple}>💰 {linkedWallet.icon} {linkedWallet.name}</Badge>}
                 {node.watch && <Badge color={C.gold}>👁</Badge>}
+                {node.isActive===false && <Badge color={C.textMuted}>Inactive</Badge>}
               </div>
               <div style={{fontSize:10,color:C.textMuted}}>
                 Cap: {disp(cap)} · {node.linkedWalletId?"Allocated":"Used"}: {disp(used)} · {over
@@ -611,6 +612,7 @@ const CategoryTree = ({ node, depth=0, childrenByParent, capById, usedById, disp
           <div style={{display:"flex",gap:6,flexShrink:0}}>
             <button onClick={()=>onAddChild(node.id)} style={btnStyle(C.teal)}>+ Sub</button>
             <button onClick={()=>onEdit(node)} style={btnStyle(C.textMuted)}>✏️ Edit</button>
+            <button onClick={()=>onToggleActive(node)} style={btnStyle(node.isActive===false?C.teal:C.gold)}>{node.isActive===false?"Activate":"Deactivate"}</button>
             <button onClick={()=>onDelete(node)} style={btnStyle(C.coral)}>🗑</button>
           </div>
         </div>
@@ -1675,6 +1677,7 @@ export default function App() {
   // ── Field normalisers (backend snake_case → UI expectations)
   const normaliseCategory = (c) => ({
     ...c, budget: parseFloat(c.budget_kes||0), watch: !!c.watch,
+    isActive: c.is_active !== false,
     parentId:        c.parent_id || null,
     allocationType:  c.allocation_type || "fixed",
     percentOfParent: c.percent_of_parent!=null ? parseFloat(c.percent_of_parent) : null,
@@ -2098,6 +2101,12 @@ export default function App() {
 
   // ── Wallet / category select options
   const wOpts = wallets.map(w=>({ value:w.id, label:`${w.icon} ${w.name} (${fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} ${w.currency})` }));
+  const activeExpCats = expCats.filter(c=>c.isActive!==false);
+  const transactionExpCats = activeExpCats.filter(c=>c.allocationType!=="percent"&&!c.linkedWalletId);
+  const expenseCategoryOptions = (selectedId) => [
+    ...activeExpCats,
+    ...expCats.filter(c=>c.id===selectedId&&c.isActive===false),
+  ];
   const loanOpts = loans.map(l=>({ value:l.id, label:l.name }));
   const invOpts  = investments.map(i=>({ value:i.id, label:`${i.name} (${i.ticker})` }));
   const ICONS = ["💰","💳","🏠","🚗","⚡","🎬","💊","🍔","📚","🎓","💼","💻","📈","🎯","💵","💹","✈️","🎁","💎","👶","🌴","🔧","⚕️","🎵","🐾","📱","🛒","🏋️","🎮","🌟"];
@@ -3378,6 +3387,15 @@ export default function App() {
       else setIncCats(p=>p.filter(c=>c.id!==id));
       showToast("Category deleted");
     } catch(err) { showToast(err?.response?.data?.error||"Failed to delete", C.coral); }
+  };
+
+  const toggleExpenseCategoryActive = async (category) => {
+    const isActive = category.isActive === false;
+    try {
+      const { category: updated } = await catsApi.update(category.id, { is_active: isActive });
+      setExpCats(p=>p.map(c=>c.id===category.id?normaliseCategory(updated):c));
+      showToast(`${category.name} ${isActive?"activated":"deactivated"}`);
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to update category", C.coral); }
   };
 
   const deleteRepayment = async (loanId, repaymentId, repaymentTotal, walletId) => {
@@ -4972,6 +4990,7 @@ export default function App() {
                 <CategoryTree key={c.id} node={c} childrenByParent={childrenByParent} capById={capById} usedById={bmUsedById} disp={disp}
                   onEdit={openEditExpCat}
                   onDelete={(node)=>askConfirm("Delete Category",`Delete category "${node.name}"? Existing transactions won't be affected.`,()=>deleteCategory(node.id,"expense"))}
+                  onToggleActive={toggleExpenseCategoryActive}
                   onAddChild={(parentId)=>{setFExpCat({...blankExpCat,parentId});openM("expCat");}}
                   wallets={wallets} query={bq}
                   onViewHistory={(node)=>setCatHistory({cat:node,type:"expense"})}/>
@@ -4987,10 +5006,10 @@ export default function App() {
               const txCnt=bmTxs.filter(t=>(t.category||t.category_id)===c.id).length;
               return<Card key={c.id} onClick={()=>setCatHistory({cat:c,type:"expense"})} style={{borderLeft:over?`3px solid ${C.coral}`:c.watch?`3px solid ${C.gold}`:"3px solid transparent",cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:budget>0?10:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,opacity:c.isActive===false?0.65:1}}>
                     <span style={{fontSize:18}}>{c.icon}</span>
                     <div>
-                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.watch&&<Badge color={C.gold}>👁</Badge>}{hasOverride&&<Badge color={C.blue}>{MONTH_NAMES[budgetMonth-1]} only</Badge>}</div>
+                      <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{c.name}{c.isActive===false&&<Badge color={C.textMuted}>Inactive</Badge>}{c.watch&&<Badge color={C.gold}>👁</Badge>}{hasOverride&&<Badge color={C.blue}>{MONTH_NAMES[budgetMonth-1]} only</Badge>}</div>
                       <div style={{fontSize:10,color:C.textMuted}}>{txCnt>0?`${txCnt} record${txCnt!==1?"s":""}  ·  `:""}{budget>0?`Budget: ${disp(budget)}`:"No budget set"}</div>
                     </div>
                   </div>
@@ -5002,6 +5021,7 @@ export default function App() {
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       <button onClick={e=>{e.stopPropagation();setFBudget({catId:c.id,catType:"expense",amount:String(budget||""),everyMonth:!hasOverride});openM("budget");}} style={{background:C.navyLight,border:"none",borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{budget>0?"Edit Budget":"Set Budget"}</button>
                       <button onClick={e=>{e.stopPropagation();toggleWatch(c.id);}} style={{background:c.watch?C.gold+"22":C.navyLight,border:"none",borderRadius:8,color:c.watch?C.gold:C.textMuted,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.watch?"Watching":"Watch"}</button>
+                      <button onClick={e=>{e.stopPropagation();toggleExpenseCategoryActive(c);}} style={{background:"none",border:`1px solid ${C.gold}44`,borderRadius:8,color:c.isActive===false?C.teal:C.gold,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>{c.isActive===false?"Activate":"Deactivate"}</button>
                       <button onClick={e=>{e.stopPropagation();askConfirm("Delete Category",`Delete category "${c.name}"? Existing transactions won't be affected.`,()=>deleteCategory(c.id,"expense"));}} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:8,color:C.coral,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,minWidth:96,textAlign:"center"}}>🗑 Delete</button>
                     </div>
                   </div>
@@ -5505,8 +5525,8 @@ export default function App() {
 
       {/* Add / Edit Transaction */}
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
-        <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
-        <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expCats.filter(c=>c.allocationType!=="percent"&&!c.linkedWalletId):incCats} groupByParent={fTx.type==="expense"}/>
+        <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":transactionExpCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
+        <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expenseCategoryOptions(fTx.category).filter(c=>c.allocationType!=="percent"&&!c.linkedWalletId):incCats} groupByParent={fTx.type==="expense"}/>
         <Field label="Account" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
         <div className="grid-2">
           <Field label="Date" type="date" value={fTx.date||todayStr()} onChange={v=>setFTx({...fTx,date:v})}/>
@@ -5949,7 +5969,7 @@ export default function App() {
         <Field label={`Opening Balance Paid (${fPolicy.currency})`} type="number" value={fPolicy.amountPaid} onChange={v=>setFPolicy({...fPolicy,amountPaid:v})} placeholder="Premiums paid before you started tracking here" note={editPolicy?.payments?.length ? "This policy already has recorded payments, so this opening figure is locked and won't be changed by saving — use Record Payment for anything new." : "Optional — a starting figure for payments made before this policy was added. New payments are recorded with the Record Payment button and added on top of this automatically."}/>
         <Field label="Beneficiary (optional)" value={fPolicy.beneficiary} onChange={v=>setFPolicy({...fPolicy,beneficiary:v})} placeholder="e.g. Jane Mwangi (spouse)"/>
         <Field label="Linked Account (premium source)" value={fPolicy.walletId} onChange={v=>setFPolicy({...fPolicy,walletId:v})} options={[{value:"",label:"None"},...wallets.map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))]}/>
-        <Field label="Expense Category" value={fPolicy.categoryId} onChange={v=>setFPolicy({...fPolicy,categoryId:v})} options={[{value:"",label:"None — use the generic 'Premium' category"},...expCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every premium you pay for this policy files under this category instead of a generic bucket shared by all policies."/>
+        <Field label="Expense Category" value={fPolicy.categoryId} onChange={v=>setFPolicy({...fPolicy,categoryId:v})} options={[{value:"",label:"None — use the generic 'Premium' category"},...expenseCategoryOptions(fPolicy.categoryId).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every premium you pay for this policy files under this category instead of a generic bucket shared by all policies."/>
         <Field label="Currency" value={fPolicy.currency} onChange={v=>setFPolicy({...fPolicy,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <Field label="Notes (optional)" value={fPolicy.notes} onChange={v=>setFPolicy({...fPolicy,notes:v})} placeholder="Any extra details"/>
         <Btn onClick={savePolicy} style={{width:"100%",padding:13,fontSize:14}}>{editPolicy?"Save Changes":"Add Policy"}</Btn>
@@ -5969,7 +5989,7 @@ export default function App() {
         <Field label="Loan Name" value={fLoan.name}   onChange={v=>setFLoan({...fLoan,name:v})}   placeholder="e.g. KCB Personal Loan"/>
         <Field label="Lender"    value={fLoan.lender} onChange={v=>setFLoan({...fLoan,lender:v})} placeholder="e.g. KCB Bank"/>
         <Field label="Currency"  value={fLoan.currency} onChange={v=>setFLoan({...fLoan,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
-        <Field label="Expense Category" value={fLoan.categoryId} onChange={v=>setFLoan({...fLoan,categoryId:v})} options={[{value:"",label:"None — use the generic 'Loan Repayment' category"},...expCats.map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every repayment on this loan files under this category instead of a generic bucket shared by all loans."/>
+        <Field label="Expense Category" value={fLoan.categoryId} onChange={v=>setFLoan({...fLoan,categoryId:v})} options={[{value:"",label:"None — use the generic 'Loan Repayment' category"},...expenseCategoryOptions(fLoan.categoryId).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))]} note="Every repayment on this loan files under this category instead of a generic bucket shared by all loans."/>
         <div className="grid-2">
           <Field label={`Principal (${fLoan.currency})`} type="number" value={fLoan.principal} onChange={v=>setFLoan({...fLoan,principal:v,currentBalance:v})} placeholder="e.g. 500000"/>
           <Field label="Rate (%)" type="number" value={fLoan.rate} onChange={v=>setFLoan({...fLoan,rate:v})} placeholder="e.g. 10"/>
@@ -6089,8 +6109,8 @@ export default function App() {
 
       {/* Add Recurring */}
       <Modal open={isOpen("recur")} onClose={()=>closeM("recur")} title="➕ Add Recurring Transaction">
-        <Field label="Type" value={fRecur.type} onChange={v=>setFRecur({...fRecur,type:v,category:v==="income"?incCats[0]?.id||"":expCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
-        <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expCats:incCats).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
+        <Field label="Type" value={fRecur.type} onChange={e=>setFRecur({...fRecur,type:e,category:e==="income"?incCats[0]?.id||"":activeExpCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
+        <Field label="Category" value={fRecur.category} onChange={v=>setFRecur({...fRecur,category:v})} options={(fRecur.type==="expense"?expenseCategoryOptions(fRecur.category):incCats).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({value:c.id,label:`${c.icon} ${c.name}`}))}/>
         <div className="grid-2">
           <Field label="Amount" type="number" value={fRecur.amount} onChange={v=>setFRecur({...fRecur,amount:v})} placeholder="0.00"/>
           <Field label="Frequency" value={fRecur.freq} onChange={v=>setFRecur({...fRecur,freq:v})} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"monthly",label:"Monthly"},{value:"yearly",label:"Yearly"}]}/>

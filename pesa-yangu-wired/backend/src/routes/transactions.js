@@ -54,8 +54,9 @@ router.post("/", async (req, res, next) => {
     const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
     if(!wr.length) return res.status(400).json({error:"Wallet not found"});
     if(d.category_id) {
-      const {rows:cr}=await query("SELECT id FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.dataOwnerId]);
+      const {rows:cr}=await query("SELECT id,type,is_active FROM categories WHERE id=$1 AND user_id=$2",[d.category_id,req.dataOwnerId]);
       if(!cr.length) return res.status(400).json({error:"Category not found"});
+      if(d.type==="expense" && cr[0].type==="expense" && !cr[0].is_active) return res.status(400).json({error:"This expenditure category is inactive"});
     }
     if(d.loan_id) {
       const {rows:lr}=await query("SELECT id FROM loans WHERE id=$1 AND user_id=$2",[d.loan_id,req.dataOwnerId]);

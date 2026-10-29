@@ -60,7 +60,7 @@ function PasswordField({ value, onChange, placeholder, C }) {
   );
 }
 
-export default function AuthPage({ onLogin, onRegister, initialMode="login", onBack }) {
+export default function AuthPage({ onLogin, onRegister, initialMode="login", onBack, onResetFlowExit }) {
   const [theme, setThemeState] = useState(getTheme);
   const C = tokens(theme);
 
@@ -124,7 +124,10 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
         if (password !== confirm) { setError("Passwords do not match."); return; }
         await authApi.resetPassword(resetToken, password);
         setSuccess("Password updated! You can now sign in with your new password.");
-        setTimeout(() => reset("login"), 2500);
+        setTimeout(() => {
+          reset("login");
+          onResetFlowExit?.();
+        }, 2500);
       }
     } catch (err) {
       // No response at all (offline, DNS failure, request timeout) reads very
@@ -300,7 +303,10 @@ export default function AuthPage({ onLogin, onRegister, initialMode="login", onB
               </>
             )}
             {(mode === "forgot" || mode === "reset") && (
-              <span onClick={() => reset("login")}
+              <span onClick={() => {
+                reset("login");
+                if (mode === "reset") onResetFlowExit?.();
+              }}
                 style={{ color:C.textMuted, cursor:"pointer" }}>
                 ← Back to Sign In
               </span>

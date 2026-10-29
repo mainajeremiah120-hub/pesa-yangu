@@ -1407,6 +1407,9 @@ export default function App() {
   const [modals, setModals] = useState({});
   // Signed-out visitors see the marketing landing page first; these two
   // callbacks (and AuthPage's onBack) move between it and the real auth form.
+  const [passwordResetFlow, setPasswordResetFlow] = useState(() =>
+    Boolean(new URLSearchParams(window.location.search).get("reset"))
+  );
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -3822,8 +3825,16 @@ export default function App() {
   // RENDER GATES
   // ─────────────────────────────────────────────────────────────────────────
   // Password reset link must always show reset form even if user has an active session
-  if (new URLSearchParams(window.location.search).get('reset'))
-    return <AuthPage onLogin={login} onRegister={register}/>;
+  if (passwordResetFlow)
+    return <AuthPage
+      onLogin={login}
+      onRegister={register}
+      onResetFlowExit={() => {
+        setPasswordResetFlow(false);
+        setAuthMode("login");
+        setShowAuth(true);
+      }}
+    />;
 
   if (authLoading) return <ThemeCtx.Provider value={C}><LoadingScreen message="Starting Pesa Yangu…"/></ThemeCtx.Provider>;
   if (!user && !showAuth) return (

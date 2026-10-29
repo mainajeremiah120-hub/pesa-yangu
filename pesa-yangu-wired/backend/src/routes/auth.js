@@ -39,6 +39,36 @@ async function sendResetEmail(to, resetUrl) {
   });
 }
 
+async function sendWelcomeEmail(to, fullName) {
+  const safeName = fullName.replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+  const appUrl = process.env.FRONTEND_URL || "https://pesayangu.africa";
+
+  await mailer.sendMail({
+    from:    process.env.SMTP_FROM || "Pesa Yangu <noreply@pesayangu.africa>",
+    to,
+    subject: "Welcome to Pesa Yangu",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0B1120;color:#E2E8F0;border-radius:16px">
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="display:inline-block;width:48px;height:48px;background:linear-gradient(135deg,#00D4AA,#3B82F6);border-radius:12px;font-size:22px;line-height:48px;text-align:center">◈</div>
+          <h2 style="margin:12px 0 4px;font-size:20px;color:#fff">Welcome to Pesa Yangu, ${safeName}!</h2>
+          <p style="margin:0;color:#94A3B8;font-size:13px">Smart personal finance for Kenya</p>
+        </div>
+        <p style="color:#CBD5E1;font-size:14px;line-height:1.6">Your account is ready. Start by adding your wallets and bank accounts, then track your spending, budgets and savings goals in one place.</p>
+        <div style="text-align:center;margin:28px 0">
+          <a href="${appUrl}" style="display:inline-block;background:#00D4AA;color:#0B1120;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none">Open Pesa Yangu</a>
+        </div>
+        <p style="color:#64748B;font-size:12px;text-align:center">We're glad you're here.</p>
+      </div>`,
+  });
+}
+
 const router = express.Router();
 
 const signAccess  = (id) => jwt.sign({ sub:id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_ACCESS_EXPIRES  || "15m" });
@@ -91,6 +121,15 @@ router.post("/register", async (req, res, next) => {
     );
 
     logger.info({ msg: "User registered", userId: user.id });
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        await sendWelcomeEmail(user.email, user.full_name);
+      } catch (mailErr) {
+        logger.error({ msg: "Failed to send welcome email", userId: user.id, error: mailErr.message });
+      }
+    } else {
+      logger.warn({ msg: "Welcome email skipped because SMTP is not configured", userId: user.id });
+    }
     res.status(201).json({ user, accessToken, refreshToken });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });

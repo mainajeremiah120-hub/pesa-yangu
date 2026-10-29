@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Mono', monospace; background: #0A0A0C; }
+    a { color: #C9A227; } a:hover { color: #E0BC4E; }
+  </style>
+</helmet>
+
+<div style="width:1280px; min-height:900px; background:#0A0A0C; font-family:'IBM Plex Mono',monospace; color:#EDEAE2;">
+
+  <!-- Ticker strip -->
+  <div style="display:flex; align-items:center; gap:0; padding:9px 32px; border-bottom:1px solid rgba(201,162,39,0.25); background:#0F0F12;">
+    <div style="display:flex; align-items:center; gap:6px; padding-right:22px; border-right:1px solid rgba(201,162,39,0.2);">
+      <span style="font-size:10px; color:#8A8578; letter-spacing:0.08em;">NET WORTH</span>
+      <span style="font-size:11.5px; font-weight:600; color:#EDEAE2;">KSH 120,000</span>
+      <svg width="8" height="8" viewBox="0 0 10 10"><path d="M5 1l4 7H1z" fill="#5C8A6E"/></svg>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; padding:0 22px; border-right:1px solid rgba(201,162,39,0.2);">
+      <span style="font-size:10px; color:#8A8578; letter-spacing:0.08em;">ACCOUNTS</span>
+      <span style="font-size:11.5px; font-weight:600; color:#EDEAE2;">3</span>
+    </div>
+    <div style="flex:1;"></div>
+    <span style="font-size:10px; color:#5C584D; letter-spacing:0.08em;">SEPT 3, 2026 · KES</span>
+  </div>
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:22px 32px 18px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div style="width:13px; height:13px; border:1.5px solid #C9A227; transform:rotate(45deg);"></div>
+      <div style="font-family:'Playfair Display',serif; font-weight:700; font-size:19px; letter-spacing:0.02em;">Pesa Yangu</div>
+      <span style="font-size:9px; letter-spacing:0.14em; color:#5C584D; margin-left:4px; border-left:1px solid rgba(201,162,39,0.25); padding-left:12px;">PRIVATE&nbsp;LEDGER</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:18px;">
+      <span style="font-size:10.5px; letter-spacing:0.1em; color:#0A0A0C; background:#C9A227; padding:9px 16px;">+ ADD ACCOUNT</span>
+      <div style="width:30px; height:30px; border:1px solid rgba(201,162,39,0.35); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:12px; color:#C9A227;">M</div>
+    </div>
+  </div>
+
+  <!-- Tab menu -->
+  <div style="display:flex; align-items:center; padding:0 32px 16px; border-bottom:1px solid rgba(201,162,39,0.18); gap:0;">
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">DASHBOARD</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#C9A227; padding-bottom:12px; border-bottom:1.5px solid #C9A227; margin-right:22px;">ACCOUNTS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">RECORDS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">BUDGETS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">GOALS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">RECURRING</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">INVEST</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">LOANS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">INSURANCE</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">RECONCILE</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px;">SETTINGS</span>
+  </div>
+
+  <!-- Account list -->
+  <div style="padding:30px 32px;">
+    <div style="border:1px solid rgba(201,162,39,0.22);">
+
+      <div style="display:flex; align-items:center; padding:22px 26px; border-bottom:1px solid rgba(201,162,39,0.16);">
+        <div style="flex:1;">
+          <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:6px;">EQUITY · CURRENT</div>
+          <div style="font-family:'Playfair Display',serif; font-weight:700; font-size:26px; font-variant-numeric:tabular-nums;">KSh 120,000</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; font-size:10px; color:#C9A227; letter-spacing:0.08em;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 5.5l1-1a3.5 3.5 0 015 5l-1 1"/><path d="M13 18.5l-1 1a3.5 3.5 0 01-5-5l1-1"/></svg>
+          LINKED
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; padding:22px 26px; border-bottom:1px solid rgba(201,162,39,0.16);">
+        <div style="flex:1;">
+          <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:6px;">MPESA · MOBILE</div>
+          <div style="font-family:'Playfair Display',serif; font-weight:700; font-size:26px; font-variant-numeric:tabular-nums;">KSh 8,450</div>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; padding:22px 26px;">
+        <div style="flex:1;">
+          <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:6px;">SACCO SAVINGS · SAVINGS</div>
+          <div style="font-family:'Playfair Display',serif; font-weight:700; font-size:26px; font-variant-numeric:tabular-nums;">KSh 35,000</div>
+        </div>
+      </div>
+
+    </div>
+    <div style="font-size:9.5px; color:#5C584D; letter-spacing:0.06em; margin-top:14px;">3 ACCOUNTS · KSh 163,450 TOTAL</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

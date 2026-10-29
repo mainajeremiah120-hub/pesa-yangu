@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background: #0B1120; }
+    a { color: #00D4AA; } a:hover { color: #33E0BF; }
+  </style>
+</helmet>
+
+<div style="width:640px; min-height:760px; background:#0B1120; padding:24px; font-family:'Inter',sans-serif;">
+
+  <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#00D4AA; margin-bottom:14px;">Household</div>
+
+  <!-- Ticket 1 — not linked -->
+  <div style="position:relative; display:flex; background:#15202E; border:1px solid #1E2E42; border-radius:16px; overflow:hidden; margin-bottom:24px;">
+    <div style="flex:1; padding:26px 24px;">
+      <div style="font-family:'DM Serif Display',serif; font-size:19px; color:#F0F4FF; margin-bottom:8px;">No one linked yet</div>
+      <div style="font-size:12px; color:#8B9ABB; line-height:1.6; margin-bottom:18px; max-width:280px;">Generate a code and your partner enters it when creating their account. Same data, two logins.</div>
+      <div style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:#00D4AA;">
+        Generate a code
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00D4AA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 6l6 6-6 6"/>
+        </svg>
+      </div>
+    </div>
+    <div style="width:150px; flex-shrink:0; border-left:2px dashed #1E2E42; display:flex; align-items:center; justify-content:center;">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#3D5068" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 15l6-6"/>
+        <path d="M11 5.5l1-1a3.5 3.5 0 015 5l-1 1"/>
+        <path d="M13 18.5l-1 1a3.5 3.5 0 01-5-5l1-1"/>
+      </svg>
+    </div>
+    <div style="position:absolute; left:433px; top:-9px; width:18px; height:18px; border-radius:50%; background:#0B1120;"></div>
+    <div style="position:absolute; left:433px; bottom:-9px; width:18px; height:18px; border-radius:50%; background:#0B1120;"></div>
+  </div>
+
+  <div style="text-align:center; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#3D5068; margin-bottom:24px;">Once you generate a code</div>
+
+  <!-- Ticket 2 — code active -->
+  <div style="position:relative; display:flex; background:#15202E; border:1px solid #1E2E42; border-radius:16px; overflow:hidden;">
+    <div style="flex:1; padding:26px 24px; display:flex; flex-direction:column; justify-content:space-between;">
+      <div>
+        <div style="font-family:'DM Serif Display',serif; font-size:19px; color:#F0F4FF; margin-bottom:8px;">Waiting for your partner</div>
+        <div style="font-size:12px; color:#8B9ABB; line-height:1.6; max-width:280px;">Share the code on the right. It works once and expires in 7 days.</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:18px;">
+        <div style="width:34px; height:34px; border-radius:50%; border:2px dashed #3D5068; display:flex; align-items:center; justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3D5068" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </div>
+        <div style="font-size:11.5px; color:#3D5068;">Partner's seat — empty for now</div>
+      </div>
+    </div>
+    <div style="width:150px; flex-shrink:0; border-left:2px dashed #1E2E42; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:20px 10px;">
+      <div style="font-family:'Inter',sans-serif; font-weight:800; font-size:19px; letter-spacing:0.06em; color:#00D4AA; text-align:center; line-height:1.3;">FWNM&#8209;<br>3RHF</div>
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#00D4AA; cursor:pointer;">Copy</div>
+    </div>
+    <div style="position:absolute; left:433px; top:-9px; width:18px; height:18px; border-radius:50%; background:#0B1120;"></div>
+    <div style="position:absolute; left:433px; bottom:-9px; width:18px; height:18px; border-radius:50%; background:#0B1120;"></div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

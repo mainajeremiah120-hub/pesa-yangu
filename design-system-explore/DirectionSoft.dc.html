@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background: #0B1120; }
+    a { color: #00D4AA; } a:hover { color: #33E0BF; }
+  </style>
+</helmet>
+
+<div style="width:1280px; min-height:960px; background:radial-gradient(circle at 15% 0%, #10233A 0%, #0B1120 55%); padding:34px; font-family:'Inter',sans-serif; color:#F0F4FF;">
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:26px;">
+    <div style="display:flex; align-items:center; gap:11px;">
+      <div style="width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#00D4AA,#4A90E2); display:flex; align-items:center; justify-content:center;">
+        <div style="width:11px; height:11px; background:#0B1120; transform:rotate(45deg); border-radius:2px;"></div>
+      </div>
+      <div style="font-family:'DM Serif Display',serif; font-size:19px;">Pesa Yangu</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button style="background:#00D4AA; border:none; color:#0B1120; border-radius:16px; padding:11px 20px; font-family:inherit; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:7px; cursor:pointer; box-shadow:0 6px 18px rgba(0,212,170,0.28);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B1120" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add Transaction
+      </button>
+      <div style="width:38px; height:38px; border-radius:50%; background:#1E2E42; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">M</div>
+    </div>
+  </div>
+
+  <!-- Tab pills -->
+  <div style="display:flex; gap:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:20px; padding:6px; margin-bottom:26px; width:fit-content;">
+    <div style="display:flex; align-items:center; gap:6px; background:#00D4AA; color:#0B1120; border-radius:14px; padding:8px 16px; font-size:11.5px; font-weight:800;">
+      <div style="width:7px; height:7px; background:#0B1120; transform:rotate(45deg); border-radius:1px;"></div>
+      Dashboard
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9 10v9M15 10v9"/><path d="M3 19h18"/></svg>
+      Accounts
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h13M6 12h13M6 18h13"/><circle cx="3" cy="6" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="18" r="1"/></svg>
+      Records
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>
+      Budgets
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18"/><path d="M6 4h11l-2.5 3.5L17 11H6"/></svg>
+      Goals
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/></svg>
+      Recurring
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg>
+      Invest
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>
+      Loans
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>
+      Insurance
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.3 2.3L16 9.5"/></svg>
+      Reconcile
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; color:#8B9ABB; border-radius:14px; padding:8px 14px; font-size:11.5px; font-weight:600;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.8"/><path d="M19.4 13.5a1.7 1.7 0 000-3l-1.4-.3a6.4 6.4 0 00-.7-1.7l.8-1.2a1.7 1.7 0 00-2.4-2.4l-1.2.8a6.4 6.4 0 00-1.7-.7L12.5 3a1.7 1.7 0 00-3 0l-.3 1.4a6.4 6.4 0 00-1.7.7l-1.2-.8a1.7 1.7 0 00-2.4 2.4l.8 1.2a6.4 6.4 0 00-.7 1.7L2.6 10.5a1.7 1.7 0 000 3l1.4.3c.15.6.4 1.17.7 1.7l-.8 1.2a1.7 1.7 0 002.4 2.4l1.2-.8c.53.3 1.1.55 1.7.7l.3 1.4a1.7 1.7 0 003 0l.3-1.4c.6-.15 1.17-.4 1.7-.7l1.2.8a1.7 1.7 0 002.4-2.4l-.8-1.2c.3-.53.55-1.1.7-1.7z"/></svg>
+      Settings
+    </div>
+  </div>
+
+  <!-- Hero card -->
+  <div style="background:linear-gradient(135deg, rgba(0,212,170,0.10), rgba(74,144,226,0.06)); border:1px solid rgba(255,255,255,0.08); border-radius:24px; padding:30px 32px; margin-bottom:20px; box-shadow:0 16px 40px rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:space-between;">
+    <div style="display:flex; align-items:center; gap:26px;">
+      <div style="position:relative; width:96px; height:96px; flex-shrink:0;">
+        <svg width="96" height="96" viewBox="0 0 96 96">
+          <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/>
+          <circle cx="48" cy="48" r="42" fill="none" stroke="#00D4AA" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="26" transform="rotate(-90 48 48)"/>
+        </svg>
+        <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <span style="font-size:26px; font-weight:800;">90</span>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span style="font-size:10.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#8B9ABB;">Financial Health</span>
+          <span style="display:flex; align-items:center; gap:4px; font-size:10px; font-weight:700; color:#00D4AA; background:rgba(0,212,170,0.14); border-radius:20px; padding:3px 9px;">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00D4AA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 5.5l1-1a3.5 3.5 0 015 5l-1 1"/><path d="M13 18.5l-1 1a3.5 3.5 0 01-5-5l1-1"/></svg>
+            Linked with Katana
+          </span>
+        </div>
+        <div style="font-family:'DM Serif Display',serif; font-size:27px;">Looking Good</div>
+        <div style="font-size:12.5px; color:#8B9ABB; margin-top:6px;">Savings rate 50% · 1 budget running over</div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:10.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#8B9ABB; margin-bottom:8px;">Net Worth</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:36px; font-variant-numeric:tabular-nums;">KSh 120,000</div>
+      <svg width="180" height="46" viewBox="0 0 180 46" style="margin-top:8px;">
+        <defs>
+          <linearGradient id="fillA" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00D4AA" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#00D4AA" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0,38 40,34 80,30 120,18 160,8 180,4 180,46 0,46 Z" fill="url(#fillA)"/>
+        <polyline points="0,38 40,34 80,30 120,18 160,8 180,4" fill="none" stroke="#00D4AA" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Stat tiles -->
+  <div style="display:flex; gap:16px; margin-bottom:20px;">
+    <div style="flex:1; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:18px; padding:18px; display:flex; align-items:center; gap:13px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="width:38px; height:38px; border-radius:12px; background:rgba(0,212,170,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00D4AA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9 10v9M15 10v9"/><path d="M3 19h18"/></svg>
+      </div>
+      <div><div style="font-size:10px; color:#8B9ABB; margin-bottom:3px;">Balance</div><div style="font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;">120,000</div></div>
+    </div>
+    <div style="flex:1; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:18px; padding:18px; display:flex; align-items:center; gap:13px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="width:38px; height:38px; border-radius:12px; background:rgba(0,212,170,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00D4AA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+      </div>
+      <div><div style="font-size:10px; color:#8B9ABB; margin-bottom:3px;">Income</div><div style="font-size:16px; font-weight:800; color:#00D4AA; font-variant-numeric:tabular-nums;">40,000</div></div>
+    </div>
+    <div style="flex:1; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:18px; padding:18px; display:flex; align-items:center; gap:13px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="width:38px; height:38px; border-radius:12px; background:rgba(245,200,66,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#F5C842" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+      </div>
+      <div><div style="font-size:10px; color:#8B9ABB; margin-bottom:3px;">Expenses</div><div style="font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;">20,000</div></div>
+    </div>
+    <div style="flex:1; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:18px; padding:18px; display:flex; align-items:center; gap:13px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="width:38px; height:38px; border-radius:12px; background:rgba(74,144,226,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4A90E2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg>
+      </div>
+      <div><div style="font-size:10px; color:#8B9ABB; margin-bottom:3px;">Investments</div><div style="font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;">0</div></div>
+    </div>
+    <div style="flex:1; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:18px; padding:18px; display:flex; align-items:center; gap:13px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="width:38px; height:38px; border-radius:12px; background:rgba(255,107,107,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>
+      </div>
+      <div><div style="font-size:10px; color:#8B9ABB; margin-bottom:3px;">Total Debt</div><div style="font-size:16px; font-weight:800; color:#FF6B6B; font-variant-numeric:tabular-nums;">0</div></div>
+    </div>
+  </div>
+
+  <!-- Lower row -->
+  <div style="display:flex; gap:16px;">
+    <div style="flex:1; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:20px; padding:22px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Watching Closely</div>
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span style="font-size:12.5px;">Rent / Mortgage</span><span style="font-size:11.5px; color:#8B9ABB; font-variant-numeric:tabular-nums;">0 / 25,000</span></div>
+        <div style="height:6px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden;"><div style="width:2%; height:100%; background:#00D4AA;"></div></div>
+      </div>
+      <div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span style="font-size:12.5px;">Food &amp; Dining</span><span style="font-size:11.5px; color:#8B9ABB; font-variant-numeric:tabular-nums;">0 / 15,000</span></div>
+        <div style="height:6px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden;"><div style="width:2%; height:100%; background:#00D4AA;"></div></div>
+      </div>
+    </div>
+    <div style="flex:1.3; background:#141F33; border:1px solid rgba(255,255,255,0.06); border-radius:20px; padding:22px; box-shadow:0 8px 20px rgba(0,0,0,0.22);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div style="font-size:14px; font-weight:700;">Recent Transactions</div>
+        <span style="font-size:11px; color:#00D4AA; font-weight:700;">View all</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; padding:8px 0;">
+        <div style="width:32px; height:32px; border-radius:10px; background:rgba(0,212,170,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00D4AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </div>
+        <div style="flex:1;"><div style="font-size:13px;">Salary</div><div style="font-size:10.5px; color:#8B9ABB;">Equity · Sept 3</div></div>
+        <span style="font-size:13px; font-weight:700; color:#00D4AA; font-variant-numeric:tabular-nums;">+40,000</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; padding:8px 0;">
+        <div style="width:32px; height:32px; border-radius:10px; background:rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B9ABB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        </div>
+        <div style="flex:1;"><div style="font-size:13px;">Groceries</div><div style="font-size:10.5px; color:#8B9ABB;">Equity · Sept 3</div></div>
+        <span style="font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;">−20,000</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

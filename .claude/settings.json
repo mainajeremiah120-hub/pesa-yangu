@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/digit/AppData/Local/Temp/claude/c--Users-digit-Downloads-pesa-yangu-complete--1-/77944795-7106-4125-ae76-81c2d33f21e8/scratchpad/**)",
+      "Bash(timeout 45 node render-smoke-test.js)"
+    ]
+  }
+}

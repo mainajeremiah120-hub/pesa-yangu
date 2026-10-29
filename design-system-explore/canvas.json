@@ -1,0 +1,15 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 960 },
+    { "file": "DirectionGrid.dc.html", "x": 1420, "y": 0, "w": 1280, "h": 960 },
+    { "file": "DirectionSoft.dc.html", "x": 2840, "y": 0, "w": 1280, "h": 1000 },
+    { "file": "BloombergLuxury.dc.html", "x": 4260, "y": 0, "w": 1280, "h": 900 }
+  ],
+  "annotations": [
+    { "id": "label-main", "x": 0, "y": -110, "w": 1280, "text": "Editorial Ledger — Top tabs, hairline dividers instead of boxed cards, large serif figures for money throughout. Quiet, newspaper-like; the most restrained of the three." },
+    { "id": "label-grid", "x": 1420, "y": -110, "w": 1280, "text": "Structured Grid — Icon rail sidebar replaces top tabs, sharp 8px corners, dense tabular data. Feels like an instrument panel; most systematic and information-dense." },
+    { "id": "label-soft", "x": 2840, "y": -110, "w": 1280, "text": "Soft Depth — Pill tab bar, layered shadows, big radii, gradient hero card. Warmest and most consumer-app; costs the most visual weight of the three." },
+    { "id": "label-bloomberg", "x": 4260, "y": -110, "w": 1280, "text": "Bloomberg-Meets-Luxury-Banking — a ticker strip, gold hairlines on black, serif headline numerals paired with monospace data. Densest and most opinionated of the four; reads like a private wealth terminal." }
+  ],
+  "launch": { "view": "canvas" }
+}

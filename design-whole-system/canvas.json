@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 900 },
+    { "file": "Accounts.dc.html", "x": 1420, "y": 0, "w": 1280, "h": 900 },
+    { "file": "HouseholdSettings.dc.html", "x": 2840, "y": 0, "w": 1280, "h": 900 }
+  ],
+  "annotations": [
+    { "id": "label-dash", "x": 0, "y": -80, "w": 1280, "text": "Dashboard" },
+    { "id": "label-accounts", "x": 1420, "y": -80, "w": 1280, "text": "Accounts" },
+    { "id": "label-household", "x": 2840, "y": -80, "w": 1280, "text": "Settings — Household" }
+  ],
+  "launch": { "view": "canvas" }
+}

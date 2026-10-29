@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 640, "h": 880 },
+    { "file": "DirectionA.dc.html", "x": 780, "y": 0, "w": 640, "h": 680 },
+    { "file": "DirectionC.dc.html", "x": 1560, "y": 0, "w": 640, "h": 760 }
+  ],
+  "annotations": [
+    { "id": "label-main", "x": 0, "y": -110, "w": 640, "text": "Two Avatars, One Line\nMakes the couple metaphor literal with a connection diagram. Boldest and most memorable — costs more vertical space." },
+    { "id": "label-a", "x": 780, "y": -110, "w": 640, "text": "Refined Default\nClosest to today's Settings rows, just with real SVG icons and chevrons instead of emoji. Safest to ship, least distinctive." },
+    { "id": "label-c", "x": 1560, "y": -110, "w": 640, "text": "Code-First / Ticket Stub\nTreats the invite code like a real paper stub. Most restrained and typographic — icon-light, leans on layout to carry the feeling." }
+  ],
+  "launch": { "view": "canvas" }
+}

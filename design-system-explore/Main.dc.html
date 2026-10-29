@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background: #0B1120; }
+    a { color: #00D4AA; } a:hover { color: #33E0BF; }
+  </style>
+</helmet>
+
+<div style="width:1280px; min-height:920px; background:#0B1120; padding:32px; font-family:'Inter',sans-serif; color:#F0F4FF;">
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:26px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div style="width:15px; height:15px; background:#00D4AA; transform:rotate(45deg); border-radius:3px;"></div>
+      <div style="font-family:'DM Serif Display',serif; font-size:20px;">Pesa Yangu</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <button style="background:transparent; border:1.5px solid #00D4AA; color:#00D4AA; border-radius:9px; padding:9px 18px; font-family:inherit; font-weight:700; font-size:12.5px; display:flex; align-items:center; gap:7px; cursor:pointer;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00D4AA" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add Transaction
+      </button>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B9ABB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2 12h2.4M19.6 12H22M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+      <div style="width:1px; height:20px; background:#1E2E42;"></div>
+      <span style="font-size:12.5px; color:#8B9ABB; font-weight:600; cursor:pointer;">Sign Out</span>
+    </div>
+  </div>
+
+  <!-- Tab strip -->
+  <div style="display:flex; gap:2px; border-bottom:1px solid #1E2E42; margin-bottom:30px; padding-bottom:0;">
+    <!-- Dashboard (active) -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; border-bottom:2px solid #00D4AA; color:#00D4AA;">
+      <div style="width:9px; height:9px; background:currentColor; transform:rotate(45deg); border-radius:2px;"></div>
+      <div style="font-size:10.5px; font-weight:700;">Dashboard</div>
+    </div>
+    <!-- Accounts -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9 10v9M15 10v9"/><path d="M3 19h18"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Accounts</div>
+    </div>
+    <!-- Records -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h13M6 12h13M6 18h13"/><circle cx="3" cy="6" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="18" r="1"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Records</div>
+    </div>
+    <!-- Budgets -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Budgets</div>
+    </div>
+    <!-- Goals -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18"/><path d="M6 4h11l-2.5 3.5L17 11H6"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Goals</div>
+    </div>
+    <!-- Recurring -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0114-5.3M20 5v5h-5"/><path d="M20 12a8 8 0 01-14 5.3M4 19v-5h5"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Recurring</div>
+    </div>
+    <!-- Invest -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Invest</div>
+    </div>
+    <!-- Loans -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Loans</div>
+    </div>
+    <!-- Insurance -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Insurance</div>
+    </div>
+    <!-- Reconcile -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.3 2.3L16 9.5"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Reconcile</div>
+    </div>
+    <!-- Settings -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:0 16px 12px; color:#5D6A8C;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.8"/><path d="M19.4 13.5a1.7 1.7 0 000-3l-1.4-.3a6.4 6.4 0 00-.7-1.7l.8-1.2a1.7 1.7 0 00-2.4-2.4l-1.2.8a6.4 6.4 0 00-1.7-.7L12.5 3a1.7 1.7 0 00-3 0l-.3 1.4a6.4 6.4 0 00-1.7.7l-1.2-.8a1.7 1.7 0 00-2.4 2.4l.8 1.2a6.4 6.4 0 00-.7 1.7L2.6 10.5a1.7 1.7 0 000 3l1.4.3c.15.6.4 1.17.7 1.7l-.8 1.2a1.7 1.7 0 002.4 2.4l1.2-.8c.53.3 1.1.55 1.7.7l.3 1.4a1.7 1.7 0 003 0l.3-1.4c.6-.15 1.17-.4 1.7-.7l1.2.8a1.7 1.7 0 002.4-2.4l-.8-1.2c.3-.53.55-1.1.7-1.7z"/></svg>
+      <div style="font-size:10.5px; font-weight:600;">Settings</div>
+    </div>
+  </div>
+
+  <!-- Hero row -->
+  <div style="display:flex; gap:20px; margin-bottom:20px;">
+    <div style="flex:1.15;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#5D6A8C; margin-bottom:10px;">Financial Health — Maina · Linked with Katana</div>
+      <div style="display:flex; align-items:baseline; gap:16px;">
+        <span style="font-family:'DM Serif Display',serif; font-size:52px; color:#00D4AA; line-height:1;">90</span>
+        <span style="font-family:'DM Serif Display',serif; font-size:26px; color:#F0F4FF;">Looking Good</span>
+      </div>
+      <div style="font-size:13px; color:#8B9ABB; margin-top:10px;">Savings rate <strong style="color:#00D4AA; font-weight:700;">50%</strong> &nbsp;·&nbsp; 1 budget running over &nbsp;·&nbsp; <span style="color:#FF6B6B; font-weight:600;">Education</span></div>
+      <div style="height:1px; background:#1E2E42; margin-top:20px;"></div>
+    </div>
+    <div style="flex:1; padding-left:20px; border-left:1px solid #1E2E42;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#5D6A8C; margin-bottom:10px;">Net Worth</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:44px; color:#F0F4FF; font-variant-numeric:tabular-nums; line-height:1;">KSh 120,000</div>
+      <div style="font-size:11.5px; color:#5D6A8C; margin-top:8px;">KES · Assets minus liabilities</div>
+      <svg width="100%" height="34" viewBox="0 0 300 34" style="margin-top:14px; display:block;">
+        <polyline points="0,28 60,25 110,24 160,20 210,10 260,6 300,4" fill="none" stroke="#00D4AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Stat row -->
+  <div style="display:flex; gap:0; margin-bottom:30px; border-top:1px solid #1E2E42; padding-top:18px;">
+    <div style="flex:1; padding-right:20px; border-right:1px solid #1E2E42;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#5D6A8C; margin-bottom:6px;">Total Balance</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:22px; font-variant-numeric:tabular-nums;">KSh 120,000</div>
+      <div style="font-size:10.5px; color:#5D6A8C; margin-top:3px;">1 account</div>
+    </div>
+    <div style="flex:1; padding:0 20px; border-right:1px solid #1E2E42;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#5D6A8C; margin-bottom:6px;">Income</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:22px; color:#00D4AA; font-variant-numeric:tabular-nums;">KSh 40,000</div>
+      <div style="font-size:10.5px; color:#5D6A8C; margin-top:3px;">This month</div>
+    </div>
+    <div style="flex:1; padding:0 20px; border-right:1px solid #1E2E42;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#5D6A8C; margin-bottom:6px;">Expenses</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:22px; font-variant-numeric:tabular-nums;">KSh 20,000</div>
+      <div style="font-size:10.5px; color:#5D6A8C; margin-top:3px;">50% of income</div>
+    </div>
+    <div style="flex:1; padding:0 20px; border-right:1px solid #1E2E42;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#5D6A8C; margin-bottom:6px;">Investments</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:22px; font-variant-numeric:tabular-nums;">KSh 0</div>
+      <div style="font-size:10.5px; color:#5D6A8C; margin-top:3px;">0 assets</div>
+    </div>
+    <div style="flex:1; padding-left:20px;">
+      <div style="font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#5D6A8C; margin-bottom:6px;">Total Debt</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:22px; color:#FF6B6B; font-variant-numeric:tabular-nums;">KSh 0</div>
+      <div style="font-size:10.5px; color:#5D6A8C; margin-top:3px;">0 loans</div>
+    </div>
+  </div>
+
+  <!-- Lower row -->
+  <div style="display:flex; gap:44px;">
+    <div style="flex:1;">
+      <div style="font-family:'DM Serif Display',serif; font-size:16px; margin-bottom:14px;">Watching Closely</div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; padding:11px 0; border-bottom:1px solid #1E2E42;">
+        <span style="font-size:13px; color:#F0F4FF;">Rent / Mortgage</span>
+        <span style="font-size:12.5px; color:#5D6A8C; font-variant-numeric:tabular-nums;">KSh 0 / 25,000</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; padding:11px 0; border-bottom:1px solid #1E2E42;">
+        <span style="font-size:13px; color:#F0F4FF;">Food &amp; Dining</span>
+        <span style="font-size:12.5px; color:#5D6A8C; font-variant-numeric:tabular-nums;">KSh 0 / 15,000</span>
+      </div>
+    </div>
+    <div style="flex:1.4;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+        <div style="font-family:'DM Serif Display',serif; font-size:16px;">Recent Transactions</div>
+        <span style="font-size:11.5px; color:#00D4AA; font-weight:700;">View all</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid #1E2E42;">
+        <div><div style="font-size:13px;">Salary — Equity</div><div style="font-size:11px; color:#5D6A8C; margin-top:2px;">Sept 3</div></div>
+        <span style="font-size:13.5px; color:#00D4AA; font-variant-numeric:tabular-nums;">+ KSh 40,000</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid #1E2E42;">
+        <div><div style="font-size:13px;">Groceries — Equity</div><div style="font-size:11px; color:#5D6A8C; margin-top:2px;">Sept 3</div></div>
+        <span style="font-size:13.5px; color:#F0F4FF; font-variant-numeric:tabular-nums;">− KSh 20,000</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

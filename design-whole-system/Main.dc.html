@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Mono', monospace; background: #0A0A0C; }
+    a { color: #C9A227; } a:hover { color: #E0BC4E; }
+  </style>
+</helmet>
+
+<div style="width:1280px; min-height:900px; background:#0A0A0C; font-family:'IBM Plex Mono',monospace; color:#EDEAE2;">
+
+  <!-- Ticker strip -->
+  <div style="display:flex; align-items:center; gap:0; padding:9px 32px; border-bottom:1px solid rgba(201,162,39,0.25); background:#0F0F12;">
+    <div style="display:flex; align-items:center; gap:6px; padding-right:22px; border-right:1px solid rgba(201,162,39,0.2);">
+      <span style="font-size:10px; color:#8A8578; letter-spacing:0.08em;">NET WORTH</span>
+      <span style="font-size:11.5px; font-weight:600; color:#EDEAE2;">KSH 120,000</span>
+      <svg width="8" height="8" viewBox="0 0 10 10"><path d="M5 1l4 7H1z" fill="#5C8A6E"/></svg>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; padding:0 22px; border-right:1px solid rgba(201,162,39,0.2);">
+      <span style="font-size:10px; color:#8A8578; letter-spacing:0.08em;">SAVINGS RATE</span>
+      <span style="font-size:11.5px; font-weight:600; color:#EDEAE2;">50%</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; padding:0 22px; border-right:1px solid rgba(201,162,39,0.2);">
+      <span style="font-size:10px; color:#8A8578; letter-spacing:0.08em;">SCORE</span>
+      <span style="font-size:11.5px; font-weight:600; color:#C9A227;">90 / 100</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px; padding:0 22px;">
+      <span style="font-size:10px; color:#8A8578; letter-spacing:0.08em;">BUDGET OVER</span>
+      <span style="font-size:11.5px; font-weight:600; color:#A85A5A;">EDUCATION</span>
+      <svg width="8" height="8" viewBox="0 0 10 10"><path d="M5 9L1 2h8z" fill="#A85A5A"/></svg>
+    </div>
+    <div style="flex:1;"></div>
+    <span style="font-size:10px; color:#5C584D; letter-spacing:0.08em;">SEPT 3, 2026 · KES</span>
+  </div>
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:22px 32px 18px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div style="width:13px; height:13px; border:1.5px solid #C9A227; transform:rotate(45deg);"></div>
+      <div style="font-family:'Playfair Display',serif; font-weight:700; font-size:19px; letter-spacing:0.02em;">Pesa Yangu</div>
+      <span style="font-size:9px; letter-spacing:0.14em; color:#5C584D; margin-left:4px; border-left:1px solid rgba(201,162,39,0.25); padding-left:12px;">PRIVATE&nbsp;LEDGER</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:18px;">
+      <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; cursor:pointer;">+ NEW ENTRY</span>
+      <div style="width:30px; height:30px; border:1px solid rgba(201,162,39,0.35); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:12px; color:#C9A227;">M</div>
+    </div>
+  </div>
+
+  <!-- Tab menu -->
+  <div style="display:flex; align-items:center; padding:0 32px 16px; border-bottom:1px solid rgba(201,162,39,0.18); gap:0;">
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#C9A227; padding-bottom:12px; border-bottom:1.5px solid #C9A227; margin-right:22px;">DASHBOARD</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">ACCOUNTS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">RECORDS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">BUDGETS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">GOALS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">RECURRING</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">INVEST</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">LOANS</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">INSURANCE</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px; margin-right:22px;">RECONCILE</span>
+    <span style="font-size:10.5px; letter-spacing:0.1em; color:#8A8578; padding-bottom:12px;">SETTINGS</span>
+  </div>
+
+  <!-- Hero: net worth + summary panel -->
+  <div style="display:flex; gap:0; margin:28px 32px 0; border:1px solid rgba(201,162,39,0.22);">
+    <div style="flex:1.3; padding:26px 30px; border-right:1px solid rgba(201,162,39,0.22);">
+      <div style="font-size:9.5px; letter-spacing:0.14em; color:#8A8578; margin-bottom:12px;">NET WORTH — ASSETS LESS LIABILITIES</div>
+      <div style="font-family:'Playfair Display',serif; font-weight:700; font-size:54px; color:#EDEAE2; font-variant-numeric:tabular-nums; line-height:1;">KSh 120,000</div>
+      <svg width="100%" height="40" viewBox="0 0 340 40" style="margin-top:18px; display:block;">
+        <polyline points="0,33 60,30 120,28 180,20 240,10 300,5 340,3" fill="none" stroke="#C9A227" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div style="flex:1; padding:26px 30px;">
+      <div style="font-size:9.5px; letter-spacing:0.14em; color:#8A8578; margin-bottom:16px;">ACCOUNT SUMMARY</div>
+      <div style="display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(201,162,39,0.14);"><span style="font-size:11px; color:#8A8578;">HOLDER</span><span style="font-size:12px; color:#EDEAE2;">MAINA</span></div>
+      <div style="display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(201,162,39,0.14);"><span style="font-size:11px; color:#8A8578;">LINKED</span><span style="font-size:12px; color:#C9A227;">KATANA</span></div>
+      <div style="display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(201,162,39,0.14);"><span style="font-size:11px; color:#8A8578;">HEALTH SCORE</span><span style="font-size:12px; color:#EDEAE2;">90 / 100</span></div>
+      <div style="display:flex; justify-content:space-between; padding:9px 0;"><span style="font-size:11px; color:#8A8578;">STATUS</span><span style="font-size:12px; color:#5C8A6E;">LOOKING GOOD</span></div>
+    </div>
+  </div>
+
+  <!-- Data strip -->
+  <div style="display:flex; margin:0 32px; border:1px solid rgba(201,162,39,0.22); border-top:none;">
+    <div style="flex:1; padding:16px 24px; border-right:1px solid rgba(201,162,39,0.14);">
+      <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:7px;">BALANCE</div>
+      <div style="font-size:16px; font-weight:600; font-variant-numeric:tabular-nums;">120,000</div>
+    </div>
+    <div style="flex:1; padding:16px 24px; border-right:1px solid rgba(201,162,39,0.14);">
+      <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:7px;">INCOME</div>
+      <div style="font-size:16px; font-weight:600; color:#5C8A6E; font-variant-numeric:tabular-nums;">+40,000</div>
+    </div>
+    <div style="flex:1; padding:16px 24px; border-right:1px solid rgba(201,162,39,0.14);">
+      <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:7px;">EXPENSES</div>
+      <div style="font-size:16px; font-weight:600; font-variant-numeric:tabular-nums;">20,000</div>
+    </div>
+    <div style="flex:1; padding:16px 24px; border-right:1px solid rgba(201,162,39,0.14);">
+      <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:7px;">INVESTMENTS</div>
+      <div style="font-size:16px; font-weight:600; font-variant-numeric:tabular-nums;">0</div>
+    </div>
+    <div style="flex:1; padding:16px 24px;">
+      <div style="font-size:9px; letter-spacing:0.1em; color:#8A8578; margin-bottom:7px;">TOTAL DEBT</div>
+      <div style="font-size:16px; font-weight:600; color:#A85A5A; font-variant-numeric:tabular-nums;">0</div>
+    </div>
+  </div>
+
+  <!-- Lower panels -->
+  <div style="display:flex; gap:0; margin:0 32px 32px; border:1px solid rgba(201,162,39,0.22); border-top:none;">
+    <div style="flex:1; padding:20px 26px; border-right:1px solid rgba(201,162,39,0.22);">
+      <div style="font-size:9.5px; letter-spacing:0.14em; color:#8A8578; margin-bottom:14px;">WATCHING CLOSELY</div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(201,162,39,0.1);"><span style="font-size:11.5px;">RENT / MORTGAGE</span><span style="font-size:11px; color:#8A8578; font-variant-numeric:tabular-nums;">0 / 25,000</span></div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="font-size:11.5px;">FOOD &amp; DINING</span><span style="font-size:11px; color:#8A8578; font-variant-numeric:tabular-nums;">0 / 15,000</span></div>
+    </div>
+    <div style="flex:1.3; padding:20px 26px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:14px;">
+        <div style="font-size:9.5px; letter-spacing:0.14em; color:#8A8578;">RECENT ENTRIES</div>
+        <span style="font-size:9.5px; letter-spacing:0.1em; color:#C9A227;">VIEW ALL</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(201,162,39,0.1);">
+        <span style="font-size:11.5px;">SALARY — EQUITY · SEPT 3</span>
+        <span style="font-size:11.5px; color:#5C8A6E; font-variant-numeric:tabular-nums;">+40,000</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:8px 0;">
+        <span style="font-size:11.5px;">GROCERIES — EQUITY · SEPT 3</span>
+        <span style="font-size:11.5px; font-variant-numeric:tabular-nums;">−20,000</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

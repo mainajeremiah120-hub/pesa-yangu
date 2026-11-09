@@ -3453,17 +3453,20 @@ export default function App() {
     srTxs.filter(t=>t.type==="expense").forEach(t=>{ const key=t.category||t.category_id; srSpend[key]=(srSpend[key]||0)+(t.amount||parseFloat(t.amount_kes||0)); });
     const srMatch = (d) => d.getFullYear()===year && d.getMonth()+1===month;
     txs.filter(t=>t.type==="refund").forEach(t=>{ const orig=txs.find(x=>x.id===t.refund_of); if(!orig||!srMatch(new Date(orig.date||orig.tx_date))) return; const key=orig.category||orig.category_id; if(key) srSpend[key]=Math.max(0,(srSpend[key]||0)-(t.amount||parseFloat(t.amount_kes||0))); });
-    const rows = expCats.filter(c=>(srSpend[c.id]||0)>0).sort((a,b)=>(srSpend[b.id]||0)-(srSpend[a.id]||0));
+    // Every expense category, not just ones that had spend this month — so
+    // "did I even touch this budget" is visible too, not only overspend.
+    const rows = [...expCats].sort((a,b)=>(srSpend[b.id]||0)-(srSpend[a.id]||0));
     const total = rows.reduce((s,c)=>s+(srSpend[c.id]||0),0);
-    return { rows, total, srSpend };
+    const totalBudget = rows.reduce((s,c)=>s+(c.budget||0),0);
+    return { rows, total, totalBudget, srSpend };
   };
 
   // jsPDF/jspdf-autotable/exceljs are dynamically imported so their weight
   // is only paid when someone actually downloads a report, not on every
   // page load.
   const downloadSpendReportPDF = async () => {
-    const { rows, total, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
-    if (!rows.length) return showToast(`No expenses recorded in ${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`, C.coral);
+    const { rows, total, totalBudget, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
+    if (!rows.length) return showToast("No expense categories yet — add one from Budgets", C.coral);
     try {
       const monthLabel = `${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`;
       // jsPDF's actual constructor is the named export, not `default` (the
@@ -3477,10 +3480,16 @@ export default function App() {
       doc.setTextColor(100);
       doc.text(monthLabel, 14, 26);
       doc.text(`Total Spent: ${disp(total)}`, 14, 33);
+      let nextY = 40;
+      if (totalBudget>0) {
+        const overUnder = total - totalBudget;
+        doc.text(`Total Budget: ${disp(totalBudget)}  (${overUnder>0?"over":"under"} by ${disp(Math.abs(overUnder))})`, 14, 40);
+        nextY = 47;
+      }
       autoTable(doc, {
-        startY: 40,
+        startY: nextY,
         head: [["Category", "Spent", "Budget"]],
-        body: rows.map(c => [`${c.icon} ${c.name}`, disp(srSpend[c.id]), c.budget>0 ? disp(c.budget) : "—"]),
+        body: rows.map(c => [`${c.icon} ${c.name}`, disp(srSpend[c.id]||0), c.budget>0 ? disp(c.budget) : "—"]),
         headStyles: { fillColor: [0, 212, 170] },
       });
       doc.save(`pesa-yangu-spending-${spendReportYear}-${String(spendReportMonth).padStart(2,"0")}.pdf`);
@@ -3489,8 +3498,8 @@ export default function App() {
   };
 
   const downloadSpendReportExcel = async () => {
-    const { rows, total, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
-    if (!rows.length) return showToast(`No expenses recorded in ${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`, C.coral);
+    const { rows, total, totalBudget, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
+    if (!rows.length) return showToast("No expense categories yet — add one from Budgets", C.coral);
     try {
       const monthLabel = `${MONTH_NAMES[spendReportMonth-1]} ${spendReportYear}`;
       // exceljs's CJS build has no `default` export (unlike jspdf) — it puts
@@ -3508,7 +3517,7 @@ export default function App() {
       ];
       ws.getRow(1).font = { bold: true };
       rows.forEach(c => ws.addRow({ category: `${c.icon} ${c.name}`, spent: srSpend[c.id]||0, budget: c.budget>0 ? c.budget : null }));
-      const totalRow = ws.addRow({ category: "Total", spent: total });
+      const totalRow = ws.addRow({ category: "Total", spent: total, budget: totalBudget>0 ? totalBudget : null });
       totalRow.font = { bold: true };
       const buf = await wb.xlsx.writeBuffer();
       downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `pesa-yangu-spending-${spendReportYear}-${String(spendReportMonth).padStart(2,"0")}.xlsx`);
@@ -5571,7 +5580,8 @@ export default function App() {
       <Modal open={isOpen("spendReport")} onClose={()=>closeM("spendReport")} title="📊 Monthly Spending" wide>
         {(()=>{
           const isCurrentSR = spendReportYear===new Date().getFullYear() && spendReportMonth===new Date().getMonth()+1;
-          const { rows, total, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
+          const { rows, total, totalBudget, srSpend } = getMonthlySpendReport(spendReportYear, spendReportMonth);
+          const overUnder = total - totalBudget;
           return <>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,marginBottom:16}}>
               <div style={{display:"flex",alignItems:"center",gap:14}}>
@@ -5581,26 +5591,38 @@ export default function App() {
               </div>
               {!isCurrentSR&&<button onClick={()=>{setSpendReportYear(new Date().getFullYear());setSpendReportMonth(new Date().getMonth()+1);}} style={{background:C.teal+"22",border:"none",borderRadius:6,color:C.teal,padding:"3px 8px",cursor:"pointer",fontSize:10,fontWeight:600}}>Today</button>}
             </div>
-            <div style={{background:C.navyLight,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{color:C.textMuted,fontSize:13}}>Total Spent</span>
-              <span style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.textPrimary}}>{disp(total)}</span>
+            <div style={{background:C.navyLight,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{color:C.textMuted,fontSize:13}}>Total Spent</span>
+                <span style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:C.textPrimary}}>{disp(total)}</span>
+              </div>
+              {totalBudget>0&&<>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6,paddingTop:6,borderTop:`1px solid ${C.navy}`}}>
+                  <span style={{color:C.textMuted,fontSize:12}}>Total Budget</span>
+                  <span style={{fontSize:13,color:C.textMuted}}>{disp(totalBudget)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                  <span style={{color:C.textMuted,fontSize:12}}>{overUnder>0?"Over budget by":"Under budget by"}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:overUnder>0?C.coral:C.teal}}>{disp(Math.abs(overUnder))}</span>
+                </div>
+              </>}
             </div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
               <Btn onClick={downloadSpendReportPDF} outline color={C.coral} small style={{flex:1}}>⬇ PDF</Btn>
               <Btn onClick={downloadSpendReportExcel} outline color={C.green} small style={{flex:1}}>⬇ Excel</Btn>
             </div>
             {rows.length===0
-              ? <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"32px 0"}}>No expenses recorded in {MONTH_NAMES[spendReportMonth-1]} {spendReportYear}.</div>
+              ? <div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"32px 0"}}>No expense categories yet — add one from Budgets.</div>
               : <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"50vh",overflowY:"auto"}}>
                   {rows.map(c=>(
-                    <div key={c.id}>
+                    <div key={c.id} style={{opacity:(srSpend[c.id]||0)>0?1:0.55}}>
                       <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                         <span style={{fontSize:13,color:C.textPrimary}}>{c.icon} {c.name}</span>
-                        <span style={{fontSize:13,fontWeight:700,color:c.budget>0&&srSpend[c.id]>c.budget?C.coral:C.textPrimary}}>
-                          {disp(srSpend[c.id])}{c.budget>0&&<span style={{color:C.textFaint,fontWeight:400}}> / {disp(c.budget)}</span>}
+                        <span style={{fontSize:13,fontWeight:700,color:c.budget>0&&(srSpend[c.id]||0)>c.budget?C.coral:C.textPrimary}}>
+                          {disp(srSpend[c.id]||0)}{c.budget>0&&<span style={{color:C.textFaint,fontWeight:400}}> / {disp(c.budget)}</span>}
                         </span>
                       </div>
-                      {c.budget>0&&<Bar value={srSpend[c.id]} max={c.budget} color={c.color}/>}
+                      {c.budget>0&&<Bar value={srSpend[c.id]||0} max={c.budget} color={c.color}/>}
                     </div>
                   ))}
                 </div>

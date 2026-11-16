@@ -536,6 +536,59 @@ const CatPicker = ({ value, onChange, categories, label, groupByParent=false }) 
   );
 };
 
+// Searchable account picker — replaces plain <select> for wallets
+const WalletPicker = ({ value, onChange, wallets, currencies, label, excludeId }) => {
+  const C = useC();
+  const [query, setQuery] = useState("");
+  const [open,  setOpen]  = useState(false);
+  const ref = useRef(null);
+  const list = excludeId ? wallets.filter(w=>w.id!==excludeId) : wallets;
+  const selected = list.find(w => w.id === value);
+  const filtered = query.trim() ? list.filter(w => w.name.toLowerCase().includes(query.toLowerCase())) : list;
+
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery(""); } };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ marginBottom: 12 }}>
+      {label && <div style={{ fontSize:11, color:C.textMuted, marginBottom:5, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.05em" }}>{label}</div>}
+      <div onClick={() => setOpen(o => !o)}
+        style={{ background:C.navyLight, border:`1px solid ${open ? C.teal : (C.inputBorder||C.navyLight)}`, borderRadius: open ? "10px 10px 0 0" : 10, padding:"10px 14px", cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", gap:8, transition:"border-color 0.15s" }}>
+        {selected
+          ? <><span style={{fontSize:16}}>{selected.icon}</span><span style={{fontWeight:600,color:C.textPrimary}}>{selected.name}</span><span style={{color:C.textMuted,fontSize:11}}>{fmtC(parseFloat(selected.balance||0),selected.currency,currencies,true)} {selected.currency}</span></>
+          : <span style={{color:C.textMuted}}>Select account…</span>}
+        <span style={{marginLeft:"auto",color:C.textMuted,fontSize:10}}>{open?"▴":"▾"}</span>
+      </div>
+      {open && (
+        <div style={{background:C.navyLight,borderRadius:"0 0 10px 10px",border:`1px solid ${C.teal}`,borderTop:"none",overflow:"hidden"}}>
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${C.navyMid}`}}>
+            <input autoFocus value={query} onChange={e=>setQuery(e.target.value)}
+              placeholder="Search accounts…"
+              style={{background:C.navyMid,border:"none",borderRadius:7,padding:"7px 11px",color:C.textPrimary,width:"100%",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{maxHeight:220,overflowY:"auto"}}>
+            {filtered.length===0 && <div style={{padding:"14px",color:C.textMuted,fontSize:13,textAlign:"center"}}>No accounts match</div>}
+            {filtered.map(w=>(
+              <div key={w.id} onClick={()=>{onChange(w.id);setOpen(false);setQuery("");}}
+                onMouseEnter={e=>e.currentTarget.style.background=w.id===value?(w.color||C.teal)+"33":C.navyMid}
+                onMouseLeave={e=>e.currentTarget.style.background=w.id===value?(w.color||C.teal)+"22":"transparent"}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",background:w.id===value?(w.color||C.teal)+"22":"transparent",borderLeft:`3px solid ${w.id===value?(w.color||C.teal):"transparent"}`}}>
+                <span style={{fontSize:16,width:22,textAlign:"center",flexShrink:0}}>{w.icon}</span>
+                <span style={{fontSize:13,fontWeight:w.id===value?700:500,color:w.id===value?(w.color||C.teal):C.textPrimary,flex:1}}>{w.name}</span>
+                <span style={{fontSize:11,color:C.textMuted}}>{fmtC(parseFloat(w.balance||0),w.currency,currencies,true)} {w.currency}</span>
+                {w.id===value&&<span style={{color:w.color||C.teal,fontWeight:800,fontSize:12}}>✓</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Divider = ({ label }) => {
   const C = useC();
   return (
@@ -3535,6 +3588,24 @@ export default function App() {
     } catch { showToast("Export failed", C.coral); }
   };
 
+  // Downloads exactly what's currently shown in Records — same account/period/
+  // search filters the user has picked there — instead of every transaction ever.
+  const exportFilteredTransactions = () => {
+    if (!filteredTxs.length) { showToast("Nothing to export with the current filters", C.coral); return; }
+    const txHeaders = ["date","time","type","category","amount_kes","merchant","note","wallet","currency"];
+    const rows = filteredTxs.map(t => {
+      const cat = t.type==="expense"?expCats.find(c=>c.id===(t.category||t.category_id)):incCats.find(c=>c.id===(t.category||t.category_id));
+      const w   = wallets.find(w=>w.id===(t.wallet||t.wallet_id));
+      const dt  = t.tx_date ? new Date(t.tx_date) : null;
+      const timeStr = dt ? String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0") : "00:00";
+      return { date:(t.date||txLocalDate(t)), time:timeStr, type:t.type, category:cat?.name||"", amount_kes:t.amount||parseFloat(t.amount_kes||0), merchant:t.merchant||"", note:t.note||"", wallet:w?.name||"", currency:w?.currency||"KES" };
+    });
+    const walletLabel = txWalletFilter ? (wallets.find(w=>w.id===txWalletFilter)?.name||"account").replace(/\s+/g,"-").toLowerCase() : "all-accounts";
+    const periodLabel = txPeriod!=="all" ? txPeriod : "all-time";
+    downloadBlob(new Blob([toCSV(txHeaders, rows)]), `pesa-yangu-${walletLabel}-${periodLabel}-${todayStr()}.csv`);
+    showToast(`${rows.length} transaction${rows.length!==1?"s":""} exported`);
+  };
+
   const exportAll = () => {
     // Transactions
     const txHeaders = ["date","time","type","category","amount_kes","merchant","note","wallet","currency"];
@@ -4119,7 +4190,7 @@ export default function App() {
         </select>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
           {tab!=="settings" && <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} small>+ Add Transaction</Btn>}
-          <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small className="desktop-only-btn">⇄ Transfer</Btn>
+          {tab!=="settings" && <Btn onClick={()=>{setFXfer({...blankXfer,from:wallets[0]?.id||"",to:wallets[1]?.id||""});openM("xfer");}} outline color={C.blue} small>⇄ Transfer</Btn>}
           <Btn onClick={()=>openM("share")} outline color={C.purple} small className="desktop-only-btn">📤 Share</Btn>
           <Btn onClick={()=>openM("importExport")} outline color={C.textMuted} small className="desktop-only-btn">⬆⬇ Data</Btn>
           <Btn onClick={openAiChat} outline color={C.gold} small className="desktop-only-btn">✦ AI</Btn>
@@ -4622,7 +4693,7 @@ export default function App() {
                 </div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                <Btn onClick={exportTransactions} outline color={C.textMuted} small>⬇ Export</Btn>
+                <Btn onClick={exportFilteredTransactions} outline color={C.textMuted} small>⬇ Export</Btn>
                 <Btn onClick={()=>{setSpendReportYear(new Date().getFullYear());setSpendReportMonth(new Date().getMonth()+1);openM("spendReport");}} outline color={C.gold} small>📊 By Category</Btn>
                 <Btn onClick={()=>openM("expCat")} outline color={C.blue} small>＋ Category</Btn>
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}}>+ Add Transaction</Btn>
@@ -5547,7 +5618,7 @@ export default function App() {
       <Modal open={isOpen("tx")} onClose={()=>{closeM("tx");setEditTx(null);}} title={editTx?"✏️ Edit Transaction":"Add Transaction"}>
         <Field label="Type" value={fTx.type} onChange={v=>setFTx({...fTx,type:v,category:v==="income"?incCats[0]?.id||"":transactionExpCats[0]?.id||""})} options={[{value:"expense",label:"💸 Expense"},{value:"income",label:"💰 Income"}]}/>
         <CatPicker label="Category" value={fTx.category} onChange={v=>setFTx({...fTx,category:v})} categories={fTx.type==="expense"?expenseCategoryOptions(fTx.category).filter(c=>c.allocationType!=="percent"&&!c.linkedWalletId):incCats} groupByParent={fTx.type==="expense"}/>
-        <Field label="Account" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} options={wOpts}/>
+        <WalletPicker label="Account" value={fTx.wallet} onChange={v=>setFTx({...fTx,wallet:v})} wallets={wallets} currencies={currencies}/>
         <div className="grid-2">
           <Field label="Date" type="date" value={fTx.date||todayStr()} onChange={v=>setFTx({...fTx,date:v})}/>
           <Field label="Time" type="time" value={fTx.time||nowTimeStr()} onChange={v=>setFTx({...fTx,time:v})}/>
@@ -5565,11 +5636,11 @@ export default function App() {
 
       {/* Transfer */}
       <Modal open={isOpen("xfer")} onClose={()=>{closeM("xfer");setEditXferPairId(null);}} title={editXferPairId?"✏️ Edit Transfer":"⇄ Transfer Between Accounts"}>
-        <Field label="From" value={fXfer.from} onChange={v=>{
+        <WalletPicker label="From" value={fXfer.from} onChange={v=>{
           const newTo = fXfer.to===v ? (wallets.find(w=>w.id!==v)?.id||"") : fXfer.to;
           setFXfer({...fXfer,from:v,to:newTo});
-        }} options={wOpts}/>
-        <Field label="To" value={fXfer.to} onChange={v=>setFXfer({...fXfer,to:v})} options={wallets.filter(w=>w.id!==fXfer.from).map(w=>({value:w.id,label:`${w.icon} ${w.name}`}))}/>
+        }} wallets={wallets} currencies={currencies}/>
+        <WalletPicker label="To" value={fXfer.to} onChange={v=>setFXfer({...fXfer,to:v})} wallets={wallets} currencies={currencies} excludeId={fXfer.from}/>
         <Field label="Amount" type="number" value={fXfer.amount} onChange={v=>setFXfer({...fXfer,amount:v})} placeholder="0.00" note="In source account's currency"/>
         <Field label="Date" type="date" value={fXfer.date||todayStr()} onChange={v=>setFXfer({...fXfer,date:v})}/>
         <Field label="Note (optional)" value={fXfer.note} onChange={v=>setFXfer({...fXfer,note:v})} placeholder="e.g. Moving to savings"/>

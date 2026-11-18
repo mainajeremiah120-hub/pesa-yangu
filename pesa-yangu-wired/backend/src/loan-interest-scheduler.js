@@ -47,14 +47,46 @@ async function accrueMonthlyInterest() {
   return accrued;
 }
 
+// Same thing, the other direction: compound-interest loans the user has
+// GIVEN OUT also grow the amount owed back to them by remaining*rate/100/12
+// each month — the receivable side of exactly the same reducing-balance math.
+async function accrueMonthlyInterestGiven() {
+  const now = new Date();
+  const period = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+
+  const { rows: loans } = await query(
+    "SELECT id, user_id, remaining_kes, interest_rate FROM loans_given WHERE interest_type='compound' AND is_settled=false AND remaining_kes>0"
+  );
+
+  let accrued = 0;
+  for (const loan of loans) {
+    const monthlyRate = parseFloat(loan.interest_rate || 0) / 100 / 12;
+    const amount = Math.round(parseFloat(loan.remaining_kes) * monthlyRate * 100) / 100;
+    if (amount <= 0) continue;
+
+    const { rows: inserted } = await query(
+      `INSERT INTO loan_given_interest_accruals (loan_given_id, user_id, amount_kes, period)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (loan_given_id, period) DO NOTHING RETURNING id`,
+      [loan.id, loan.user_id, amount, period]
+    );
+    if (inserted.length) {
+      await query("UPDATE loans_given SET remaining_kes=remaining_kes+$1 WHERE id=$2", [amount, loan.id]);
+      accrued++;
+    }
+  }
+  if (accrued) console.log(`[loan-interest] accrued interest for ${accrued} loan(s) given out, period=${period}`);
+  return accrued;
+}
+
 function scheduleLoanInterestAccrual() {
   const check = () => {
     if (!isLastDayOfMonthUTC(new Date())) return;
     accrueMonthlyInterest().catch(err => console.error("[loan-interest] accrual error:", err.message));
+    accrueMonthlyInterestGiven().catch(err => console.error("[loan-interest] given-loan accrual error:", err.message));
   };
   check(); // catch a boot that lands mid-window, e.g. right after a deploy
   setInterval(check, 6 * 60 * 60 * 1000); // every 6 hours
   console.log("[loan-interest] Monthly accrual scheduler started");
 }
 
-module.exports = { scheduleLoanInterestAccrual, accrueMonthlyInterest };
+module.exports = { scheduleLoanInterestAccrual, accrueMonthlyInterest, accrueMonthlyInterestGiven };

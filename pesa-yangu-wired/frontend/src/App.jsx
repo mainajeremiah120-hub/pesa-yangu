@@ -1818,6 +1818,11 @@ export default function App() {
       wallet:    r.wallet_id,
       date:      (r.payment_date||r.date||"").slice(0,10),
     })),
+    interestAccruals: (l.interest_accruals||[]).map(a=>({
+      ...a,
+      amount: parseFloat(a.amount_kes||0),
+      date:   (a.period||"").slice(0,10),
+    })),
   });
   const normaliseRecurring = (r) => ({
     ...r,
@@ -2220,7 +2225,7 @@ export default function App() {
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"", everyMonth:true };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES", categoryId:"" };
-  const blankLoanGiven = { borrowerName:"", wallet:"", principal:"", rate:"", interestType:"simple", termMonths:"", dueDate:"", currency:"KES", note:"" };
+  const blankLoanGiven = { borrowerName:"", borrowerPhone:"", borrowerIdNumber:"", wallet:"", principal:"", rate:"", interestType:"simple", termMonths:"", dueDate:"", currency:"KES", note:"" };
   const blankRepayGiven = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"" };
   const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"", categoryId:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
@@ -2669,7 +2674,9 @@ export default function App() {
     const p = parseFloat(fLoanGiven.principal); if(!p||!fLoanGiven.borrowerName||!fLoanGiven.wallet) return;
     try {
       const { loan, transaction } = await loansGivenApi.create({
-        borrower_name: fLoanGiven.borrowerName,
+        borrower_name:      fLoanGiven.borrowerName,
+        borrower_phone:     fLoanGiven.borrowerPhone||undefined,
+        borrower_id_number: fLoanGiven.borrowerIdNumber||undefined,
         wallet_id:     fLoanGiven.wallet,
         currency:      fLoanGiven.currency,
         principal_kes: toKES(p, fLoanGiven.currency, currencies),
@@ -3024,11 +3031,14 @@ export default function App() {
   const openEditLoanGiven = (l) => {
     setEditLoanGiven(l);
     setFLoanGiven({
-      borrowerName: l.borrower_name,
+      borrowerName:     l.borrower_name,
+      borrowerPhone:    l.borrower_phone || "",
+      borrowerIdNumber: l.borrower_id_number || "",
       wallet:       l.wallet || l.wallet_id || "",
       principal:    String(l.principal || l.principal_kes || ""),
       currentBalance: String(l.remaining ?? l.remaining_kes ?? ""),
       rate:         String(l.rate || l.interest_rate || ""),
+      interestType: l.interest_type || "simple",
       termMonths:   l.termMonths || l.term_months ? String(l.termMonths || l.term_months) : "",
       dueDate:      l.dueDate || l.due_date || "",
       currency:     l.currency || "KES",
@@ -3056,6 +3066,8 @@ export default function App() {
     if (editLoanGiven) {
       try {
         const payload = { borrower_name: fLoanGiven.borrowerName };
+        payload.borrower_phone = fLoanGiven.borrowerPhone || null;
+        payload.borrower_id_number = fLoanGiven.borrowerIdNumber || null;
         if (fLoanGiven.currency) payload.currency = fLoanGiven.currency;
         // Same guard as saveLoan — only send remaining_kes if it actually
         // changed, so a stale snapshot (e.g. a repayment landed elsewhere
@@ -5629,7 +5641,7 @@ export default function App() {
                 const accent = settled?C.teal:C.gold;
                 return<Card key={l.id} style={{borderLeft:`3px solid ${accent}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <div><div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:6}}>{l.borrower_name}{settled&&<Badge color={C.teal}>✅ Fully repaid</Badge>}</div><div style={{color:C.textMuted,fontSize:11}}>from {w?.name||"—"}{l.interest_rate>0?` · ${l.interest_rate}% p.a.`:""} · {l.currency}</div></div>
+                    <div><div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:6}}>{l.borrower_name}{settled&&<Badge color={C.teal}>✅ Fully repaid</Badge>}</div><div style={{color:C.textMuted,fontSize:11}}>from {w?.name||"—"}{l.interest_rate>0?` · ${l.interest_rate}% p.a. (${l.interest_type==="compound"?"compound":"simple"})`:""} · {l.currency}</div>{(l.borrower_phone||l.borrower_id_number)&&<div style={{color:C.textFaint,fontSize:10,marginTop:2}}>{l.borrower_phone}{l.borrower_phone&&l.borrower_id_number?" · ":""}{l.borrower_id_number}</div>}</div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:accent}}>{disp(l.remaining)}</div>
                       <div style={{color:C.textMuted,fontSize:10}}>still owed to you</div>
@@ -5658,6 +5670,13 @@ export default function App() {
                         <button onClick={()=>openEditRepayGiven(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
                         <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? It will be removed from the receiving account and the amount owed restored.`,()=>deleteRepaymentGiven(l.id,r.id,r.total||r.total_kes||0,r.wallet||r.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
                       </div>
+                    </div>)}
+                  </div>}
+                  {l.interestAccruals?.length>0&&<div style={{marginTop:10}}>
+                    <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Interest Charged</div>
+                    {l.interestAccruals.map((a,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
+                      <div style={{fontSize:12,fontWeight:600}}>{fmtDate(a.date)} — {MONTH_NAMES[new Date(a.date).getMonth()]} interest</div>
+                      <Badge color={C.gold}>+{disp(a.amount)}</Badge>
                     </div>)}
                   </div>}
                   {!settled&&<div style={{marginTop:10}}><Btn onClick={()=>{setEditRepayGiven(null);setFRepayGiven({...blankRepayGiven,loanId:l.id,wallet:wallets[0]?.id||""});openM("repayGiven");}} outline color={C.teal} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>}
@@ -6477,6 +6496,10 @@ export default function App() {
       {/* Give / Edit a Loan (money lent OUT — a receivable, not an expense) */}
       <Modal open={isOpen("loanGiven")} onClose={()=>{closeM("loanGiven");setEditLoanGiven(null);}} title={editLoanGiven?"✏️ Edit Loan":<span style={{display:"flex",alignItems:"center",gap:8}}><LendIcon size={18}/> Give a Loan</span>}>
         <Field label="Borrower's Name" value={fLoanGiven.borrowerName} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerName:v})} placeholder="e.g. John Mwangi"/>
+        <div className="grid-2">
+          <Field label="Phone (optional)" value={fLoanGiven.borrowerPhone} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerPhone:v})} placeholder="e.g. 0712 345 678"/>
+          <Field label="ID Number (optional)" value={fLoanGiven.borrowerIdNumber} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerIdNumber:v})} placeholder="National ID / passport"/>
+        </div>
         {!editLoanGiven&&<Field label="Pay From Account" value={fLoanGiven.wallet} onChange={v=>setFLoanGiven({...fLoanGiven,wallet:v})} options={[{value:"",label:"Select account…"},...wOpts]} note="Money leaves this account now — it's a transfer, not an expense, so it won't touch your budgets."/>}
         <Field label="Currency" value={fLoanGiven.currency} onChange={v=>setFLoanGiven({...fLoanGiven,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
@@ -6493,10 +6516,17 @@ export default function App() {
           <Field label={`Still Owed (${fLoanGiven.currency})`} type="number" value={fLoanGiven.currentBalance} onChange={v=>setFLoanGiven({...fLoanGiven,currentBalance:v})} placeholder="Outstanding amount" note={!editLoanGiven?"Leave same as amount given if no repayments yet":"Direct correction — doesn't move any money"}/>
           <Field label="Due Back By" type="date" value={fLoanGiven.dueDate} onChange={v=>setFLoanGiven({...fLoanGiven,dueDate:v})}/>
         </div>
-        {!editLoanGiven&&<Field label="Term (months, optional)" type="number" value={fLoanGiven.termMonths} onChange={v=>setFLoanGiven({...fLoanGiven,termMonths:v})} placeholder="e.g. 3"/>}
+        {!editLoanGiven&&<Field label="Loan Term (months)" type="number" value={fLoanGiven.termMonths} onChange={v=>setFLoanGiven({...fLoanGiven,termMonths:v})} placeholder="e.g. 3" note="Optional"/>}
+        {!editLoanGiven&&<Field label="Interest Type" value={fLoanGiven.interestType} onChange={v=>setFLoanGiven({...fLoanGiven,interestType:v})} options={[{value:"simple",label:"📋 Simple — fixed total from the start"},{value:"compound",label:"📈 Compound — interest accrues over time"}]}/>}
         {!editLoanGiven&&(()=>{
           const p=parseFloat(fLoanGiven.principal), r=parseFloat(fLoanGiven.rate);
           if(!p||!r) return null;
+          if(fLoanGiven.interestType==="compound") {
+            const monthly=p*(r/100/12);
+            return <div style={{background:C.gold+"11",border:`1px solid ${C.gold}33`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
+              📈 Compound interest: about <strong style={{color:C.gold}}>{fLoanGiven.currency} {monthly.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> is added to what they owe you automatically at the end of every month it's not paid off, based on the outstanding balance.
+            </div>;
+          }
           const total=p*(1+r/100);
           return <div style={{background:C.teal+"11",border:`1px solid ${C.teal}33`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
             📋 They'll owe a fixed total of <strong style={{color:C.teal}}>{fLoanGiven.currency} {total.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> ({fLoanGiven.currency} {p.toLocaleString()} principal + {fLoanGiven.currency} {(total-p).toLocaleString()} interest) back to you.

@@ -1071,6 +1071,14 @@ loanGivenRouter.get("/", async (req,res,next)=>{
       const repaymentsByLoan={};
       allRepayments.forEach(r=>{ (repaymentsByLoan[r.loan_given_id]=repaymentsByLoan[r.loan_given_id]||[]).push(r); });
       loans.forEach(l=>{ l.repayments = repaymentsByLoan[l.id]||[]; });
+
+      const {rows:allAccruals}=await query(
+        "SELECT * FROM loan_given_interest_accruals WHERE loan_given_id = ANY($1) ORDER BY period DESC",
+        [loans.map(l=>l.id)]
+      );
+      const accrualsByLoan={};
+      allAccruals.forEach(a=>{ (accrualsByLoan[a.loan_given_id]=accrualsByLoan[a.loan_given_id]||[]).push(a); });
+      loans.forEach(l=>{ l.interest_accruals = accrualsByLoan[l.id]||[]; });
     }
     res.json({loansGiven:loans});
   } catch(e){next(e);}
@@ -1080,6 +1088,7 @@ loanGivenRouter.post("/", async (req,res,next)=>{
   try {
     const d=z.object({
       borrower_name:z.string().min(1).max(100).trim(), wallet_id:z.string().uuid(), currency:z.string().length(3).default("KES"),
+      borrower_phone:z.string().max(30).optional(), borrower_id_number:z.string().max(50).optional(),
       principal_kes:z.number().positive().max(1e12),
       interest_rate:z.number().min(0).max(100).default(0),
       interest_type:z.enum(["simple","compound"]).default("simple"),
@@ -1090,6 +1099,8 @@ loanGivenRouter.post("/", async (req,res,next)=>{
     // Same rule as the borrowed-loan's simple-interest creation: bake the
     // total owed in up front so later repayments just subtract dollar for
     // dollar (see the "simple" branch in the repayments handler below).
+    // Compound loans instead grow over time via the monthly accrual
+    // scheduler (loan-interest-scheduler.js), same as borrowed loans.
     const remaining_kes = d.interest_type === "simple"
       ? d.principal_kes * (1 + d.interest_rate / 100)
       : d.principal_kes;
@@ -1101,8 +1112,8 @@ loanGivenRouter.post("/", async (req,res,next)=>{
       await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[d.principal_kes,d.wallet_id]);
 
       const {rows}=await client.query(
-        "INSERT INTO loans_given (user_id,wallet_id,borrower_name,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
-        [req.dataOwnerId,d.wallet_id,d.borrower_name,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.due_date||null,d.note||null]
+        "INSERT INTO loans_given (user_id,wallet_id,borrower_name,borrower_phone,borrower_id_number,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *",
+        [req.dataOwnerId,d.wallet_id,d.borrower_name,d.borrower_phone||null,d.borrower_id_number||null,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.due_date||null,d.note||null]
       );
       const loan=rows[0];
 
@@ -1171,7 +1182,9 @@ loanGivenRouter.patch("/:id", async (req,res,next)=>{
     const {rows:gr}=await query("SELECT * FROM loans_given WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
     if(!gr.length) return res.status(404).json({error:"Not found"});
     const d=z.object({
-      borrower_name: z.string().min(1).max(100).optional(),
+      borrower_name:      z.string().min(1).max(100).optional(),
+      borrower_phone:     z.string().max(30).nullable().optional(),
+      borrower_id_number: z.string().max(50).nullable().optional(),
       currency:      z.string().length(3).optional(),
       remaining_kes: z.number().min(0).optional(),
       interest_rate: z.number().min(0).max(100).optional(),
@@ -1180,7 +1193,7 @@ loanGivenRouter.patch("/:id", async (req,res,next)=>{
       due_date:      z.string().max(20).nullable().optional(),
       note:          z.string().max(500).nullable().optional(),
     }).parse(req.body);
-    const allowed=["borrower_name","currency","remaining_kes","interest_rate","interest_type","term_months","due_date","note"];
+    const allowed=["borrower_name","borrower_phone","borrower_id_number","currency","remaining_kes","interest_rate","interest_type","term_months","due_date","note"];
     const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
     if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
     // remaining_kes here is a direct bookkeeping correction — same rule as

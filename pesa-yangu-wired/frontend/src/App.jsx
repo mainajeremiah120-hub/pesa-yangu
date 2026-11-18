@@ -6500,7 +6500,10 @@ export default function App() {
           <Field label="Phone (optional)" value={fLoanGiven.borrowerPhone} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerPhone:v})} placeholder="e.g. 0712 345 678"/>
           <Field label="ID Number (optional)" value={fLoanGiven.borrowerIdNumber} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerIdNumber:v})} placeholder="National ID / passport"/>
         </div>
-        {!editLoanGiven&&<Field label="Pay From Account" value={fLoanGiven.wallet} onChange={v=>setFLoanGiven({...fLoanGiven,wallet:v})} options={[{value:"",label:"Select account…"},...wOpts]} note="Money leaves this account now — it's a transfer, not an expense, so it won't touch your budgets."/>}
+        {!editLoanGiven&&<>
+          <WalletPicker label="Pay From Account" value={fLoanGiven.wallet} onChange={v=>setFLoanGiven({...fLoanGiven,wallet:v})} wallets={wallets} currencies={currencies}/>
+          <div style={{color:C.textFaint,fontSize:11,marginTop:-8,marginBottom:12}}>Money leaves this account now — it's a transfer, not an expense, so it won't touch your budgets.</div>
+        </>}
         <Field label="Currency" value={fLoanGiven.currency} onChange={v=>setFLoanGiven({...fLoanGiven,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
         <div className="grid-2">
           {editLoanGiven
@@ -6549,7 +6552,7 @@ export default function App() {
               {isSimple&&<span style={{marginLeft:8,color:"#00D4AA",fontWeight:600}}>📋 Simple interest — total is fixed</span>}
             </div>
             <Field label="Payment Date" type="date" value={fRepayGiven.date} onChange={v=>setFRepayGiven({...fRepayGiven,date:v})}/>
-            <Field label="Received Into Account" value={fRepayGiven.wallet} onChange={v=>setFRepayGiven({...fRepayGiven,wallet:v})} options={wOpts}/>
+            <WalletPicker label="Received Into Account" value={fRepayGiven.wallet} onChange={v=>setFRepayGiven({...fRepayGiven,wallet:v})} wallets={wallets} currencies={currencies}/>
             <Divider label="Payment Amount"/>
             <Field label="Amount Received" type="number" value={fRepayGiven.total} onChange={v=>setFRepayGiven({...fRepayGiven,total:v,principal:isSimple?"0":String((parseFloat(v)||0)-(parseFloat(fRepayGiven.interest)||0)),interest:isSimple?"0":fRepayGiven.interest})} placeholder={isSimple?`e.g. ${disp(l.remaining)} (full balance)`:"e.g. 10000"}/>
             {l.remaining>0&&<button onClick={()=>setFRepayGiven({...fRepayGiven,total:String(l.remaining),principal:isSimple?"0":String(l.remaining),interest:"0"})}

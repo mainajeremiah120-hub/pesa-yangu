@@ -205,6 +205,17 @@ export const loansApi = {
   },
 };
 
+// ── Loans Given — money the user lends OUT to someone else ──────────────────
+export const loansGivenApi = {
+  list:            ()           => unwrap(client.get("/loans-given")),
+  create:          (p)          => unwrap(client.post("/loans-given", p)),
+  update:          (id, p)      => unwrap(client.patch(`/loans-given/${id}`, p)),
+  recordRepayment: (id, p)      => unwrap(client.post(`/loans-given/${id}/repayments`, p)),
+  updateRepayment: (id, rid, p) => unwrap(client.patch(`/loans-given/${id}/repayments/${rid}`, p)),
+  removeRepayment: (id, rid)    => unwrap(client.delete(`/loans-given/${id}/repayments/${rid}`)),
+  remove:          (id)         => unwrap(client.delete(`/loans-given/${id}`)),
+};
+
 // ── Recurring ─────────────────────────────────────────────────────────────────
 export const recurApi = {
   list:   ()    => unwrap(client.get("/recurring")),

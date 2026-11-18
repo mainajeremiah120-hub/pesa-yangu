@@ -1048,6 +1048,259 @@ loanRouter.delete("/:id", async (req,res,next)=>{
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// LOANS GIVEN — money the user lends OUT to someone else (a receivable, not
+// an expense). Mirrors the LOANS router above but every money movement runs
+// in the opposite direction: giving the loan debits a wallet, a repayment
+// credits one. Both legs post as transfer_out/transfer_in (never
+// 'expense'/'income') — the same bucket already used for wallet-to-wallet
+// transfers and goal contributions, both excluded from expense/income
+// reports — so wallet balances stay exactly right without ever touching a
+// budget category. Handing cash to someone isn't a cost, and getting your
+// own money back isn't new income.
+// ══════════════════════════════════════════════════════════════════════════════
+const loanGivenRouter = express.Router();
+
+loanGivenRouter.get("/", async (req,res,next)=>{
+  try {
+    const {rows:loans}=await query("SELECT * FROM loans_given WHERE user_id=$1 ORDER BY created_at",[req.dataOwnerId]);
+    if(loans.length) {
+      const {rows:allRepayments}=await query(
+        "SELECT * FROM loan_given_repayments WHERE loan_given_id = ANY($1) ORDER BY payment_date DESC, created_at DESC",
+        [loans.map(l=>l.id)]
+      );
+      const repaymentsByLoan={};
+      allRepayments.forEach(r=>{ (repaymentsByLoan[r.loan_given_id]=repaymentsByLoan[r.loan_given_id]||[]).push(r); });
+      loans.forEach(l=>{ l.repayments = repaymentsByLoan[l.id]||[]; });
+    }
+    res.json({loansGiven:loans});
+  } catch(e){next(e);}
+});
+
+loanGivenRouter.post("/", async (req,res,next)=>{
+  try {
+    const d=z.object({
+      borrower_name:z.string().min(1).max(100).trim(), wallet_id:z.string().uuid(), currency:z.string().length(3).default("KES"),
+      principal_kes:z.number().positive().max(1e12),
+      interest_rate:z.number().min(0).max(100).default(0),
+      interest_type:z.enum(["simple","compound"]).default("simple"),
+      term_months:z.number().int().min(1).max(600).optional(),
+      due_date:z.string().max(20).optional(), note:z.string().max(500).optional(),
+    }).parse(req.body);
+
+    // Same rule as the borrowed-loan's simple-interest creation: bake the
+    // total owed in up front so later repayments just subtract dollar for
+    // dollar (see the "simple" branch in the repayments handler below).
+    const remaining_kes = d.interest_type === "simple"
+      ? d.principal_kes * (1 + d.interest_rate / 100)
+      : d.principal_kes;
+
+    const result = await withTransaction(async(client)=>{
+      const {rows:wr}=await client.query("SELECT balance FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.dataOwnerId]);
+      if(!wr.length) throw Object.assign(new Error("Account not found"),{status:404});
+      if(parseFloat(wr[0].balance) < d.principal_kes) throw Object.assign(new Error("Insufficient balance in the selected account"),{status:400});
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[d.principal_kes,d.wallet_id]);
+
+      const {rows}=await client.query(
+        "INSERT INTO loans_given (user_id,wallet_id,borrower_name,currency,principal_kes,remaining_kes,interest_rate,interest_type,term_months,due_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+        [req.dataOwnerId,d.wallet_id,d.borrower_name,d.currency,d.principal_kes,remaining_kes,d.interest_rate,d.interest_type,d.term_months||null,d.due_date||null,d.note||null]
+      );
+      const loan=rows[0];
+
+      const {rows:txRows}=await client.query(
+        "INSERT INTO transactions (user_id,wallet_id,type,amount_kes,merchant,note,tx_date,loan_given_id) VALUES ($1,$2,'transfer_out',$3,$4,$5,$6,$7) RETURNING *",
+        [req.dataOwnerId,d.wallet_id,d.principal_kes,d.borrower_name,d.note||`Loan given to ${d.borrower_name}`,new Date(),loan.id]
+      );
+      return { loan:{...loan,repayments:[]}, transaction:txRows[0] };
+    });
+    res.status(201).json(result);
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+loanGivenRouter.post("/:id/repayments", async (req,res,next)=>{
+  try {
+    const {rows:lr}=await query("SELECT * FROM loans_given WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
+    if(!lr.length) return res.status(404).json({error:"Loan not found"});
+    const loan=lr[0];
+    const d=z.object({
+      wallet_id:z.string().uuid(), total_kes:z.number().positive(),
+      principal_kes:z.number().min(0).optional(), interest_kes:z.number().min(0).default(0),
+      payment_date:z.string().optional(), note:z.string().optional(),
+    }).parse(req.body);
+    const principal_kes = d.principal_kes ?? Math.max(0, d.total_kes - d.interest_kes);
+    if (loan.interest_type === "compound" && Math.abs((principal_kes + d.interest_kes) - d.total_kes) > 0.01) {
+      return res.status(400).json({error:"Principal + interest must add up to the total amount received"});
+    }
+
+    const {repayment:rep, transaction:tx, excessKes}=await withTransaction(async(client)=>{
+      // Same double-submission guard as the borrowed-loan and goal
+      // repayment/contribution endpoints.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`loangivenrepay:${loan.id}:${d.wallet_id}:${d.total_kes}`]);
+      const {rows:dupe}=await client.query(
+        "SELECT id FROM loan_given_repayments WHERE loan_given_id=$1 AND wallet_id=$2 AND total_kes=$3 AND created_at > NOW() - INTERVAL '10 seconds'",
+        [loan.id,d.wallet_id,d.total_kes]
+      );
+      if(dupe.length) throw Object.assign(new Error("This looks like a duplicate of a repayment you just recorded — check the loan's history before submitting again."),{status:409});
+
+      const {rows:wr}=await client.query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2 FOR UPDATE",[d.wallet_id,req.dataOwnerId]);
+      if(!wr.length) throw Object.assign(new Error("Account not found"),{status:404});
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[d.total_kes,d.wallet_id]);
+
+      const reduction = loan.interest_type === "simple" ? d.total_kes : principal_kes;
+      const {rows:loanLock}=await client.query("SELECT remaining_kes FROM loans_given WHERE id=$1 FOR UPDATE",[loan.id]);
+      const remainingBefore = parseFloat(loanLock[0].remaining_kes);
+      const newRemaining = Math.max(0, remainingBefore - reduction);
+      const excessKes = reduction > remainingBefore ? +(reduction - remainingBefore).toFixed(2) : 0;
+      await client.query("UPDATE loans_given SET remaining_kes=$1,is_settled=($1::numeric<=0) WHERE id=$2",[newRemaining,loan.id]);
+
+      const {rows}=await client.query(
+        "INSERT INTO loan_given_repayments (loan_given_id,user_id,wallet_id,total_kes,principal_kes,interest_kes,payment_date,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+        [loan.id,req.dataOwnerId,d.wallet_id,d.total_kes,principal_kes,d.interest_kes,d.payment_date||new Date(),d.note||null]
+      );
+      const {rows:txRows}=await client.query(
+        "INSERT INTO transactions (user_id,wallet_id,type,amount_kes,merchant,note,tx_date,loan_given_id,principal_paid,interest_paid,loan_given_repayment_id) VALUES ($1,$2,'transfer_in',$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
+        [req.dataOwnerId,d.wallet_id,d.total_kes,loan.borrower_name,d.note||`Loan repayment from ${loan.borrower_name}`,d.payment_date||new Date(),loan.id,principal_kes,d.interest_kes,rows[0].id]
+      );
+      return { repayment:rows[0], transaction:txRows[0], excessKes };
+    });
+    res.status(201).json({repayment:rep, transaction:tx, excess_kes: excessKes || undefined});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+loanGivenRouter.patch("/:id", async (req,res,next)=>{
+  try {
+    const {rows:gr}=await query("SELECT * FROM loans_given WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
+    if(!gr.length) return res.status(404).json({error:"Not found"});
+    const d=z.object({
+      borrower_name: z.string().min(1).max(100).optional(),
+      currency:      z.string().length(3).optional(),
+      remaining_kes: z.number().min(0).optional(),
+      interest_rate: z.number().min(0).max(100).optional(),
+      interest_type: z.enum(["simple","compound"]).optional(),
+      term_months:   z.number().int().min(1).max(600).nullable().optional(),
+      due_date:      z.string().max(20).nullable().optional(),
+      note:          z.string().max(500).nullable().optional(),
+    }).parse(req.body);
+    const allowed=["borrower_name","currency","remaining_kes","interest_rate","interest_type","term_months","due_date","note"];
+    const updates=Object.fromEntries(Object.entries(d).filter(([k,v])=>v!==undefined&&allowed.includes(k)));
+    if(!Object.keys(updates).length) return res.status(400).json({error:"No valid fields"});
+    // remaining_kes here is a direct bookkeeping correction — same rule as
+    // goals.saved_kes (goalRouter PATCH above): it doesn't move any wallet
+    // money or create a transaction, it's for fixing the tracked balance
+    // itself (e.g. a repayment that happened before this feature existed).
+    if ("remaining_kes" in updates) updates.is_settled = updates.remaining_kes <= 0;
+    const sets=Object.keys(updates).map((k,i)=>`${k}=$${i+3}`);
+    const {rows}=await query(`UPDATE loans_given SET ${sets.join(",")} WHERE id=$1 AND user_id=$2 RETURNING *`,[req.params.id,req.dataOwnerId,...Object.values(updates)]);
+    res.json({loan:rows[0]});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+loanGivenRouter.patch("/:id/repayments/:rid", async (req,res,next)=>{
+  try {
+    const d=z.object({
+      wallet_id:    z.string().uuid().optional(),
+      total_kes:    z.number().positive().optional(),
+      principal_kes:z.number().min(0).optional(),
+      interest_kes: z.number().min(0).optional(),
+      payment_date: z.string().optional(),
+      note:         z.string().nullable().optional(),
+    }).parse(req.body);
+
+    if (d.wallet_id) {
+      const {rows:wr}=await query("SELECT id FROM wallets WHERE id=$1 AND user_id=$2",[d.wallet_id,req.dataOwnerId]);
+      if(!wr.length) return res.status(400).json({error:"Account not found"});
+    }
+
+    const repayment = await withTransaction(async(client)=>{
+      // Lock the repayment row — same reasoning as the borrowed-loan version:
+      // without it, two near-simultaneous edits of the same repayment could
+      // both reverse the pre-edit amount and double-adjust the wallet/loan.
+      const {rows:rr}=await client.query(
+        "SELECT r.*,l.user_id,l.interest_type FROM loan_given_repayments r JOIN loans_given l ON l.id=r.loan_given_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3 FOR UPDATE OF r",
+        [req.params.rid,req.params.id,req.dataOwnerId]
+      );
+      if(!rr.length) throw Object.assign(new Error("Repayment not found"),{status:404});
+      const old=rr[0];
+
+      const newTotal    = d.total_kes     ?? parseFloat(old.total_kes);
+      const newPrincipal= d.principal_kes ?? parseFloat(old.principal_kes);
+      const newInterest = d.interest_kes  ?? parseFloat(old.interest_kes);
+      const newWallet   = d.wallet_id     ?? old.wallet_id;
+      const newDate     = d.payment_date  ?? old.payment_date;
+      const newNote     = Object.prototype.hasOwnProperty.call(d,"note") ? d.note : old.note;
+      const isSimple    = old.interest_type === "simple";
+
+      // Reverse the old wallet credit and loan-remaining effect...
+      await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(old.total_kes),old.wallet_id]);
+      const oldReduction = isSimple ? parseFloat(old.total_kes) : parseFloat(old.principal_kes);
+      await client.query("UPDATE loans_given SET remaining_kes=remaining_kes+$1 WHERE id=$2",[oldReduction,req.params.id]);
+
+      // ...then apply the new one.
+      await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[newTotal,newWallet]);
+      const newReduction = isSimple ? newTotal : newPrincipal;
+      await client.query(
+        "UPDATE loans_given SET remaining_kes=GREATEST(0,remaining_kes-$1),is_settled=(remaining_kes-$1<=0) WHERE id=$2",
+        [newReduction,req.params.id]
+      );
+
+      const {rows}=await client.query(
+        "UPDATE loan_given_repayments SET wallet_id=$1,total_kes=$2,principal_kes=$3,interest_kes=$4,payment_date=$5,note=$6 WHERE id=$7 RETURNING *",
+        [newWallet,newTotal,newPrincipal,newInterest,newDate,newNote,req.params.rid]
+      );
+      await client.query(
+        "UPDATE transactions SET wallet_id=$1,amount_kes=$2,note=$3,tx_date=$4,principal_paid=$5,interest_paid=$6 WHERE loan_given_repayment_id=$7",
+        [newWallet,newTotal,newNote,newDate,newPrincipal,newInterest,req.params.rid]
+      );
+      return rows[0];
+    });
+    res.json({repayment});
+  } catch(e){if(e instanceof z.ZodError) return res.status(400).json({error:e.errors[0].message}); next(e);}
+});
+
+loanGivenRouter.delete("/:id/repayments/:rid", async (req,res,next)=>{
+  try {
+    const {rows}=await query(
+      "SELECT r.*,l.user_id,l.interest_type FROM loan_given_repayments r JOIN loans_given l ON l.id=r.loan_given_id WHERE r.id=$1 AND l.id=$2 AND l.user_id=$3",
+      [req.params.rid,req.params.id,req.dataOwnerId]
+    );
+    if(!rows.length) return res.status(404).json({error:"Repayment not found"});
+    const r=rows[0];
+    await withTransaction(async(client)=>{
+      // Reverse the wallet credit this repayment made...
+      if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(r.total_kes),r.wallet_id]);
+      const restore = r.interest_type === "simple" ? parseFloat(r.total_kes) : parseFloat(r.principal_kes);
+      await client.query("UPDATE loans_given SET remaining_kes=remaining_kes+$1,is_settled=(remaining_kes+$1<=0) WHERE id=$2",[restore,req.params.id]);
+      // CASCADE (migration 036) removes the linked transaction along with the repayment
+      await client.query("DELETE FROM loan_given_repayments WHERE id=$1",[r.id]);
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
+loanGivenRouter.delete("/:id", async (req,res,next)=>{
+  try {
+    const {rows}=await query("SELECT * FROM loans_given WHERE id=$1 AND user_id=$2",[req.params.id,req.dataOwnerId]);
+    if(!rows.length) return res.status(404).json({error:"Not found"});
+    const loan=rows[0];
+    await withTransaction(async(client)=>{
+      // Reverse every repayment credit first (CASCADE removes each one's transaction)...
+      const {rows:reps}=await client.query("SELECT * FROM loan_given_repayments WHERE loan_given_id=$1",[req.params.id]);
+      for(const r of reps) {
+        if(r.wallet_id) await client.query("UPDATE wallets SET balance=balance-$1 WHERE id=$2",[parseFloat(r.total_kes),r.wallet_id]);
+      }
+      await client.query("DELETE FROM loan_given_repayments WHERE loan_given_id=$1",[req.params.id]);
+      // ...then reverse the original disbursement back into the funding
+      // account and remove its ledger entry too — unlike loan_given_id's
+      // ON DELETE SET NULL, it isn't cascaded, so it has to go explicitly or
+      // Records would keep a dangling "loan given" line for a deleted loan.
+      if (loan.wallet_id) await client.query("UPDATE wallets SET balance=balance+$1 WHERE id=$2",[parseFloat(loan.principal_kes),loan.wallet_id]);
+      await client.query("DELETE FROM transactions WHERE loan_given_id=$1 AND loan_given_repayment_id IS NULL",[req.params.id]);
+      await client.query("DELETE FROM loans_given WHERE id=$1",[req.params.id]);
+    });
+    res.json({ok:true});
+  } catch(e){next(e);}
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // RECURRING
 // ══════════════════════════════════════════════════════════════════════════════
 const recurringRouter = express.Router();
@@ -1595,6 +1848,7 @@ module.exports = {
   goalRouter,
   investmentRouter,
   loanRouter,
+  loanGivenRouter,
   recurringRouter,
   fxRouter,
   aiRouter,

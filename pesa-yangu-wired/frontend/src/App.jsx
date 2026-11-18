@@ -16,7 +16,7 @@ import LandingPage from "./pages/LandingPage.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import {
   walletsApi, txApi, catsApi, goalsApi, invsApi,
-  loansApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
+  loansApi, loansGivenApi, recurApi, fxApi, aiApi, billingApi, reconcileApi, authApi, ticketsApi, insuranceApi, pushApi,
   budgetsApi, getLastMutationAt, householdApi,
 } from "./lib/api.js";
 import { tokens, getTheme, setTheme as persistTheme } from "./theme.js";
@@ -1378,6 +1378,7 @@ export default function App() {
   const [goals,       setGoals]       = useState([]);
   const [investments, setInvestments] = useState([]);
   const [loans,       setLoans]       = useState([]);
+  const [loansGiven,  setLoansGiven]  = useState([]);
   const [policies,    setPolicies]    = useState([]);
   const [recurring,   setRecurring]   = useState([]);
   const [currencies,  setCurrencies]  = useState(DEFAULT_CURRENCIES);
@@ -1549,7 +1550,7 @@ export default function App() {
     return { transactions: all };
   };
 
-  const applyData = useCallback(([w, t, c, g, inv, l, r, fx, ins]) => {
+  const applyData = useCallback(([w, t, c, g, inv, l, r, fx, ins, lg]) => {
     setWallets(w.wallets || []);
     setTxs((t.transactions || []).map(tx => ({
       ...tx,
@@ -1567,6 +1568,7 @@ export default function App() {
     setGoals((g.goals||[]).map(normaliseGoal));
     setInvestments((inv.investments||[]).map(normaliseInv));
     setLoans((l.loans||[]).map(normaliseLoan));
+    setLoansGiven((lg?.loansGiven||[]).map(normaliseLoanGiven));
     setRecurring((r.recurring||[]).map(normaliseRecurring));
     setPolicies(ins?.policies||[]);
     if (fx.rates) {
@@ -1604,6 +1606,7 @@ export default function App() {
       recurApi.list(),
       fxApi.rates(),
       insuranceApi.list(),
+      loansGivenApi.list(),
     ])
     .then((results) => {
       // If the user made a change (e.g. a transfer) while this fetch was
@@ -1787,6 +1790,22 @@ export default function App() {
       ...a,
       amount: parseFloat(a.amount_kes||0),
       date:   (a.period||"").slice(0,10),
+    })),
+  });
+  const normaliseLoanGiven = (l) => ({
+    ...l,
+    principal:  parseFloat(l.principal_kes||0),
+    remaining:  parseFloat(l.remaining_kes||0),
+    termMonths: l.term_months ? parseInt(l.term_months) : null,
+    dueDate:    (l.due_date||"").slice(0,10)||null,
+    wallet:     l.wallet_id,
+    repayments: (l.repayments||[]).map(r=>({
+      ...r,
+      total:     parseFloat(r.total_kes||0),
+      principal: parseFloat(r.principal_kes||0),
+      interest:  parseFloat(r.interest_kes||0),
+      wallet:    r.wallet_id,
+      date:      (r.payment_date||r.date||"").slice(0,10),
     })),
   });
   const normaliseRecurring = (r) => ({
@@ -2164,6 +2183,7 @@ export default function App() {
     ...expCats.filter(c=>c.id===selectedId&&c.isActive===false),
   ];
   const loanOpts = loans.map(l=>({ value:l.id, label:l.name }));
+  const loanGivenOpts = loansGiven.map(l=>({ value:l.id, label:l.borrower_name }));
   const invOpts  = investments.map(i=>({ value:i.id, label:`${i.name} (${i.ticker})` }));
   const ICONS = ["💰","💳","🏠","🚗","⚡","🎬","💊","🍔","📚","🎓","💼","💻","📈","🎯","💵","💹","✈️","🎁","💎","👶","🌴","🔧","⚕️","🎵","🐾","📱","🛒","🏋️","🎮","🌟"];
   const CAT_COLORS = [
@@ -2189,6 +2209,8 @@ export default function App() {
   const blankIncCat= { name:"", icon:"💵", color:C.teal, budget:"" };
   const blankBudget= { catId:"", catType:"expense", amount:"", everyMonth:true };
   const blankLoan    = { name:"", lender:"", principal:"", currentBalance:"", rate:"", interestType:"compound", termMonths:"", monthlyPayment:"", nextDue:"", currency:"KES", categoryId:"" };
+  const blankLoanGiven = { borrowerName:"", wallet:"", principal:"", rate:"", interestType:"simple", termMonths:"", dueDate:"", currency:"KES", note:"" };
+  const blankRepayGiven = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"" };
   const blankPolicy  = { name:"", provider:"", policyType:"life", policyNumber:"", premiumAmount:"", premiumFreq:"monthly", startDate:"", endDate:"", sumAssured:"", surrenderValue:"", amountPaid:"", beneficiary:"", walletId:"", currency:"KES", notes:"", categoryId:"" };
   const blankRepay = { loanId:"", wallet:"", total:"", principal:"", interest:"", date:todayStr(), note:"", files:[] };
   const blankInv   = { name:"", ticker:"", type:"Stock", units:"", buyPrice:"", currency:"KES", wallet:"", categoryId:"" };
@@ -2221,6 +2243,8 @@ export default function App() {
   const [fIncCat, setFIncCat]= useState(blankIncCat);
   const [fBudget, setFBudget]= useState(blankBudget);
   const [fLoan,   setFLoan]  = useState(blankLoan);
+  const [fLoanGiven,   setFLoanGiven]   = useState(blankLoanGiven);
+  const [fRepayGiven,  setFRepayGiven]  = useState(blankRepayGiven);
   const [fPolicy, setFPolicy]= useState(blankPolicy);
   const [fPremiumPayment, setFPremiumPayment] = useState(blankPremiumPayment);
   const [fRepay,  setFRepay] = useState(blankRepay);
@@ -2238,6 +2262,11 @@ export default function App() {
   const [editGoal,    setEditGoal]    = useState(null);
   const [editInv,     setEditInv]     = useState(null);
   const [editLoan,    setEditLoan]    = useState(null);
+  const [editLoanGiven,  setEditLoanGiven]  = useState(null);
+  const [editRepayGiven, setEditRepayGiven] = useState(null); // { loan, repayment }
+  const [savingRepayGiven, setSavingRepayGiven] = useState(false);
+  const savingRepayGivenRef = useRef(false);
+  const [loanSubTab, setLoanSubTab] = useState("owed"); // "owed" | "lent"
   const [editPolicy,  setEditPolicy]  = useState(null);
   const [editRepay,   setEditRepay]   = useState(null); // { loan, repayment }
   const [savingRepayment, setSavingRepayment] = useState(false); // drives the button's disabled/"Saving…" UI
@@ -2625,6 +2654,56 @@ export default function App() {
     finally { savingRepaymentRef.current = false; setSavingRepayment(false); }
   };
 
+  const addLoanGiven = async () => {
+    const p = parseFloat(fLoanGiven.principal); if(!p||!fLoanGiven.borrowerName||!fLoanGiven.wallet) return;
+    try {
+      const { loan, transaction } = await loansGivenApi.create({
+        borrower_name: fLoanGiven.borrowerName,
+        wallet_id:     fLoanGiven.wallet,
+        currency:      fLoanGiven.currency,
+        principal_kes: toKES(p, fLoanGiven.currency, currencies),
+        interest_rate: parseFloat(fLoanGiven.rate)||0,
+        interest_type: fLoanGiven.interestType||"simple",
+        term_months:   fLoanGiven.termMonths ? parseInt(fLoanGiven.termMonths) : undefined,
+        due_date:      fLoanGiven.dueDate||undefined,
+        note:          fLoanGiven.note||undefined,
+      });
+      setLoansGiven(p=>[...p, normaliseLoanGiven(loan)]);
+      setWallets(p=>p.map(w=>w.id===fLoanGiven.wallet?{...w,balance:parseFloat(w.balance)-parseFloat(transaction.amount_kes||0)}:w));
+      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:txLocalDate(transaction)}, ...p]);
+      setFLoanGiven(blankLoanGiven); closeM("loanGiven");
+      showToast("Loan given recorded");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+  };
+
+  const addRepaymentGiven = async () => {
+    if (savingRepayGivenRef.current) return;
+    const total = parseFloat(fRepayGiven.total); if(!total) return;
+    const loan = loansGiven.find(l=>l.id===fRepayGiven.loanId); if(!loan) return;
+    savingRepayGivenRef.current = true;
+    setSavingRepayGiven(true);
+    try {
+      const { repayment, transaction, excess_kes } = await loansGivenApi.recordRepayment(loan.id, {
+        wallet_id:     fRepayGiven.wallet,
+        total_kes:     toKES(total, loan.currency, currencies),
+        principal_kes: toKES(parseFloat(fRepayGiven.principal)||0, loan.currency, currencies),
+        interest_kes:  toKES(parseFloat(fRepayGiven.interest)||0,  loan.currency, currencies),
+        payment_date:  fRepayGiven.date,
+        note:          fRepayGiven.note||undefined,
+      });
+      setLoansGiven(p=>p.map(l=>{
+        if(l.id!==loan.id) return l;
+        const reduction = l.interest_type==="simple" ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
+        return {...l, remaining:Math.max(0,l.remaining-reduction), repayments:[...l.repayments,{id:repayment.id,wallet:repayment.wallet_id,total:parseFloat(repayment.total_kes),principal:parseFloat(repayment.principal_kes),interest:parseFloat(repayment.interest_kes),date:(repayment.payment_date||"").slice(0,10),note:repayment.note}]};
+      }));
+      setWallets(p=>p.map(w=>w.id===fRepayGiven.wallet?{...w,balance:parseFloat(w.balance)+parseFloat(repayment.total_kes||0)}:w));
+      if (transaction) setTxs(p=>[{...transaction, wallet:transaction.wallet_id, category:transaction.category_id, amount:parseFloat(transaction.amount_kes), date:txLocalDate(transaction)}, ...p]);
+      setFRepayGiven(blankRepayGiven); closeM("repayGiven");
+      showToast(excess_kes ? `Repayment recorded — loan was already settled, ${disp(excess_kes)} was extra` : "Repayment recorded");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed", C.coral); }
+    finally { savingRepayGivenRef.current = false; setSavingRepayGiven(false); }
+  };
+
   const addInvestment = async () => {
     const units=parseFloat(fInv.units), price=parseFloat(fInv.buyPrice);
     if(!units||!price||!fInv.name) return;
@@ -2929,6 +3008,142 @@ export default function App() {
       files:     [],
     });
     openM("repay");
+  };
+
+  const openEditLoanGiven = (l) => {
+    setEditLoanGiven(l);
+    setFLoanGiven({
+      borrowerName: l.borrower_name,
+      wallet:       l.wallet || l.wallet_id || "",
+      principal:    String(l.principal || l.principal_kes || ""),
+      currentBalance: String(l.remaining ?? l.remaining_kes ?? ""),
+      rate:         String(l.rate || l.interest_rate || ""),
+      termMonths:   l.termMonths || l.term_months ? String(l.termMonths || l.term_months) : "",
+      dueDate:      l.dueDate || l.due_date || "",
+      currency:     l.currency || "KES",
+      note:         l.note || "",
+    });
+    openM("loanGiven");
+  };
+
+  const openEditRepayGiven = (loan, repayment) => {
+    setEditRepayGiven({ loan, repayment });
+    setFRepayGiven({
+      loanId:    loan.id,
+      wallet:    repayment.wallet || repayment.wallet_id || wallets[0]?.id || "",
+      total:     String(repayment.total || repayment.total_kes || ""),
+      principal: String(repayment.principal || repayment.principal_kes || ""),
+      interest:  String(repayment.interest || repayment.interest_kes || ""),
+      date:      repayment.date || repayment.payment_date || todayStr(),
+      note:      repayment.note || "",
+    });
+    openM("repayGiven");
+  };
+
+  const saveLoanGiven = async () => {
+    if (!fLoanGiven.borrowerName) return;
+    if (editLoanGiven) {
+      try {
+        const payload = { borrower_name: fLoanGiven.borrowerName };
+        if (fLoanGiven.currency) payload.currency = fLoanGiven.currency;
+        // Same guard as saveLoan — only send remaining_kes if it actually
+        // changed, so a stale snapshot (e.g. a repayment landed elsewhere
+        // while this modal was open) can't silently roll the real balance back.
+        const newRemaining = fLoanGiven.currentBalance !== "" ? toKES(parseFloat(fLoanGiven.currentBalance)||0, fLoanGiven.currency, currencies) : null;
+        if (newRemaining !== null && Math.abs(newRemaining - parseFloat(editLoanGiven.remaining_kes||0)) > 0.001) payload.remaining_kes = newRemaining;
+        if (fLoanGiven.rate) payload.interest_rate = parseFloat(fLoanGiven.rate);
+        payload.term_months = fLoanGiven.termMonths ? parseInt(fLoanGiven.termMonths) : null;
+        payload.due_date = fLoanGiven.dueDate || null;
+        payload.note = fLoanGiven.note || null;
+        const { loan } = await loansGivenApi.update(editLoanGiven.id, payload);
+        setLoansGiven(p => p.map(l => l.id === editLoanGiven.id ? { ...normaliseLoanGiven(loan), repayments: editLoanGiven.repayments } : l));
+        setEditLoanGiven(null); setFLoanGiven(blankLoanGiven); closeM("loanGiven");
+        showToast("Loan updated");
+      } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
+    } else {
+      addLoanGiven();
+    }
+  };
+
+  const saveRepaymentGiven = async () => {
+    if (savingRepayGivenRef.current) return;
+    const total = parseFloat(fRepayGiven.total); if (!total) return;
+    if (editRepayGiven) {
+      savingRepayGivenRef.current = true;
+      setSavingRepayGiven(true);
+      try {
+        const { repayment } = await loansGivenApi.updateRepayment(editRepayGiven.loan.id, editRepayGiven.repayment.id, {
+          wallet_id:     fRepayGiven.wallet,
+          total_kes:     toKES(total, editRepayGiven.loan.currency, currencies),
+          principal_kes: toKES(parseFloat(fRepayGiven.principal) || 0, editRepayGiven.loan.currency, currencies),
+          interest_kes:  toKES(parseFloat(fRepayGiven.interest) || 0,  editRepayGiven.loan.currency, currencies),
+          payment_date:  fRepayGiven.date,
+          note:          fRepayGiven.note || undefined,
+        });
+        setLoansGiven(p => p.map(l => {
+          if (l.id !== editRepayGiven.loan.id) return l;
+          const isSimple = l.interest_type === "simple";
+          const oldReduction = isSimple ? (editRepayGiven.repayment.total||0) : (editRepayGiven.repayment.principal||0);
+          const newReduction = isSimple ? parseFloat(repayment.total_kes||0) : parseFloat(repayment.principal_kes||0);
+          const reps = l.repayments.map(r =>
+            r.id === editRepayGiven.repayment.id
+              ? { ...r, total:parseFloat(repayment.total_kes), principal:parseFloat(repayment.principal_kes), interest:parseFloat(repayment.interest_kes), wallet:repayment.wallet_id, date:repayment.payment_date, note:repayment.note }
+              : r
+          );
+          return { ...l, repayments: reps, remaining: Math.max(0, l.remaining + oldReduction - newReduction) };
+        }));
+        // Reverse the old credit (possibly on a different wallet) and apply the new one
+        setWallets(p=>p.map(w=>{
+          let b = parseFloat(w.balance);
+          if (w.id === editRepayGiven.repayment.wallet) b -= editRepayGiven.repayment.total;
+          if (w.id === fRepayGiven.wallet) b += parseFloat(repayment.total_kes||0);
+          return b !== parseFloat(w.balance) ? {...w,balance:b} : w;
+        }));
+        setTxs(p=>p.map(t=>t.loan_given_repayment_id===editRepayGiven.repayment.id
+          ? {...t, wallet:repayment.wallet_id, amount:parseFloat(repayment.total_kes), note:repayment.note, date:(repayment.payment_date||"").slice(0,10)}
+          : t));
+        setEditRepayGiven(null); setFRepayGiven(blankRepayGiven); closeM("repayGiven");
+        showToast("Repayment updated");
+      } catch(err) { showToast(err?.response?.data?.error || "Failed", C.coral); }
+      finally { savingRepayGivenRef.current = false; setSavingRepayGiven(false); }
+    } else {
+      addRepaymentGiven();
+    }
+  };
+
+  const deleteLoanGiven = async (id) => {
+    try {
+      const loan = loansGiven.find(l=>l.id===id);
+      await loansGivenApi.remove(id);
+      // Mirrors the backend: reverses every repayment's wallet credit, then
+      // restores the original principal to the funding account.
+      if (loan) {
+        const reverseByWallet = {};
+        (loan.repayments||[]).forEach(r=>{ if(r.wallet) reverseByWallet[r.wallet]=(reverseByWallet[r.wallet]||0)-(r.total||0); });
+        if (loan.wallet) reverseByWallet[loan.wallet]=(reverseByWallet[loan.wallet]||0)+loan.principal;
+        setWallets(p=>p.map(w=>reverseByWallet[w.id]?{...w,balance:parseFloat(w.balance)+reverseByWallet[w.id]}:w));
+        const repayIds = new Set((loan.repayments||[]).map(r=>r.id));
+        setTxs(p=>p.filter(t=>t.loan_given_id!==id && !repayIds.has(t.loan_given_repayment_id)));
+      }
+      setLoansGiven(p=>p.filter(l=>l.id!==id));
+      showToast("Loan deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete", C.coral); }
+  };
+
+  const deleteRepaymentGiven = async (loanId, repaymentId, repaymentTotal, walletId) => {
+    try {
+      await loansGivenApi.removeRepayment(loanId, repaymentId);
+      setLoansGiven(p=>p.map(l=>{
+        if(l.id!==loanId) return l;
+        const deleted = l.repayments.find(r=>r.id===repaymentId);
+        const reps = l.repayments.filter(r=>r.id!==repaymentId);
+        const restore = deleted ? (l.interest_type==="simple" ? (deleted.total||0) : (deleted.principal||0)) : 0;
+        return {...l, repayments:reps, remaining:l.remaining+restore};
+      }));
+      if (walletId) setWallets(p=>p.map(w=>w.id===walletId?{...w,balance:parseFloat(w.balance)-parseFloat(repaymentTotal||0)}:w));
+      setTxs(p=>p.filter(t=>t.loan_given_repayment_id!==repaymentId));
+      showToast("Repayment deleted");
+    } catch(err) { showToast(err?.response?.data?.error||"Failed to delete repayment", C.coral); }
   };
 
   // Save edits
@@ -5282,8 +5497,16 @@ export default function App() {
         {/* LOANS  */}
         {tab==="loans"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-              <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Loans & Debt</div><div style={{color:C.textMuted,fontSize:12}}>Remaining: {disp(totalDebt)}</div></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
+              <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:24}}>Loans & Debt</div><div style={{color:C.textMuted,fontSize:12}}>{loanSubTab==="owed"?`Remaining: ${disp(totalDebt)}`:`Outstanding to you: ${disp(loansGiven.reduce((s,l)=>s+l.remaining,0))}`}</div></div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>setLoanSubTab("owed")} style={{background:loanSubTab==="owed"?C.coral+"22":"none",border:`1.5px solid ${loanSubTab==="owed"?C.coral:C.navyLight}`,borderRadius:20,padding:"6px 14px",color:loanSubTab==="owed"?C.coral:C.textMuted,fontWeight:loanSubTab==="owed"?700:500,fontSize:12,cursor:"pointer"}}>Money I Owe</button>
+                <button onClick={()=>setLoanSubTab("lent")} style={{background:loanSubTab==="lent"?C.teal+"22":"none",border:`1.5px solid ${loanSubTab==="lent"?C.teal:C.navyLight}`,borderRadius:20,padding:"6px 14px",color:loanSubTab==="lent"?C.teal:C.textMuted,fontWeight:loanSubTab==="lent"?700:500,fontSize:12,cursor:"pointer"}}>Money I've Lent Out</button>
+              </div>
+            </div>
+
+            {loanSubTab==="owed"&&<>
+            <div style={{display:"flex",justifyContent:"flex-end"}}>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <Btn onClick={()=>{setEditTx(null);setFTx({...blankTx,wallet:wallets[0]?.id||"",category:expCats[0]?.id||""});openM("tx");}} outline small>+ Add Transaction</Btn>
                 <Btn onClick={()=>{setEditRepay(null);setFRepay({...blankRepay,loanId:loans[0]?.id||"",wallet:wallets[0]?.id||""});setStatementNotice("");openM("repay");}} outline color={C.coral} small>Record Repayment</Btn>
@@ -5363,6 +5586,83 @@ export default function App() {
                 </>}
               </>;
             })()}
+            </>}
+
+            {loanSubTab==="lent"&&<>
+            <div style={{background:C.teal+"12",border:`1px solid ${C.teal}33`,borderRadius:10,padding:"9px 14px",fontSize:11.5,color:C.textMuted}}>
+              Money you lend out isn't an expense — it's still yours, just held by someone else for now. Giving a loan moves cash out of the account you fund it from; when it's repaid, the cash comes back and nothing here ever counts against your expense budgets.
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end"}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={()=>{setEditRepayGiven(null);setFRepayGiven({...blankRepayGiven,loanId:loansGiven[0]?.id||"",wallet:wallets[0]?.id||""});openM("repayGiven");}} outline color={C.teal} small>Record Repayment</Btn>
+                <Btn onClick={()=>{setEditLoanGiven(null);setFLoanGiven(blankLoanGiven);openM("loanGiven");}} color={C.teal}>+ Give a Loan</Btn>
+              </div>
+            </div>
+            <div className="grid-3">
+              <Chip label="Total Given" value={disp(loansGiven.reduce((s,l)=>s+l.principal,0))} color={C.teal}/>
+              <Chip label="Still Owed to You" value={disp(loansGiven.reduce((s,l)=>s+l.remaining,0))} color={C.gold}/>
+              <Chip label="Interest Earned" value={disp(loansGiven.reduce((s,l)=>s+l.repayments.reduce((ss,r)=>ss+(r.interest||0),0),0))} color={C.textMuted}/>
+            </div>
+            {loansGiven.length===0?<Card style={{textAlign:"center",padding:48}}>
+              <div style={{fontSize:36,marginBottom:12}}>🤝</div>
+              <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No loans given out yet</div>
+              <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>Track money you lend to others and when it's due back — without it touching your expenses.</div>
+              <Btn onClick={()=>{setEditLoanGiven(null);setFLoanGiven(blankLoanGiven);openM("loanGiven");}} color={C.teal}>+ Give Your First Loan</Btn>
+            </Card>:(()=>{
+              const activeLoans  = loansGiven.filter(l=>l.remaining>0);
+              const settledLoans = loansGiven.filter(l=>l.remaining<=0);
+              const renderLoanGivenCard = (l) => {
+                const settled=l.remaining<=0;
+                const paid=l.principal-l.remaining,pct=l.principal>0?(paid/l.principal)*100:0;
+                const w = wallets.find(w=>w.id===l.wallet);
+                const accent = settled?C.teal:C.gold;
+                return<Card key={l.id} style={{borderLeft:`3px solid ${accent}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                    <div><div style={{fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:6}}>{l.borrower_name}{settled&&<Badge color={C.teal}>✅ Fully repaid</Badge>}</div><div style={{color:C.textMuted,fontSize:11}}>from {w?.name||"—"}{l.interest_rate>0?` · ${l.interest_rate}% p.a.`:""} · {l.currency}</div></div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:accent}}>{disp(l.remaining)}</div>
+                      <div style={{color:C.textMuted,fontSize:10}}>still owed to you</div>
+                      <div style={{display:"flex",gap:5,marginTop:4}}>
+                        <button onClick={()=>openEditLoanGiven(l)} style={{background:"none",border:`1px solid ${C.navyLight}`,borderRadius:6,color:C.textMuted,padding:"3px 8px",cursor:"pointer",fontSize:10}}>✏️ Edit</button>
+                        <button onClick={()=>askConfirm("Delete Loan",`Delete the loan given to "${l.borrower_name}"? The money given and any repayments will be reversed in your accounts, and the history removed.`,()=>deleteLoanGiven(l.id))} style={{background:"none",border:`1px solid ${C.coral}44`,borderRadius:6,color:C.coral,padding:"3px 8px",cursor:"pointer",fontSize:10}}>🗑 Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                  <Bar value={paid} max={l.principal} color={C.teal}/>
+                  <div style={{display:"flex",gap:10,marginTop:7,fontSize:11,flexWrap:"wrap"}}>
+                    <span style={{color:C.textMuted}}>Repaid: <strong style={{color:C.teal}}>{pct.toFixed(0)}%</strong></span>
+                    {l.termMonths&&<span style={{color:C.textMuted}}>Term: <strong style={{color:C.textPrimary}}>{l.termMonths >= 12 ? `${Math.floor(l.termMonths/12)}yr${l.termMonths%12?` ${l.termMonths%12}mo`:""}` : `${l.termMonths}mo`}</strong></span>}
+                    {l.dueDate&&<span style={{color:C.textMuted}}>Due back: <strong>{fmtDate(l.dueDate)}</strong></span>}
+                    {l.note&&<span style={{color:C.textMuted}}>{l.note}</span>}
+                  </div>
+                  {l.repayments.length>0&&<div style={{marginTop:10}}>
+                    <div style={{color:C.textMuted,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Repayment History</div>
+                    {l.repayments.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:C.navyLight,borderRadius:8,padding:"7px 10px",marginBottom:3}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600}}>{fmtDate(r.date||r.payment_date)} — {disp(r.total||r.total_kes)}</div>
+                        <div style={{fontSize:10,color:C.textMuted}}>Principal: {disp(r.principal||r.principal_kes||0)} · Interest: {disp(r.interest||r.interest_kes||0)}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <Badge color={C.teal}>Received</Badge>
+                        <button onClick={()=>openEditRepayGiven(l,r)} style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Edit repayment">✏️</button>
+                        <button onClick={()=>askConfirm("Delete Repayment",`Delete this repayment of ${disp(r.total||r.total_kes||0)}? It will be removed from the receiving account and the amount owed restored.`,()=>deleteRepaymentGiven(l.id,r.id,r.total||r.total_kes||0,r.wallet||r.wallet_id))} style={{background:"none",border:"none",color:C.coral,cursor:"pointer",fontSize:11,padding:"2px 4px"}} title="Delete repayment">🗑</button>
+                      </div>
+                    </div>)}
+                  </div>}
+                  {!settled&&<div style={{marginTop:10}}><Btn onClick={()=>{setEditRepayGiven(null);setFRepayGiven({...blankRepayGiven,loanId:l.id,wallet:wallets[0]?.id||""});openM("repayGiven");}} outline color={C.teal} style={{width:"100%",padding:"8px 0",fontSize:12}}>+ Record Repayment</Btn></div>}
+                </Card>;
+              };
+              return <>
+                {settledLoans.length>0&&<Divider label={`Outstanding${activeLoans.length?` (${activeLoans.length})`:""}`}/>}
+                {activeLoans.length===0&&settledLoans.length>0&&<div style={{textAlign:"center",color:C.textFaint,fontSize:13,padding:"16px 0"}}>Nothing outstanding — everything's been paid back 🎉</div>}
+                {activeLoans.map(renderLoanGivenCard)}
+                {settledLoans.length>0&&<>
+                  <Divider label={`Fully Repaid (${settledLoans.length})`}/>
+                  {settledLoans.map(renderLoanGivenCard)}
+                </>}
+              </>;
+            })()}
+            </>}
           </div>
         )}
 
@@ -6161,6 +6461,69 @@ export default function App() {
           {!parsingStatement&&statementNotice&&<div style={{color:C.gold,fontSize:12,marginTop:-6,marginBottom:12}}>ℹ️ {statementNotice}</div>}
         </>}
         <Btn onClick={saveRepayment} disabled={savingRepayment} style={{width:"100%",padding:13,fontSize:14}}>{savingRepayment?"Saving…":editRepay?"Save Changes":"Record Repayment"}</Btn>
+      </Modal>
+
+      {/* Give / Edit a Loan (money lent OUT — a receivable, not an expense) */}
+      <Modal open={isOpen("loanGiven")} onClose={()=>{closeM("loanGiven");setEditLoanGiven(null);}} title={editLoanGiven?"✏️ Edit Loan":"🤝 Give a Loan"}>
+        <Field label="Borrower's Name" value={fLoanGiven.borrowerName} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerName:v})} placeholder="e.g. John Mwangi"/>
+        {!editLoanGiven&&<Field label="Pay From Account" value={fLoanGiven.wallet} onChange={v=>setFLoanGiven({...fLoanGiven,wallet:v})} options={[{value:"",label:"Select account…"},...wOpts]} note="Money leaves this account now — it's a transfer, not an expense, so it won't touch your budgets."/>}
+        <Field label="Currency" value={fLoanGiven.currency} onChange={v=>setFLoanGiven({...fLoanGiven,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
+        <div className="grid-2">
+          {editLoanGiven
+            ? <div style={{marginBottom:12}}>
+                <div style={{color:C.textMuted,fontSize:11,marginBottom:5,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>Amount Given</div>
+                <div style={{background:C.navyLight,borderRadius:10,padding:"10px 14px",fontSize:13,color:C.textFaint}}>{fLoanGiven.currency} {parseFloat(fLoanGiven.principal||0).toLocaleString()}</div>
+                <div style={{color:C.textFaint,fontSize:11,marginTop:4}}>Can't change once given — edit "Still Owed" below instead</div>
+              </div>
+            : <Field label={`Amount Given (${fLoanGiven.currency})`} type="number" value={fLoanGiven.principal} onChange={v=>setFLoanGiven({...fLoanGiven,principal:v,currentBalance:v})} placeholder="e.g. 20000"/>}
+          <Field label="Interest Rate (%)" type="number" value={fLoanGiven.rate} onChange={v=>setFLoanGiven({...fLoanGiven,rate:v})} placeholder="0 if interest-free"/>
+        </div>
+        <div className="grid-2">
+          <Field label={`Still Owed (${fLoanGiven.currency})`} type="number" value={fLoanGiven.currentBalance} onChange={v=>setFLoanGiven({...fLoanGiven,currentBalance:v})} placeholder="Outstanding amount" note={!editLoanGiven?"Leave same as amount given if no repayments yet":"Direct correction — doesn't move any money"}/>
+          <Field label="Due Back By" type="date" value={fLoanGiven.dueDate} onChange={v=>setFLoanGiven({...fLoanGiven,dueDate:v})}/>
+        </div>
+        {!editLoanGiven&&<Field label="Term (months, optional)" type="number" value={fLoanGiven.termMonths} onChange={v=>setFLoanGiven({...fLoanGiven,termMonths:v})} placeholder="e.g. 3"/>}
+        {!editLoanGiven&&(()=>{
+          const p=parseFloat(fLoanGiven.principal), r=parseFloat(fLoanGiven.rate);
+          if(!p||!r) return null;
+          const total=p*(1+r/100);
+          return <div style={{background:C.teal+"11",border:`1px solid ${C.teal}33`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.textMuted}}>
+            📋 They'll owe a fixed total of <strong style={{color:C.teal}}>{fLoanGiven.currency} {total.toLocaleString("en-KE",{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> ({fLoanGiven.currency} {p.toLocaleString()} principal + {fLoanGiven.currency} {(total-p).toLocaleString()} interest) back to you.
+          </div>;
+        })()}
+        <Field label="Note (optional)" value={fLoanGiven.note} onChange={v=>setFLoanGiven({...fLoanGiven,note:v})} placeholder="e.g. School fees top-up"/>
+        <Btn onClick={saveLoanGiven} color={C.teal} style={{width:"100%",padding:13,fontSize:14}}>{editLoanGiven?"Save Changes":"Give Loan"}</Btn>
+      </Modal>
+
+      {/* Record / Edit a repayment received on a loan given out */}
+      <Modal open={isOpen("repayGiven")} onClose={()=>{closeM("repayGiven");setEditRepayGiven(null);}} title={editRepayGiven?"✏️ Edit Repayment":"💰 Record Loan Repayment"}>
+        {!editRepayGiven&&<Field label="Loan" value={fRepayGiven.loanId} onChange={v=>setFRepayGiven({...fRepayGiven,loanId:v})} options={loanGivenOpts}/>}
+        {(()=>{
+          const l=loansGiven.find(ln=>ln.id===fRepayGiven.loanId);
+          if(!l) return null;
+          const isSimple = l.interest_type==="simple";
+          return <>
+            <div style={{background:C.navyLight,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.textMuted}}>
+              Still owed: <strong style={{color:C.gold}}>{disp(l.remaining)}</strong>
+              {isSimple&&<span style={{marginLeft:8,color:"#00D4AA",fontWeight:600}}>📋 Simple interest — total is fixed</span>}
+            </div>
+            <Field label="Payment Date" type="date" value={fRepayGiven.date} onChange={v=>setFRepayGiven({...fRepayGiven,date:v})}/>
+            <Field label="Received Into Account" value={fRepayGiven.wallet} onChange={v=>setFRepayGiven({...fRepayGiven,wallet:v})} options={wOpts}/>
+            <Divider label="Payment Amount"/>
+            <Field label="Amount Received" type="number" value={fRepayGiven.total} onChange={v=>setFRepayGiven({...fRepayGiven,total:v,principal:isSimple?"0":String((parseFloat(v)||0)-(parseFloat(fRepayGiven.interest)||0)),interest:isSimple?"0":fRepayGiven.interest})} placeholder={isSimple?`e.g. ${disp(l.remaining)} (full balance)`:"e.g. 10000"}/>
+            {l.remaining>0&&<button onClick={()=>setFRepayGiven({...fRepayGiven,total:String(l.remaining),principal:isSimple?"0":String(l.remaining),interest:"0"})}
+              style={{background:"none",border:`1px solid ${C.teal}`,borderRadius:8,color:C.teal,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,marginBottom:14}}>💯 Received Full Balance ({disp(l.remaining)})</button>}
+            {!isSimple&&<div className="grid-2">
+              <Field label="Principal Portion" type="number" value={fRepayGiven.principal} onChange={v=>setFRepayGiven({...fRepayGiven,principal:v})} placeholder="0.00"/>
+              <Field label="Interest Portion"  type="number" value={fRepayGiven.interest}  onChange={v=>{const int=parseFloat(v)||0,tot=parseFloat(fRepayGiven.total)||0;setFRepayGiven({...fRepayGiven,interest:v,principal:String((tot-int).toFixed(2))});}} placeholder="0.00"/>
+            </div>}
+            {isSimple&&<div style={{background:"#00D4AA11",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.textMuted}}>
+              The amount you enter reduces what's still owed directly. No principal/interest split needed.
+            </div>}
+          </>;
+        })()}
+        <Field label="Note (optional)" value={fRepayGiven.note} onChange={v=>setFRepayGiven({...fRepayGiven,note:v})} placeholder="e.g. First installment"/>
+        <Btn onClick={saveRepaymentGiven} disabled={savingRepayGiven} color={C.teal} style={{width:"100%",padding:13,fontSize:14}}>{savingRepayGiven?"Saving…":editRepayGiven?"Save Changes":"Record Repayment"}</Btn>
       </Modal>
 
       {/* Add / Edit Investment */}

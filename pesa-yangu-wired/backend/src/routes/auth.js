@@ -272,12 +272,14 @@ router.post("/reset-data", requireAuth, async (req, res) => {
   try {
     await withTransaction(async (client) => {
       await client.query("DELETE FROM loan_repayments        WHERE user_id=$1", [uid]);
+      await client.query("DELETE FROM loan_given_repayments  WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM investment_returns     WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM transactions           WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM recurring_transactions WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM goals                  WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM investments            WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM loans                  WHERE user_id=$1", [uid]);
+      await client.query("DELETE FROM loans_given            WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM wallets                WHERE user_id=$1", [uid]);
       await client.query("DELETE FROM categories             WHERE user_id=$1", [uid]);
       await seed(client, uid);

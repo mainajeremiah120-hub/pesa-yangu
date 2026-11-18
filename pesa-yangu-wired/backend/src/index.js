@@ -52,6 +52,7 @@ const {
   goalRouter:       goalRoutes,
   investmentRouter: investmentRoutes,
   loanRouter:       loanRoutes,
+  loanGivenRouter:  loanGivenRoutes,
   recurringRouter:  recurringRoutes,
   fxRouter:         fxRoutes,
   aiRouter:         aiRoutes,
@@ -188,6 +189,7 @@ v1.use("/income-plans", requireAuth, incomePlanRoutes);
 v1.use("/goals",        requireAuth, goalRoutes);
 v1.use("/investments",  requireAuth, investmentRoutes);
 v1.use("/loans",        requireAuth, loanRoutes);
+v1.use("/loans-given",  requireAuth, loanGivenRoutes);
 v1.use("/recurring",    requireAuth, recurringRoutes);
 v1.use("/ai",           requireAuth, aiRoutes);
 v1.use("/billing",      requireAuth, billingRoutes);

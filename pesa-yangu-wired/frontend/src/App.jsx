@@ -589,6 +589,17 @@ const WalletPicker = ({ value, onChange, wallets, currencies, label, excludeId }
   );
 };
 
+// Two people exchanging money back and forth — used for the "loans given out"
+// submodule instead of the 🤝 emoji.
+const LendIcon = ({ size=24, color="currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="7" cy="7" r="3"/>
+    <circle cx="17" cy="17" r="3"/>
+    <path d="M10 7h6M14.5 4.5L17 7l-2.5 2.5"/>
+    <path d="M14 17H8M9.5 19.5L7 17l2.5-2.5"/>
+  </svg>
+);
+
 const Divider = ({ label }) => {
   const C = useC();
   return (
@@ -5604,7 +5615,7 @@ export default function App() {
               <Chip label="Interest Earned" value={disp(loansGiven.reduce((s,l)=>s+l.repayments.reduce((ss,r)=>ss+(r.interest||0),0),0))} color={C.textMuted}/>
             </div>
             {loansGiven.length===0?<Card style={{textAlign:"center",padding:48}}>
-              <div style={{fontSize:36,marginBottom:12}}>🤝</div>
+              <div style={{marginBottom:12,color:C.teal,display:"flex",justifyContent:"center"}}><LendIcon size={36}/></div>
               <div style={{fontWeight:600,fontSize:15,marginBottom:6}}>No loans given out yet</div>
               <div style={{color:C.textMuted,fontSize:12,marginBottom:16}}>Track money you lend to others and when it's due back — without it touching your expenses.</div>
               <Btn onClick={()=>{setEditLoanGiven(null);setFLoanGiven(blankLoanGiven);openM("loanGiven");}} color={C.teal}>+ Give Your First Loan</Btn>
@@ -6464,7 +6475,7 @@ export default function App() {
       </Modal>
 
       {/* Give / Edit a Loan (money lent OUT — a receivable, not an expense) */}
-      <Modal open={isOpen("loanGiven")} onClose={()=>{closeM("loanGiven");setEditLoanGiven(null);}} title={editLoanGiven?"✏️ Edit Loan":"🤝 Give a Loan"}>
+      <Modal open={isOpen("loanGiven")} onClose={()=>{closeM("loanGiven");setEditLoanGiven(null);}} title={editLoanGiven?"✏️ Edit Loan":<span style={{display:"flex",alignItems:"center",gap:8}}><LendIcon size={18}/> Give a Loan</span>}>
         <Field label="Borrower's Name" value={fLoanGiven.borrowerName} onChange={v=>setFLoanGiven({...fLoanGiven,borrowerName:v})} placeholder="e.g. John Mwangi"/>
         {!editLoanGiven&&<Field label="Pay From Account" value={fLoanGiven.wallet} onChange={v=>setFLoanGiven({...fLoanGiven,wallet:v})} options={[{value:"",label:"Select account…"},...wOpts]} note="Money leaves this account now — it's a transfer, not an expense, so it won't touch your budgets."/>}
         <Field label="Currency" value={fLoanGiven.currency} onChange={v=>setFLoanGiven({...fLoanGiven,currency:v})} options={currencies.map(c=>({value:c.code,label:`${c.code} – ${c.name}`}))}/>
